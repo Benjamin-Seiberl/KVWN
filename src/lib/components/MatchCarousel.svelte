@@ -80,14 +80,33 @@
 		const stride = () => W();
 		const count  = () => matches.length;
 
-		// ── Parallax: Content innerhalb jedes Slides leicht versetzt
+		// ── Parallax + Live-Glow: Content und Liga-Name basierend auf Scroll-Position
 		function updateParallax(tx) {
-			const slides = track()?.querySelectorAll('.match-hero-content');
-			if (!slides) return;
-			slides.forEach((el, i) => {
-				const offset  = tx + i * stride();   // Position des Slides im Viewport
-				const shift   = offset * 0.12;       // 12% Parallax-Faktor
-				el.style.transform = `translateX(${shift}px)`;
+			const allSlides = track()?.querySelectorAll('.match-slide');
+			if (!allSlides) return;
+			allSlides.forEach((slide, i) => {
+				const offset = tx + i * stride();   // Position des Slides relativ zum Viewport
+
+				// Parallax auf Hero-Content
+				const hero = slide.querySelector('.match-hero-content');
+				if (hero) hero.style.transform = `translateX(${offset * 0.12}px)`;
+
+				// Live-Glow auf Liga-Name: stärker je zentrierter der Slide
+				const leagueName = slide.querySelector('.match-league-name');
+				if (!leagueName) return;
+				const proximity = Math.max(0, 1 - Math.abs(offset) / stride());
+				if (proximity < 0.01) {
+					leagueName.style.textShadow = '';
+					return;
+				}
+				const g = Math.pow(proximity, 1.2);
+				leagueName.style.textShadow = [
+					`0 0 ${8  * g}px rgba(255,255,255,${(g * 0.95).toFixed(2)})`,
+					`0 0 ${20 * g}px rgba(255,255,255,${(g * 0.85).toFixed(2)})`,
+					`0 0 ${50 * g}px rgba(255,230,100,${(g * 0.75).toFixed(2)})`,
+					`0 0 ${90 * g}px rgba(212,175,55,${(g  * 0.60).toFixed(2)})`,
+					`0 0 ${140* g}px rgba(212,175,55,${(g  * 0.30).toFixed(2)})`,
+				].join(', ');
 			});
 		}
 
@@ -118,9 +137,10 @@
 			const slide  = slides?.[current];
 			if (!slide) return;
 
-			// Liga-Name Glow
+			// Liga-Name Glow (Inline-Style clearen damit CSS-Animation greift)
 			const leagueName = slide.querySelector('.match-league-name');
 			if (leagueName) {
+				leagueName.style.textShadow = '';
 				leagueName.classList.remove('match-league-name--glow');
 				void leagueName.offsetWidth;
 				leagueName.classList.add('match-league-name--glow');
