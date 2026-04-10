@@ -12,8 +12,9 @@
 	let dotProgress = $state(0);   // float, z.B. 1.47 während des Swipens
 	let hasSwiped   = $state(false);
 
-	let widgetEl = $state(null);
-	let trackEl  = $state(null);
+	let wrapperEl = $state(null);
+	let widgetEl  = $state(null);
+	let trackEl   = $state(null);
 
 	// ── Datum-Hilfsfunktionen ─────────────────────────────────
 	function getWeekRange() {
@@ -248,12 +249,15 @@
 	onMount(async () => {
 		await loadData();
 		// Swipe-Hint auslösen sobald Widget bereit ist
-		widgetEl?._playSwipeHint?.();
+		wrapperEl?._playSwipeHint?.();
 	});
 </script>
 
+<!-- Carousel-Wrapper: gesamte Swipe-Zone inkl. Dots -->
+<div class="carousel-container" bind:this={wrapperEl} use:carousel>
+
 <!-- Widget -->
-<div class="widget widget--match-combined" bind:this={widgetEl} use:carousel>
+<div class="widget widget--match-combined" bind:this={widgetEl}>
 	<div class="widget-hero-bg"></div>
 
 	<div class="match-track" bind:this={trackEl}>
@@ -317,6 +321,7 @@
 											class="kader-avatar"
 											src={imgPath(name)}
 											alt={name ?? ''}
+											draggable="false"
 											onerror={(e) => e.currentTarget.style.display = 'none'}
 										/>
 									</div>
@@ -336,7 +341,7 @@
 	</div>
 </div>
 
-<!-- Dots außerhalb – live interpoliert -->
+<!-- Dots – innerhalb des Swipe-Wrappers -->
 {#if matches.length > 1}
 	<div class="match-dots-external">
 		{#each matches as _, i}
@@ -350,3 +355,5 @@
 		{/each}
 	</div>
 {/if}
+
+</div><!-- /carousel-container -->
