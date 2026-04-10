@@ -451,12 +451,12 @@ button {
   display: flex;
   flex-direction: column;
   position: relative;
-  /* Split-Hintergrund: Rot oben (65%), Weiß unten (35%) – fest hinter den Slides */
+  /* Split-Hintergrund: Rot oben (50%), Weiß unten (50%) – fest hinter den Slides */
   background: linear-gradient(
     to bottom,
     #CC0000 0%,
-    #9E0000 65%,
-    var(--color-surface-container-lowest) 65%
+    #9E0000 50%,
+    var(--color-surface-container-lowest) 50%
   );
 }
 
@@ -535,9 +535,9 @@ button {
   flex-direction: column;
 }
 
-/* Hero: 65% der Slide-Höhe */
+/* Hero: 50% der Slide-Höhe */
 .match-hero-content {
-  flex: 0 0 65%;
+  flex: 0 0 50%;
   overflow: hidden;
   position: relative;
   z-index: 1;
@@ -819,13 +819,24 @@ button {
 /* Liga-Name als große Überschrift im Hero */
 .match-league-name {
   font-family: var(--font-display);
-  font-size: clamp(0.9rem, 3.5vw, 1.2rem);
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.95);
-  letter-spacing: 0.04em;
+  font-size: clamp(1.1rem, 4.5vw, 1.6rem);
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   margin: 0;
   line-height: 1;
+  text-shadow: 0 1px 12px rgba(255, 255, 255, 0.15);
+}
+
+@keyframes leagueGlow {
+  0%   { text-shadow: 0 1px 12px rgba(255, 255, 255, 0.15); letter-spacing: 0.06em; }
+  35%  { text-shadow: 0 0 24px rgba(255, 255, 255, 0.7), 0 0 48px rgba(255, 210, 0, 0.35); letter-spacing: 0.10em; }
+  100% { text-shadow: 0 1px 12px rgba(255, 255, 255, 0.15); letter-spacing: 0.06em; }
+}
+
+.match-league-name--glow {
+  animation: leagueGlow 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .chip--home {
@@ -938,6 +949,16 @@ button {
   gap: var(--space-1);
   flex: 1;
   min-width: 0;
+}
+
+/* Carousel: Avatare immer exakt gleich groß */
+.widget-kader-panel .kader-player {
+  flex: 0 0 auto;
+}
+
+.widget-kader-panel .kader-avatar {
+  width: 40px;
+  height: 40px;
 }
 
 .kader-avatar {

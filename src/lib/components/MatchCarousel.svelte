@@ -115,11 +115,24 @@
 
 		function glowChip() {
 			const slides = track()?.querySelectorAll('.match-slide');
-			const chip   = slides?.[current]?.querySelector('.chip--league');
-			if (!chip) return;
-			chip.classList.remove('chip--league--glow');
-			void chip.offsetWidth;
-			chip.classList.add('chip--league--glow');
+			const slide  = slides?.[current];
+			if (!slide) return;
+
+			// Liga-Name Glow
+			const leagueName = slide.querySelector('.match-league-name');
+			if (leagueName) {
+				leagueName.classList.remove('match-league-name--glow');
+				void leagueName.offsetWidth;
+				leagueName.classList.add('match-league-name--glow');
+			}
+
+			// Chip Glow (bestehend)
+			const chip = slide.querySelector('.chip--league');
+			if (chip) {
+				chip.classList.remove('chip--league--glow');
+				void chip.offsetWidth;
+				chip.classList.add('chip--league--glow');
+			}
 		}
 
 		function snapTo(index) {
