@@ -243,19 +243,24 @@
 				<div class="match-slide">
 					<!-- Hero -->
 					<div class="match-hero-content">
+						<!-- Liga prominent oben -->
 						<div class="match-meta">
-							<span class="chip chip--league">{m.leagues?.name ?? ''}</span>
-							{#if m.home_away === 'HEIM'}
-								<span class="chip chip--home">Heimspiel</span>
-							{:else}
-								<span class="chip chip--away">Auswärts</span>
-							{/if}
+							<p class="match-league-name">{m.leagues?.name ?? ''}</p>
 							{#if matches.length > 1}
 								<span class="match-counter">{i + 1}&nbsp;/&nbsp;{matches.length}</span>
 							{/if}
 						</div>
+
+						<!-- Gegner -->
 						<div>
-							<p class="match-vs-label">vs.</p>
+							<div style="display:flex; align-items:center; gap: var(--space-2); margin-bottom: 2px;">
+								{#if m.home_away === 'HEIM'}
+									<span class="chip chip--home">Heim</span>
+								{:else}
+									<span class="chip chip--away">Auswärts</span>
+								{/if}
+								<p class="match-vs-label" style="margin:0">vs.</p>
+							</div>
 							<h2 class="match-title">{m.opponent}</h2>
 						</div>
 						<p class="match-label">{dateLabel(m)}</p>
@@ -288,8 +293,8 @@
 							<p class="kader-empty-text">Noch keine Aufstellung</p>
 						{/if}
 						<button class="btn-aufstellung" onclick={() => goto('/spielbetrieb')}>
-							Aufstellung ansehen
-							<span class="material-symbols-outlined">chevron_right</span>
+							<span class="material-symbols-outlined">arrow_forward</span>
+							Match Details
 						</button>
 					</div>
 				</div>

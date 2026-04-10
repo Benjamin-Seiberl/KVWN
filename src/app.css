@@ -451,7 +451,13 @@ button {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: var(--gradient-primary);
+  /* Split-Hintergrund: Rot oben (65%), Weiß unten (35%) – fest hinter den Slides */
+  background: linear-gradient(
+    to bottom,
+    #CC0000 0%,
+    #9E0000 65%,
+    var(--color-surface-container-lowest) 65%
+  );
 }
 
 /* Hero-Teil – identisch mit widget--hero */
@@ -632,9 +638,9 @@ button {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.20);
 }
 
-/* Kader-Panel: 35% der Slide-Höhe, kein Radius */
+/* Kader-Panel: transparent – zeigt den weißen Split-Hintergrund des Widgets durch */
 .widget-kader-panel {
-  background: var(--color-surface-container-lowest);
+  background: transparent;
   border-radius: 0;
   padding: var(--space-3) var(--space-4);
   display: flex;
@@ -672,30 +678,30 @@ button {
   margin: 0;
 }
 
-/* Button: Aufstellung ansehen */
+/* Button: Match Details (klein, als Link-Style) */
 .btn-aufstellung {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 2px;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
+  align-self: flex-start;
+  padding: 3px var(--space-2) 3px var(--space-1);
   border: none;
-  border-radius: var(--radius-lg);
-  background: var(--color-primary);
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 0.82rem;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--color-primary);
+  font-family: var(--font-body);
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s ease;
+  transition: background 0.15s ease;
+  letter-spacing: 0.02em;
 }
 
-.btn-aufstellung:active { opacity: 0.8; }
+.btn-aufstellung:active { background: rgba(0, 0, 0, 0.13); }
 
 .btn-aufstellung .material-symbols-outlined {
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 /* Liga-Chip Glow-Animation beim Slide-Wechsel */
@@ -801,10 +807,25 @@ button {
 }
 
 .chip--league {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.90);
-  /* Ghost-Border nach DESIGN.md §4 – outline-variant @ 15% */
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.30);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  letter-spacing: 0.10em;
+}
+
+/* Liga-Name als große Überschrift im Hero */
+.match-league-name {
+  font-family: var(--font-display);
+  font-size: clamp(0.9rem, 3.5vw, 1.2rem);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1;
 }
 
 .chip--home {
