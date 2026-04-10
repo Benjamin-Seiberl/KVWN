@@ -509,7 +509,7 @@ button {
   touch-action: pan-y;
   cursor: grab;
   user-select: none;
-  height: 35vh;
+  height: 32vh;
   overflow: hidden;
 }
 
@@ -819,24 +819,47 @@ button {
 /* Liga-Name als große Überschrift im Hero */
 .match-league-name {
   font-family: var(--font-display);
-  font-size: clamp(1.1rem, 4.5vw, 1.6rem);
-  font-weight: 800;
+  font-size: clamp(1.5rem, 6.5vw, 2.4rem);
+  font-weight: 900;
   color: #fff;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   margin: 0;
   line-height: 1;
-  text-shadow: 0 1px 12px rgba(255, 255, 255, 0.15);
+  text-shadow:
+    0 2px 16px rgba(255, 255, 255, 0.2),
+    0 0 40px rgba(212, 175, 55, 0.15);
 }
 
 @keyframes leagueGlow {
-  0%   { text-shadow: 0 1px 12px rgba(255, 255, 255, 0.15); letter-spacing: 0.06em; }
-  35%  { text-shadow: 0 0 24px rgba(255, 255, 255, 0.7), 0 0 48px rgba(255, 210, 0, 0.35); letter-spacing: 0.10em; }
-  100% { text-shadow: 0 1px 12px rgba(255, 255, 255, 0.15); letter-spacing: 0.06em; }
+  0% {
+    text-shadow:
+      0 2px 16px rgba(255, 255, 255, 0.2),
+      0 0 40px rgba(212, 175, 55, 0.15);
+    transform: scale(1);
+    letter-spacing: 0.08em;
+  }
+  25% {
+    text-shadow:
+      0 0 8px  rgba(255, 255, 255, 1),
+      0 0 20px rgba(255, 255, 255, 0.9),
+      0 0 50px rgba(255, 230, 100, 0.8),
+      0 0 90px rgba(212, 175, 55, 0.65),
+      0 0 140px rgba(212, 175, 55, 0.35);
+    transform: scale(1.04);
+    letter-spacing: 0.13em;
+  }
+  100% {
+    text-shadow:
+      0 2px 16px rgba(255, 255, 255, 0.2),
+      0 0 40px rgba(212, 175, 55, 0.15);
+    transform: scale(1);
+    letter-spacing: 0.08em;
+  }
 }
 
 .match-league-name--glow {
-  animation: leagueGlow 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: leagueGlow 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .chip--home {
