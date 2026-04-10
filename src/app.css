@@ -516,28 +516,17 @@ button {
   display: flex;
   width: 100%;
   height: 100%;
-  gap: 12px;
+  gap: 0;
   will-change: transform;
 }
 
-/* Jeder Slide */
+/* Jeder Slide – kein Scale-Effekt, volle Breite */
 .match-slide {
-  flex: 0 0 calc(100% - 24px);
+  flex: 0 0 100%;
   height: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  transform: scale(0.88);
-  opacity: 0.55;
-  transition:
-    transform 0.42s cubic-bezier(0.25, 1, 0.5, 1),
-    opacity   0.35s ease;
-  transform-origin: center;
-}
-
-.match-slide--active {
-  transform: scale(1);
-  opacity: 1;
 }
 
 /* Hero: 65% der Slide-Höhe */
@@ -550,8 +539,31 @@ button {
   color: var(--color-on-primary);
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;   /* Inhalt am unteren Rand ausrichten */
+  justify-content: flex-end;
   gap: var(--space-2);
+  will-change: transform;  /* Parallax via JS */
+}
+
+/* Swipe-Hinweis Icon */
+.swipe-hint {
+  position: absolute;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  color: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  animation: swipe-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) 1.2s 3 both;
+}
+
+.swipe-hint .material-symbols-outlined {
+  font-size: 1.5rem;
+  font-variation-settings: 'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+}
+
+@keyframes swipe-pulse {
+  0%   { opacity: 0.55; transform: translateX(0); }
+  30%  { opacity: 0.9;  transform: translateX(-6px); }
+  60%  { opacity: 0.55; transform: translateX(0); }
+  100% { opacity: 0.55; transform: translateX(0); }
 }
 
 /* "vs." Label */
@@ -597,18 +609,9 @@ button {
 
 .match-dot {
   height: 6px;
-  width: 6px;
   border-radius: var(--radius-full);
-  background: var(--color-outline-variant);
-  transition:
-    width  0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-    background 0.2s ease;
   flex-shrink: 0;
-}
-
-.match-dot--active {
-  width: 20px;
-  background: var(--color-primary);
+  /* width + background kommen live als inline style vom JS */
 }
 
 /* LIVE-Badge */

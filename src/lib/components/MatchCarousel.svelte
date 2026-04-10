@@ -5,15 +5,17 @@
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
-	let matches  = $state([]);
-	let kaders   = $state([]);
-	let loading  = $state(true);
-	let current  = $state(0);
+	let matches     = $state([]);
+	let kaders      = $state([]);
+	let loading     = $state(true);
+	let current     = $state(0);
+	let dotProgress = $state(0);   // float, z.B. 1.47 während des Swipens
+	let hasSwiped   = $state(false);
 
 	let widgetEl = $state(null);
 	let trackEl  = $state(null);
 
-	// ── Datum-Hilfsfunktionen ──────────────────────────────────
+	// ── Datum-Hilfsfunktionen ─────────────────────────────────
 	function getWeekRange() {
 		const today = new Date();
 		const day   = today.getDay();
@@ -40,7 +42,7 @@
 		return name ? '/images/' + encodeURIComponent(name) + '.jpg' : '';
 	}
 
-	// ── Daten laden ────────────────────────────────────────────
+	// ── Daten laden ───────────────────────────────────────────
 	async function loadData() {
 		const range = getWeekRange();
 		const { data, error } = await sb
@@ -67,20 +69,48 @@
 		loading = false;
 	}
 
-	// ── Carousel-Drag (Svelte Action) ─────────────────────────
+	// ── Carousel-Drag (Svelte Action) ────────────────────────
 	function carousel(widget) {
-		let startX = 0, startOff = 0, lastX = 0, lastT = 0, velocity = 0, dragging = false;
+		let startX = 0, startOff = 0, lastX = 0, lastT = 0;
+		let velocity = 0, dragging = false;
+		let currentX = 0;  // aktueller translateX-Wert
 
 		const track  = () => trackEl;
 		const W      = () => widget.offsetWidth;
-		const stride = () => W() - 12;
+		const stride = () => W();
 		const count  = () => matches.length;
+
+		// ── Parallax: Content innerhalb jedes Slides leicht versetzt
+		function updateParallax(tx) {
+			const slides = track()?.querySelectorAll('.match-hero-content');
+			if (!slides) return;
+			slides.forEach((el, i) => {
+				const offset  = tx + i * stride();   // Position des Slides im Viewport
+				const shift   = offset * 0.12;       // 12% Parallax-Faktor
+				el.style.transform = `translateX(${shift}px)`;
+			});
+		}
 
 		function moveTo(x, animate) {
 			const t = track();
 			if (!t) return;
-			t.style.transition = animate ? 'transform 0.42s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
-			t.style.transform  = 'translateX(' + x + 'px)';
+			currentX = x;
+			t.style.transition = animate
+				? 'transform 0.5s cubic-bezier(0.34, 1.4, 0.64, 1)'
+				: 'none';
+			t.style.transform = 'translateX(' + x + 'px)';
+
+			// Parallax mitbewegen (mit eigener Transition wenn animated)
+			const slides = t.querySelectorAll('.match-hero-content');
+			slides.forEach((el) => {
+				el.style.transition = animate
+					? 'transform 0.5s cubic-bezier(0.34, 1.4, 0.64, 1)'
+					: 'none';
+			});
+			updateParallax(x);
+
+			// Dot-Progress aktualisieren
+			dotProgress = Math.max(0, Math.min(count() - 1, -x / stride()));
 		}
 
 		function glowChip() {
@@ -93,31 +123,60 @@
 		}
 
 		function snapTo(index) {
-			current = Math.max(0, Math.min(count() - 1, index));
+			current     = Math.max(0, Math.min(count() - 1, index));
+			dotProgress = current;
 			moveTo(-current * stride(), true);
 			glowChip();
 		}
 
+		// Swipe-Hint: kurz den nächsten Slide anteasern dann zurückspringen
+		function playSwipeHint() {
+			if (count() <= 1 || hasSwiped) return;
+			setTimeout(() => {
+				if (hasSwiped) return;
+				moveTo(-52, true);
+				setTimeout(() => {
+					if (!hasSwiped) snapTo(0);
+				}, 480);
+			}, 1000);
+		}
+
 		function onDown(e) {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
-			dragging = true;
-			startX   = e.clientX;
-			startOff = -current * stride();
-			lastX    = e.clientX;
-			lastT    = Date.now();
-			velocity = 0;
-			track().style.transition = 'none';
+			dragging  = true;
+			startX    = e.clientX;
+			startOff  = currentX;
+			lastX     = e.clientX;
+			lastT     = Date.now();
+			velocity  = 0;
+			const t   = track();
+			if (t) {
+				t.style.transition = 'none';
+				t.querySelectorAll('.match-hero-content').forEach(el => {
+					el.style.transition = 'none';
+				});
+			}
 			widget.setPointerCapture(e.pointerId);
 		}
 
 		function onMove(e) {
 			if (!dragging) return;
+			hasSwiped = true;
 			const delta = e.clientX - startX;
 			const s     = stride();
 			const minX  = -(count() - 1) * s;
 			const raw   = startOff + delta;
-			const x     = raw > 0 ? raw * 0.18 : raw < minX ? minX + (raw - minX) * 0.18 : raw;
+			// Rubber-band an den Enden
+			const x     = raw > 0    ? raw * 0.18
+			            : raw < minX ? minX + (raw - minX) * 0.18
+			            : raw;
+			currentX = x;
 			track().style.transform = 'translateX(' + x + 'px)';
+			updateParallax(x);
+
+			// Dots live updaten
+			dotProgress = Math.max(0, Math.min(count() - 1, -x / s));
+
 			const now = Date.now();
 			const dt  = now - lastT;
 			if (dt > 0) velocity = (e.clientX - lastX) / dt;
@@ -131,15 +190,18 @@
 			const delta = e.clientX - startX;
 			const w = W();
 			let next = current;
-			if      (delta < -(w * 0.2) || velocity < -0.4) next = current + 1;
-			else if (delta >  (w * 0.2) || velocity >  0.4) next = current - 1;
+			if      (delta < -(w * 0.18) || velocity < -0.35) next = current + 1;
+			else if (delta >  (w * 0.18) || velocity >  0.35) next = current - 1;
 			snapTo(next);
 		}
 
-		widget.addEventListener('pointerdown',  onDown);
-		widget.addEventListener('pointermove',  onMove);
-		widget.addEventListener('pointerup',    onUp);
+		widget.addEventListener('pointerdown',   onDown);
+		widget.addEventListener('pointermove',   onMove);
+		widget.addEventListener('pointerup',     onUp);
 		widget.addEventListener('pointercancel', () => { dragging = false; snapTo(current); });
+
+		// Hint nach Datenladen auslösen (wird von loadData aufgerufen)
+		widget._playSwipeHint = playSwipeHint;
 
 		return {
 			destroy() {
@@ -150,7 +212,11 @@
 		};
 	}
 
-	onMount(loadData);
+	onMount(async () => {
+		await loadData();
+		// Swipe-Hint auslösen sobald Widget bereit ist
+		widgetEl?._playSwipeHint?.();
+	});
 </script>
 
 <!-- Widget -->
@@ -159,13 +225,13 @@
 
 	<div class="match-track" bind:this={trackEl}>
 		{#if loading}
-			<div class="match-slide match-slide--active">
+			<div class="match-slide">
 				<div class="match-hero-content" style="justify-content:center">
 					<p class="match-label">Lade Spiele…</p>
 				</div>
 			</div>
 		{:else if matches.length === 0}
-			<div class="match-slide match-slide--active">
+			<div class="match-slide">
 				<div class="match-hero-content" style="justify-content:center">
 					<p class="match-label">Diese Woche</p>
 					<h2 class="match-title">Keine Spiele</h2>
@@ -174,7 +240,7 @@
 		{:else}
 			{#each matches as m, i}
 				{@const kader = kaders[i] ?? []}
-				<div class="match-slide" class:match-slide--active={i === current}>
+				<div class="match-slide">
 					<!-- Hero -->
 					<div class="match-hero-content">
 						<div class="match-meta">
@@ -193,6 +259,13 @@
 							<h2 class="match-title">{m.opponent}</h2>
 						</div>
 						<p class="match-label">{dateLabel(m)}</p>
+
+						<!-- Swipe-Hinweis (verschwindet nach erstem Swipe) -->
+						{#if matches.length > 1 && !hasSwiped && i === 0}
+							<span class="swipe-hint" aria-hidden="true">
+								<span class="material-symbols-outlined">swipe</span>
+							</span>
+						{/if}
 					</div>
 
 					<!-- Kader -->
@@ -225,11 +298,17 @@
 	</div>
 </div>
 
-<!-- Dots außerhalb -->
+<!-- Dots außerhalb – live interpoliert -->
 {#if matches.length > 1}
 	<div class="match-dots-external">
 		{#each matches as _, i}
-			<span class="match-dot" class:match-dot--active={i === current}></span>
+			{@const dist = Math.abs(dotProgress - i)}
+			{@const w    = dist < 1 ? 6 + 14 * (1 - dist) : 6}
+			{@const active = dist < 0.5}
+			<span
+				class="match-dot"
+				style="width: {w}px; background: {active ? 'var(--color-primary)' : 'var(--color-outline-variant)'}"
+			></span>
 		{/each}
 	</div>
 {/if}
