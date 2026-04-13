@@ -315,9 +315,10 @@
 					</div>
 
 					<!-- Kader -->
+					{@const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4}
 					<div class="widget-kader-panel">
 						{#if kader.length > 0}
-							<div class="kader-avatars">
+							<div class="kader-avatars" class:kader-avatars--6={starterCount === 6}>
 								{#each kader as p}
 									{@const name  = p.players?.name ?? p.player_name}
 									{@const photo = p.players?.photo ?? null}
@@ -335,10 +336,6 @@
 						{:else}
 							<p class="kader-empty-text">Noch keine Aufstellung</p>
 						{/if}
-						<button class="btn-aufstellung" onclick={() => goto('/spielbetrieb?matchId=' + m.id)}>
-							<span class="material-symbols-outlined">arrow_forward</span>
-							Match Details
-						</button>
 					</div>
 				</div>
 			{/each}
