@@ -59,6 +59,13 @@
 		return parts[0] + ' ' + parts[parts.length - 1].charAt(0) + '.';
 	}
 
+	// Mannschaftsgröße je Liga
+	function leagueConfig(leagueName) {
+		const n = (leagueName ?? '').toLowerCase();
+		if (n.includes('bundesliga') || n.includes('landesliga')) return { starterCount: 6, maxSubs: 4 };
+		return { starterCount: 4, maxSubs: 2 };
+	}
+
 	// ── Daten laden ───────────────────────────────────────
 	async function loadData() {
 		const range = getWeekRange();
@@ -316,9 +323,10 @@
 			<div class="sb-carousel" bind:this={wrapperEl} use:carousel>
 				<div class="sb-track" bind:this={trackEl}>
 					{#each plans as plan, i}
-						{@const m = plan.match}
-						{@const starters = plan.players.filter(p => (p.position ?? 99) <= 6)}
-						{@const subs     = plan.players.filter(p => (p.position ?? 99) > 6)}
+						{@const m      = plan.match}
+						{@const cfg    = leagueConfig(m.leagues?.name)}
+						{@const starters = plan.players.filter(p => (p.position ?? 99) <= cfg.starterCount)}
+						{@const subs     = plan.players.filter(p => (p.position ?? 99) > cfg.starterCount)}
 						<div class="sb-slide">
 
 							<!-- Match Header -->
@@ -348,7 +356,7 @@
 									<!-- Startaufstellung -->
 									<div class="sb-section-label">
 										<span>Startaufstellung</span>
-										<span class="sb-count">{starters.length}&thinsp;/&thinsp;6</span>
+										<span class="sb-count">{starters.length}&thinsp;/&thinsp;{cfg.starterCount}</span>
 									</div>
 
 									<div class="sb-player-list">
@@ -400,7 +408,7 @@
 
 										<!-- Leere Startslots (EditMode) -->
 										{#if isKapitaen && editMode}
-											{#each Array.from({ length: Math.max(0, 6 - starters.length) }, (_, i) => i) as j}
+											{#each Array.from({ length: Math.max(0, cfg.starterCount - starters.length) }, (_, i) => i) as j}
 												<button
 													class="sb-player-row sb-player-row--empty"
 													onclick={() => openPicker({ gamePlanPlayerId: null, position: starters.length + j + 1 })}
@@ -416,7 +424,7 @@
 									</div>
 
 									<!-- Ersatzspieler -->
-									{#if subs.length > 0 || (isKapitaen && editMode && starters.length >= 6)}
+									{#if subs.length > 0 || (isKapitaen && editMode && starters.length >= cfg.starterCount)}
 										<div class="sb-section-label sb-section-label--sub">
 											<span>Ersatzspieler</span>
 											<span class="sb-count">{subs.length}</span>
