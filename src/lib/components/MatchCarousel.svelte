@@ -330,7 +330,7 @@
 						{:else}
 							<p class="kader-empty-text">Noch keine Aufstellung</p>
 						{/if}
-						<button class="btn-aufstellung" onclick={() => goto('/spielbetrieb')}>
+						<button class="btn-aufstellung" onclick={() => goto('/spielbetrieb?matchId=' + m.id)}>
 							<span class="material-symbols-outlined">arrow_forward</span>
 							Match Details
 						</button>
