@@ -281,6 +281,7 @@
 		{:else}
 			{#each matches as m, i}
 				{@const kader = kaders[i] ?? []}
+				{@const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4}
 				<div class="match-slide">
 					<!-- Hero -->
 					<div class="match-hero-content">
@@ -315,7 +316,6 @@
 					</div>
 
 					<!-- Kader -->
-					{@const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4}
 					<div class="widget-kader-panel">
 						{#if kader.length > 0}
 							<div class="kader-avatars" class:kader-avatars--6={starterCount === 6}>
