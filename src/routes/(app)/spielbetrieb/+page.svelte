@@ -19,8 +19,9 @@
 	let pickerQuery = $state('');
 	let allPlayers  = $state([]);
 
-	let trackEl     = $state(null);
-	let wrapperEl   = $state(null);
+	let trackEl   = $state(null);
+	let wrapperEl = $state(null);
+	let tabsEl    = $state(null);
 
 	const initMatchId = $page.url.searchParams.get('matchId');
 	const isKapitaen  = $derived($playerRole === 'kapitaen' || $playerRole === 'admin');
@@ -88,7 +89,6 @@
 
 		plans = loaded;
 
-		// Zur matchId springen wenn via URL übergeben
 		if (initMatchId) {
 			const idx = plans.findIndex(p => p.match.id === initMatchId);
 			if (idx >= 0) current = idx;
@@ -106,12 +106,12 @@
 		allPlayers = data ?? [];
 	}
 
-	// ── Swipe-Carousel ────────────────────────────────────
-	let dotProgress = $state(0);
-
+	// ── Swipe-Carousel (direction-aware) ──────────────────
 	function carousel(widget) {
-		let startX = 0, startOff = 0, lastX = 0, lastT = 0;
-		let velocity = 0, dragging = false, currentX = 0;
+		let startX = 0, startY = 0, startOff = 0;
+		let lastX = 0, lastT = 0;
+		let velocity = 0, dragging = false, direction = null;
+		let currentX = 0;
 
 		const track  = () => trackEl;
 		const W      = () => widget.offsetWidth;
@@ -126,30 +126,50 @@
 				? 'transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1)'
 				: 'none';
 			t.style.transform  = 'translateX(' + x + 'px)';
-			dotProgress = Math.max(0, Math.min(count() - 1, -x / stride()));
 		}
 
 		function snapTo(index) {
-			current     = Math.max(0, Math.min(count() - 1, index));
-			dotProgress = current;
+			current = Math.max(0, Math.min(count() - 1, index));
 			moveTo(-current * stride(), true);
+			// Scroll active tab into view
+			if (tabsEl) {
+				tabsEl.querySelectorAll('.sb-tab')[current]
+					?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+			}
 		}
 
 		function onDown(e) {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
-			dragging = true;
-			startX   = e.clientX;
-			startOff = currentX;
-			lastX    = e.clientX;
-			lastT    = Date.now();
-			velocity = 0;
-			const t  = track();
-			if (t) t.style.transition = 'none';
-			widget.setPointerCapture(e.pointerId);
+			direction = null;
+			startX    = e.clientX;
+			startY    = e.clientY;
+			startOff  = currentX;
+			lastX     = e.clientX;
+			lastT     = Date.now();
+			velocity  = 0;
 		}
 
 		function onMove(e) {
+			if (direction === 'v') return;
+
+			const dx = Math.abs(e.clientX - startX);
+			const dy = Math.abs(e.clientY - startY);
+
+			if (direction === null) {
+				if (dx > 6 || dy > 6) {
+					direction = dx >= dy ? 'h' : 'v';
+					if (direction === 'h') {
+						dragging = true;
+						widget.setPointerCapture(e.pointerId);
+						const t = track();
+						if (t) t.style.transition = 'none';
+					}
+				}
+				return;
+			}
+
 			if (!dragging) return;
+
 			const delta = e.clientX - startX;
 			const s     = stride();
 			const minX  = -(count() - 1) * s;
@@ -159,7 +179,7 @@
 			            : raw;
 			currentX = x;
 			track().style.transform = 'translateX(' + x + 'px)';
-			dotProgress = Math.max(0, Math.min(count() - 1, -x / s));
+
 			const now = Date.now(), dt = now - lastT;
 			if (dt > 0) velocity = (e.clientX - lastX) / dt;
 			lastX = e.clientX;
@@ -167,8 +187,9 @@
 		}
 
 		function onUp(e) {
-			if (!dragging) return;
-			dragging = false;
+			if (!dragging) { direction = null; return; }
+			dragging  = false;
+			direction = null;
 			const delta = e.clientX - startX;
 			const w     = W();
 			let next    = current;
@@ -180,14 +201,22 @@
 		widget.addEventListener('pointerdown',   onDown);
 		widget.addEventListener('pointermove',   onMove);
 		widget.addEventListener('pointerup',     onUp);
-		widget.addEventListener('pointercancel', () => { dragging = false; snapTo(current); });
+		widget.addEventListener('pointercancel', () => { dragging = false; direction = null; snapTo(current); });
+
+		widget._snapTo = snapTo;
+
 		return {
 			destroy() {
-				widget.removeEventListener('pointerdown',  onDown);
-				widget.removeEventListener('pointermove',  onMove);
-				widget.removeEventListener('pointerup',    onUp);
+				widget.removeEventListener('pointerdown', onDown);
+				widget.removeEventListener('pointermove', onMove);
+				widget.removeEventListener('pointerup',   onUp);
 			}
 		};
+	}
+
+	function goToSlide(i) {
+		current = i;
+		wrapperEl?._snapTo?.(i);
 	}
 
 	// ── Kapitän: Spieler zuweisen ─────────────────────────
@@ -203,13 +232,11 @@
 		pickerOpen = false;
 
 		if (pickerSlot.gamePlanPlayerId) {
-			// Bestehenden Eintrag updaten
 			await sb
 				.from('game_plan_players')
 				.update({ player_id: player.id, player_name: player.name })
 				.eq('id', pickerSlot.gamePlanPlayerId);
 		} else {
-			// Neuen Eintrag anlegen
 			await sb
 				.from('game_plan_players')
 				.insert({
@@ -220,7 +247,6 @@
 				});
 		}
 
-		// Slide aktualisieren
 		const gp = plans[current];
 		const { data } = await sb
 			.from('game_plan_players')
@@ -268,14 +294,32 @@
 			</div>
 
 		{:else}
-			<!-- Swipe-Track -->
+
+			<!-- League Tabs -->
+			{#if plans.length > 1}
+				<div class="sb-tabs-bar" bind:this={tabsEl}>
+					{#each plans as plan, i}
+						<button
+							class="sb-tab"
+							class:sb-tab--active={current === i}
+							onclick={() => goToSlide(i)}
+						>
+							{plan.match.leagues?.name ?? 'Liga'}
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			<!-- Swipe Carousel -->
 			<div class="sb-carousel" bind:this={wrapperEl} use:carousel>
 				<div class="sb-track" bind:this={trackEl}>
 					{#each plans as plan, i}
 						{@const m = plan.match}
+						{@const starters = plan.players.filter(p => (p.position ?? 99) <= 6)}
+						{@const subs     = plan.players.filter(p => (p.position ?? 99) > 6)}
 						<div class="sb-slide">
 
-							<!-- Match-Header -->
+							<!-- Match Header -->
 							<div class="sb-match-header">
 								<p class="sb-league">{m.leagues?.name ?? ''}</p>
 								<div class="sb-match-row">
@@ -289,99 +333,163 @@
 								<p class="sb-date">{dateLabel(m)}</p>
 							</div>
 
-							<!-- Aufstellung -->
-							<div class="sb-section-label">
-								<span>Aufstellung</span>
-								{#if plan.players.length > 0}
-									<span class="sb-count">{plan.players.length} Spieler</span>
-								{/if}
-							</div>
+							<!-- Players Area -->
+							<div class="sb-players-area">
 
-							{#if plan.players.length === 0}
-								<div class="sb-no-players">
-									<span class="material-symbols-outlined">group_off</span>
-									<p>Noch keine Aufstellung</p>
-								</div>
-							{:else}
-								<div class="sb-player-grid">
-									{#each plan.players as p}
-										{@const name = p.players?.name ?? p.player_name ?? '–'}
-										{@const isMe = p.player_id === $playerId}
-										<button
-											class="sb-player-card"
-											class:sb-player-card--me={isMe}
-											class:sb-player-card--editable={isKapitaen && editMode}
-											class:sb-player-card--confirmed={p.confirmed === true}
-											class:sb-player-card--declined={p.confirmed === false}
-											onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
-											disabled={!isKapitaen || !editMode}
-										>
-											<div class="sb-avatar-wrap">
-												<img
-													class="sb-avatar"
-													src={imgPath(name)}
-													alt={name}
-													draggable="false"
-													onerror={(e) => e.currentTarget.style.display='none'}
-												/>
-												{#if isKapitaen && editMode}
-													<div class="sb-edit-overlay">
-														<span class="material-symbols-outlined">edit</span>
-													</div>
-												{/if}
+								{#if plan.players.length === 0 && !(isKapitaen && editMode)}
+									<div class="sb-no-players">
+										<span class="material-symbols-outlined">group_off</span>
+										<p>Noch keine Aufstellung</p>
+									</div>
+								{:else}
+
+									<!-- Startaufstellung -->
+									<div class="sb-section-label">
+										<span>Startaufstellung</span>
+										<span class="sb-count">{starters.length}&thinsp;/&thinsp;6</span>
+									</div>
+
+									<div class="sb-player-list">
+										{#each starters as p}
+											{@const name = p.players?.name ?? p.player_name ?? '–'}
+											{@const isMe = p.player_id === $playerId}
+											<button
+												class="sb-player-row"
+												class:sb-player-row--me={isMe}
+												class:sb-player-row--editable={isKapitaen && editMode}
+												class:sb-player-row--confirmed={p.confirmed === true}
+												class:sb-player-row--declined={p.confirmed === false}
+												onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
+												disabled={!isKapitaen || !editMode}
+											>
+												<span class="sb-pos">{p.position ?? '–'}</span>
+												<div class="sb-row-avatar-wrap">
+													<img
+														class="sb-row-avatar"
+														src={imgPath(name)}
+														alt={name}
+														draggable="false"
+														onerror={(e) => e.currentTarget.style.display='none'}
+													/>
+													{#if isKapitaen && editMode}
+														<div class="sb-edit-overlay-row">
+															<span class="material-symbols-outlined">edit</span>
+														</div>
+													{/if}
+												</div>
+												<div class="sb-row-info">
+													<span class="sb-row-name">{shortName(name)}</span>
+													{#if p.score}
+														<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
+													{/if}
+												</div>
 												{#if p.confirmed === true}
-													<span class="sb-confirmed-badge" title="Bestätigt">
+													<span class="sb-status-badge sb-status-badge--confirmed">
 														<span class="material-symbols-outlined">check</span>
 													</span>
 												{:else if p.confirmed === false}
-													<span class="sb-declined-badge" title="Abgelehnt">
+													<span class="sb-status-badge sb-status-badge--declined">
 														<span class="material-symbols-outlined">close</span>
 													</span>
 												{/if}
-											</div>
-											<span class="sb-player-name">{shortName(name)}</span>
-											{#if p.score}
-												<span class="sb-player-score">{p.score}</span>
-											{/if}
-										</button>
-									{/each}
+											</button>
+										{/each}
 
-									<!-- Neuen Spieler hinzufügen (nur Kapitän & Editmode) -->
-									{#if isKapitaen && editMode}
-										<button
-											class="sb-player-card sb-player-card--add"
-											onclick={() => openPicker({ gamePlanPlayerId: null, position: plan.players.length + 1 })}
-										>
-											<div class="sb-avatar-wrap sb-avatar-add">
-												<span class="material-symbols-outlined">person_add</span>
-											</div>
-											<span class="sb-player-name">Hinzufügen</span>
-										</button>
+										<!-- Leere Startslots (EditMode) -->
+										{#if isKapitaen && editMode}
+											{#each { length: Math.max(0, 6 - starters.length) } as _, j}
+												<button
+													class="sb-player-row sb-player-row--empty"
+													onclick={() => openPicker({ gamePlanPlayerId: null, position: starters.length + j + 1 })}
+												>
+													<span class="sb-pos sb-pos--empty">{starters.length + j + 1}</span>
+													<div class="sb-row-avatar-wrap sb-row-avatar-add">
+														<span class="material-symbols-outlined">person_add</span>
+													</div>
+													<span class="sb-row-name sb-row-name--placeholder">Spieler hinzufügen</span>
+												</button>
+											{/each}
+										{/if}
+									</div>
+
+									<!-- Ersatzspieler -->
+									{#if subs.length > 0 || (isKapitaen && editMode && starters.length >= 6)}
+										<div class="sb-section-label sb-section-label--sub">
+											<span>Ersatzspieler</span>
+											<span class="sb-count">{subs.length}</span>
+										</div>
+
+										<div class="sb-player-list">
+											{#each subs as p}
+												{@const name = p.players?.name ?? p.player_name ?? '–'}
+												{@const isMe = p.player_id === $playerId}
+												<button
+													class="sb-player-row"
+													class:sb-player-row--me={isMe}
+													class:sb-player-row--editable={isKapitaen && editMode}
+													class:sb-player-row--confirmed={p.confirmed === true}
+													class:sb-player-row--declined={p.confirmed === false}
+													onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
+													disabled={!isKapitaen || !editMode}
+												>
+													<span class="sb-pos">{p.position ?? '–'}</span>
+													<div class="sb-row-avatar-wrap">
+														<img
+															class="sb-row-avatar"
+															src={imgPath(name)}
+															alt={name}
+															draggable="false"
+															onerror={(e) => e.currentTarget.style.display='none'}
+														/>
+														{#if isKapitaen && editMode}
+															<div class="sb-edit-overlay-row">
+																<span class="material-symbols-outlined">edit</span>
+															</div>
+														{/if}
+													</div>
+													<div class="sb-row-info">
+														<span class="sb-row-name">{shortName(name)}</span>
+														{#if p.score}
+															<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
+														{/if}
+													</div>
+													{#if p.confirmed === true}
+														<span class="sb-status-badge sb-status-badge--confirmed">
+															<span class="material-symbols-outlined">check</span>
+														</span>
+													{:else if p.confirmed === false}
+														<span class="sb-status-badge sb-status-badge--declined">
+															<span class="material-symbols-outlined">close</span>
+														</span>
+													{/if}
+												</button>
+											{/each}
+
+											<!-- Ersatz hinzufügen (EditMode) -->
+											{#if isKapitaen && editMode}
+												<button
+													class="sb-player-row sb-player-row--empty"
+													onclick={() => openPicker({ gamePlanPlayerId: null, position: plan.players.length + 1 })}
+												>
+													<span class="sb-pos sb-pos--empty">{plan.players.length + 1}</span>
+													<div class="sb-row-avatar-wrap sb-row-avatar-add">
+														<span class="material-symbols-outlined">person_add</span>
+													</div>
+													<span class="sb-row-name sb-row-name--placeholder">Ersatz hinzufügen</span>
+												</button>
+											{/if}
+										</div>
 									{/if}
-								</div>
-							{/if}
+
+								{/if}
+							</div>
 
 						</div>
 					{/each}
 				</div>
 			</div>
 
-			<!-- Dots -->
-			{#if plans.length > 1}
-				<div class="sb-dots">
-					{#each plans as _, i}
-						{@const dist   = Math.abs(dotProgress - i)}
-						{@const w      = dist < 1 ? 6 + 14 * (1 - dist) : 6}
-						{@const active = dist < 0.5}
-						<span
-							class="match-dot"
-							style="width:{w}px; background:{active ? 'var(--color-primary)' : 'var(--color-outline-variant)'}"
-						></span>
-					{/each}
-				</div>
-			{/if}
-
-			<!-- Kapitän-FAB -->
+			<!-- Kapitän FAB -->
 			{#if isKapitaen}
 				<button
 					class="sb-fab"
