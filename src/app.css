@@ -1723,11 +1723,15 @@ button {
 
 /* ── Carousel ─────────────────────────────────────── */
 .sb-carousel {
+  touch-action: none;
   user-select: none;
+  cursor: grab;
   overflow: hidden;
   flex: 1;
   min-height: 0;
 }
+
+.sb-carousel:active { cursor: grabbing; }
 
 .sb-track {
   display: flex;
@@ -1742,7 +1746,7 @@ button {
   flex-direction: column;
   gap: 0;
   overflow-y: auto;
-  overscroll-behavior-x: none;
+  overscroll-behavior: contain;
   padding-bottom: calc(var(--nav-height) + var(--nav-safe) + var(--space-10));
 }
 

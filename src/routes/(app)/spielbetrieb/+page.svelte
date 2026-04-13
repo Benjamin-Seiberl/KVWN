@@ -106,12 +106,10 @@
 		allPlayers = data ?? [];
 	}
 
-	// ── Swipe-Carousel (direction-aware) ──────────────────
+	// ── Swipe-Carousel ────────────────────────────────────
 	function carousel(widget) {
-		let startX = 0, startY = 0, startOff = 0;
-		let lastX = 0, lastT = 0;
-		let velocity = 0, dragging = false, direction = null;
-		let currentX = 0;
+		let startX = 0, startOff = 0, lastX = 0, lastT = 0;
+		let velocity = 0, dragging = false, currentX = 0;
 
 		const track  = () => trackEl;
 		const W      = () => widget.offsetWidth;
@@ -131,7 +129,6 @@
 		function snapTo(index) {
 			current = Math.max(0, Math.min(count() - 1, index));
 			moveTo(-current * stride(), true);
-			// Scroll active tab into view
 			if (tabsEl) {
 				tabsEl.querySelectorAll('.sb-tab')[current]
 					?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -140,36 +137,19 @@
 
 		function onDown(e) {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
-			direction = null;
-			startX    = e.clientX;
-			startY    = e.clientY;
-			startOff  = currentX;
-			lastX     = e.clientX;
-			lastT     = Date.now();
-			velocity  = 0;
+			dragging = true;
+			startX   = e.clientX;
+			startOff = currentX;
+			lastX    = e.clientX;
+			lastT    = Date.now();
+			velocity = 0;
+			const t  = track();
+			if (t) t.style.transition = 'none';
+			widget.setPointerCapture(e.pointerId);
 		}
 
 		function onMove(e) {
-			if (direction === 'v') return;
-
-			const dx = Math.abs(e.clientX - startX);
-			const dy = Math.abs(e.clientY - startY);
-
-			if (direction === null) {
-				if (dx > 6 || dy > 6) {
-					direction = dx >= dy ? 'h' : 'v';
-					if (direction === 'h') {
-						dragging = true;
-						widget.setPointerCapture(e.pointerId);
-						const t = track();
-						if (t) t.style.transition = 'none';
-					}
-				}
-				return;
-			}
-
 			if (!dragging) return;
-
 			const delta = e.clientX - startX;
 			const s     = stride();
 			const minX  = -(count() - 1) * s;
@@ -179,7 +159,6 @@
 			            : raw;
 			currentX = x;
 			track().style.transform = 'translateX(' + x + 'px)';
-
 			const now = Date.now(), dt = now - lastT;
 			if (dt > 0) velocity = (e.clientX - lastX) / dt;
 			lastX = e.clientX;
@@ -187,9 +166,8 @@
 		}
 
 		function onUp(e) {
-			if (!dragging) { direction = null; return; }
-			dragging  = false;
-			direction = null;
+			if (!dragging) return;
+			dragging = false;
 			const delta = e.clientX - startX;
 			const w     = W();
 			let next    = current;
@@ -201,7 +179,7 @@
 		widget.addEventListener('pointerdown',   onDown);
 		widget.addEventListener('pointermove',   onMove);
 		widget.addEventListener('pointerup',     onUp);
-		widget.addEventListener('pointercancel', () => { dragging = false; direction = null; snapTo(current); });
+		widget.addEventListener('pointercancel', () => { dragging = false; snapTo(current); });
 
 		widget._snapTo = snapTo;
 
