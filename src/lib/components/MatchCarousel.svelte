@@ -39,8 +39,9 @@
 			d.getDate() + '.' + (d.getMonth() + 1) + '. \u2022 ' + formatTime(m.time) + ' Uhr';
 	}
 
-	function imgPath(name) {
-		return name ? '/images/' + encodeURIComponent(name) + '.jpg' : '';
+	function imgPath(photo, name) {
+		const key = photo || name;
+		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
 	}
 
 	// ── Daten laden ───────────────────────────────────────────
@@ -60,7 +61,7 @@
 		kaders = await Promise.all(matches.map(async m => {
 			const { data: gp } = await sb
 				.from('game_plans')
-				.select('id, leagues!inner(name), game_plan_players(player_name, score, played, position, players(name))')
+				.select('id, leagues!inner(name), game_plan_players(player_name, score, played, position, players(name, photo))')
 				.eq('cal_week', m.cal_week)
 				.eq('leagues.name', m.leagues?.name ?? '')
 				.maybeSingle();
@@ -315,11 +316,12 @@
 						{#if kader.length > 0}
 							<div class="kader-avatars">
 								{#each kader as p}
-									{@const name = p.players?.name ?? p.player_name}
+									{@const name  = p.players?.name ?? p.player_name}
+									{@const photo = p.players?.photo ?? null}
 									<div class="kader-player">
 										<img
 											class="kader-avatar"
-											src={imgPath(name)}
+											src={imgPath(photo, name)}
 											alt={name ?? ''}
 											draggable="false"
 											onerror={(e) => e.currentTarget.style.display = 'none'}

@@ -27,8 +27,9 @@
 		return { from: fmt(mon), to: fmt(sun) };
 	}
 
-	function imgPath(name) {
-		return name ? '/images/' + encodeURIComponent(name) + '.jpg' : '';
+	function imgPath(photo, name) {
+		const key = photo || name;
+		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
 	}
 
 	function dateLabel(m) {
@@ -56,7 +57,7 @@
 			if (!m.cal_week || !m.league_id) continue;
 			const { data: gp } = await sb
 				.from('game_plans')
-				.select('id, game_plan_players(id, confirmed, position, player_id, player_name, players(name))')
+				.select('id, game_plan_players(id, confirmed, position, player_id, player_name, players(name, photo))')
 				.eq('cal_week', m.cal_week)
 				.eq('league_id', m.league_id)
 				.maybeSingle();
@@ -110,13 +111,14 @@
 		<!-- Aufstellung -->
 		<div class="lcc-avatars">
 			{#each teammates as p}
-				{@const name = p.players?.name ?? p.player_name}
-				{@const isMe = p.player_id === myPlayer?.id}
+				{@const name  = p.players?.name ?? p.player_name}
+				{@const photo = p.players?.photo ?? null}
+				{@const isMe  = p.player_id === myPlayer?.id}
 				<div class="lcc-player" class:lcc-player--me={isMe}>
 					<div class="lcc-avatar-wrap">
 						<img
 							class="lcc-avatar"
-							src={imgPath(name)}
+							src={imgPath(photo, name)}
 							alt={name ?? ''}
 							draggable="false"
 							onerror={(e) => e.currentTarget.style.display = 'none'}

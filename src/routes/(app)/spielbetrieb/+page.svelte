@@ -46,8 +46,10 @@
 			(m.time ? m.time.substring(0, 5) : '') + ' Uhr';
 	}
 
-	function imgPath(name) {
-		return name ? '/images/' + encodeURIComponent(name) + '.jpg' : '';
+	// photo = filename stem from players.photo; name = fallback
+	function imgPath(photo, name) {
+		const key = photo || name;
+		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
 	}
 
 	function shortName(name) {
@@ -74,7 +76,7 @@
 			if (!m.cal_week || !m.league_id) continue;
 			const { data: gp } = await sb
 				.from('game_plans')
-				.select('id, game_plan_players(id, position, player_id, player_name, score, confirmed, played, players(name))')
+				.select('id, game_plan_players(id, position, player_id, player_name, score, confirmed, played, players(name, photo))')
 				.eq('cal_week', m.cal_week)
 				.eq('league_id', m.league_id)
 				.maybeSingle();
@@ -100,7 +102,7 @@
 	async function loadAllPlayers() {
 		const { data } = await sb
 			.from('players')
-			.select('id, name')
+			.select('id, name, photo')
 			.eq('active', true)
 			.order('name');
 		allPlayers = data ?? [];
@@ -110,6 +112,8 @@
 	function carousel(widget) {
 		let startX = 0, startOff = 0, lastX = 0, lastT = 0;
 		let velocity = 0, dragging = false, currentX = 0;
+
+		const DRAG_THRESHOLD = 8; // px – below this = click, not drag
 
 		const track  = () => trackEl;
 		const W      = () => widget.offsetWidth;
@@ -137,19 +141,24 @@
 
 		function onDown(e) {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
-			dragging = true;
+			dragging = false; // only set true once threshold crossed
 			startX   = e.clientX;
 			startOff = currentX;
 			lastX    = e.clientX;
 			lastT    = Date.now();
 			velocity = 0;
-			const t  = track();
-			if (t) t.style.transition = 'none';
-			widget.setPointerCapture(e.pointerId);
 		}
 
 		function onMove(e) {
-			if (!dragging) return;
+			const dx = Math.abs(e.clientX - startX);
+			if (!dragging) {
+				if (dx < DRAG_THRESHOLD) return; // not a drag yet, let click through
+				// Threshold crossed – now capture and start dragging
+				dragging = true;
+				widget.setPointerCapture(e.pointerId);
+				const t = track();
+				if (t) t.style.transition = 'none';
+			}
 			const delta = e.clientX - startX;
 			const s     = stride();
 			const minX  = -(count() - 1) * s;
@@ -166,7 +175,7 @@
 		}
 
 		function onUp(e) {
-			if (!dragging) return;
+			if (!dragging) return; // was a click – don't interfere
 			dragging = false;
 			const delta = e.clientX - startX;
 			const w     = W();
@@ -228,7 +237,7 @@
 		const gp = plans[current];
 		const { data } = await sb
 			.from('game_plan_players')
-			.select('id, position, player_id, player_name, score, confirmed, played, players(name)')
+			.select('id, position, player_id, player_name, score, confirmed, played, players(name, photo)')
 			.eq('game_plan_id', gp.gamePlanId);
 		if (data) {
 			plans[current] = {
@@ -329,8 +338,9 @@
 
 									<div class="sb-player-list">
 										{#each starters as p}
-											{@const name = p.players?.name ?? p.player_name ?? '–'}
-											{@const isMe = p.player_id === $playerId}
+											{@const name  = p.players?.name ?? p.player_name ?? '–'}
+											{@const photo = p.players?.photo ?? null}
+											{@const isMe  = p.player_id === $playerId}
 											<button
 												class="sb-player-row"
 												class:sb-player-row--me={isMe}
@@ -344,7 +354,7 @@
 												<div class="sb-row-avatar-wrap">
 													<img
 														class="sb-row-avatar"
-														src={imgPath(name)}
+														src={imgPath(photo, name)}
 														alt={name}
 														draggable="false"
 														onerror={(e) => e.currentTarget.style.display='none'}
@@ -503,7 +513,7 @@
 				<button class="picker-item" onclick={() => assignPlayer(p)}>
 					<img
 						class="picker-avatar"
-						src={imgPath(p.name)}
+						src={imgPath(p.photo, p.name)}
 						alt={p.name}
 						draggable="false"
 						onerror={(e) => e.currentTarget.style.display='none'}
