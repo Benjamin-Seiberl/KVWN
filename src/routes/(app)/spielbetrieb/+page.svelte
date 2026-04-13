@@ -8,10 +8,11 @@
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
 	// ── State ────────────────────────────────────────────────
-	let loading    = $state(true);
-	let plans      = $state([]);   // [{ match, gamePlanId, players[] }]
-	let current    = $state(0);
-	let editMode   = $state(false);
+	let loading      = $state(true);
+	let plans        = $state([]);   // [{ match, gamePlanId, players[] }]
+	let current      = $state(0);
+	let editMode     = $state(false);
+	let playerStats  = $state({});   // { [playerId]: { avg5: number, overallAvg: number } }
 
 	// Kapitän: Spieler-Picker
 	let pickerOpen  = $state(false);
@@ -109,10 +110,76 @@
 	async function loadAllPlayers() {
 		const { data } = await sb
 			.from('players')
-			.select('id, name, photo')
+			.select('id, name, photo, avg_score')
 			.eq('active', true)
-			.order('name');
-		allPlayers = data ?? [];
+			.order('avg_score', { ascending: false });
+		if (!data?.length) return;
+
+		// Form: letzte 5 gespielte Spiele, eine Query für alle Spieler
+		const { data: recent } = await sb
+			.from('game_plan_players')
+			.select('player_id, score')
+			.in('player_id', data.map(p => p.id))
+			.eq('played', true)
+			.not('score', 'is', null)
+			.order('id', { ascending: false })
+			.limit(500);
+
+		const formMap = {};
+		for (const g of recent ?? []) {
+			if (!formMap[g.player_id]) formMap[g.player_id] = [];
+			if (formMap[g.player_id].length < 5) formMap[g.player_id].push(Number(g.score));
+		}
+
+		allPlayers = data.map(p => ({
+			...p,
+			recentScores: formMap[p.id] ?? []
+		}));
+	}
+
+	function formTrend(p) {
+		if (!p.recentScores?.length || !p.avg_score) return null;
+		const recentAvg = p.recentScores.reduce((a, b) => a + b, 0) / p.recentScores.length;
+		return +(recentAvg - p.avg_score).toFixed(1);
+	}
+
+	// ── Spieler-Statistiken laden ─────────────────────
+	async function loadPlayerStats(loadedPlans) {
+		const playerIds = [...new Set(
+			loadedPlans.flatMap(plan =>
+				plan.players.filter(p => p.player_id).map(p => p.player_id)
+			)
+		)];
+		if (!playerIds.length) return;
+
+		// Alle gespielten Ergebnisse für diese Spieler, neueste zuerst
+		const { data } = await sb
+			.from('game_plan_players')
+			.select('player_id, score, game_plans!inner(cal_week)')
+			.in('player_id', playerIds)
+			.eq('played', true)
+			.not('score', 'is', null)
+			.order('cal_week', { referencedTable: 'game_plans', ascending: false });
+
+		// Gruppiere Scores pro Spieler (bereits nach cal_week DESC sortiert)
+		const grouped = {};
+		for (const row of data ?? []) {
+			const pid = row.player_id;
+			if (!grouped[pid]) grouped[pid] = [];
+			grouped[pid].push(Number(row.score));
+		}
+
+		// Berechne avg5 (letzte 5) und overallAvg
+		const stats = {};
+		for (const [pid, scores] of Object.entries(grouped)) {
+			const last5 = scores.slice(0, 5);
+			stats[pid] = {
+				avg5:       Math.round(last5.reduce((a, b) => a + b, 0) / last5.length),
+				overallAvg: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
+				count:      scores.length,
+			};
+		}
+		playerStats = stats;
 	}
 
 	// ── Swipe-Carousel ────────────────────────────────────
@@ -280,6 +347,7 @@
 
 	onMount(async () => {
 		await loadData();
+		await loadPlayerStats(plans);
 		if (isKapitaen) await loadAllPlayers();
 	});
 
@@ -328,6 +396,10 @@
 						{@const cfg    = leagueConfig(m.leagues?.name)}
 						{@const starters = plan.players.filter(p => (p.position ?? 99) <= cfg.starterCount)}
 						{@const subs     = plan.players.filter(p => (p.position ?? 99) > cfg.starterCount)}
+						{@const starterAvgs = starters.filter(p => p.player_id && playerStats[p.player_id]).map(p => playerStats[p.player_id].avg5)}
+						{@const teamAvg5 = starterAvgs.length ? Math.round(starterAvgs.reduce((a, b) => a + b, 0) / starterAvgs.length) : null}
+						{@const teamOverallAvgs = starters.filter(p => p.player_id && playerStats[p.player_id]).map(p => playerStats[p.player_id].overallAvg)}
+						{@const teamOverallAvg = teamOverallAvgs.length ? Math.round(teamOverallAvgs.reduce((a, b) => a + b, 0) / teamOverallAvgs.length) : null}
 						<div class="sb-slide">
 
 							<!-- Match Header -->
@@ -343,6 +415,24 @@
 								</div>
 								<p class="sb-date">{dateLabel(m)}</p>
 							</div>
+
+							<!-- Team Stats -->
+							{#if teamOverallAvg || teamAvg5}
+								<div class="sb-team-stats">
+									{#if teamOverallAvg}
+										<div class="sb-team-stat">
+											<span class="sb-team-stat-label">Gesamtschnitt</span>
+											<span class="sb-team-stat-value">{teamOverallAvg}</span>
+										</div>
+									{/if}
+									{#if teamAvg5}
+										<div class="sb-team-stat">
+											<span class="sb-team-stat-label">Schnitt letzte 5</span>
+											<span class="sb-team-stat-value sb-team-stat-value--accent">{teamAvg5}</span>
+										</div>
+									{/if}
+								</div>
+							{/if}
 
 							<!-- Players Area -->
 							<div class="sb-players-area">
@@ -365,6 +455,7 @@
 											{@const name  = p.players?.name ?? p.player_name ?? '–'}
 											{@const photo = p.players?.photo ?? null}
 											{@const isMe  = p.player_id === $playerId}
+											{@const pStat = p.player_id ? playerStats[p.player_id] : null}
 											<button
 												class="sb-player-row"
 												class:sb-player-row--me={isMe}
@@ -389,7 +480,11 @@
 												</div>
 												<span class="sb-row-name">{shortName(name)}</span>
 												<div class="sb-row-meta">
-													{#if p.score}<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>{/if}
+													{#if pStat}
+														<span class="sb-row-score">&oslash;&thinsp;{pStat.avg5}</span>
+													{:else if p.score}
+														<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
+													{/if}
 													{#if p.confirmed === true}
 														<span class="sb-status-badge sb-status-badge--confirmed">
 															<span class="material-symbols-outlined">check</span>
@@ -435,6 +530,7 @@
 												{@const name  = p.players?.name ?? p.player_name ?? '–'}
 												{@const photo = p.players?.photo ?? null}
 												{@const isMe  = p.player_id === $playerId}
+												{@const pStat = p.player_id ? playerStats[p.player_id] : null}
 												<button
 													class="sb-player-row"
 													class:sb-player-row--me={isMe}
@@ -459,7 +555,11 @@
 													</div>
 													<span class="sb-row-name">{shortName(name)}</span>
 													<div class="sb-row-meta">
-														{#if p.score}<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>{/if}
+														{#if pStat}
+															<span class="sb-row-score">&oslash;&thinsp;{pStat.avg5}</span>
+														{:else if p.score}
+															<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
+														{/if}
 														{#if p.confirmed === true}
 															<span class="sb-status-badge sb-status-badge--confirmed">
 																<span class="material-symbols-outlined">check</span>
@@ -533,16 +633,28 @@
 		</div>
 		<div class="picker-list">
 			{#each filteredPlayers as p}
+				{@const trend = formTrend(p)}
 				<button class="picker-item" onclick={() => assignPlayer(p)}>
 					<img
 						class="picker-avatar"
 						src={imgPath(p.photo, p.name)}
 						alt={p.name}
 						draggable="false"
-						onerror={(e) => e.currentTarget.style.display='none'}
+						onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 					/>
 					<span class="picker-name">{p.name}</span>
-					<span class="material-symbols-outlined picker-chevron">chevron_right</span>
+					{#if p.avg_score}
+						<div class="picker-stat">
+							<span class="picker-stat-value">{p.avg_score}</span>
+							<span class="picker-stat-label">&thinsp;Holz</span>
+						</div>
+					{/if}
+					{#if trend !== null}
+						<div class="picker-form" class:picker-form--up={trend >= 0} class:picker-form--down={trend < 0}>
+							<span class="material-symbols-outlined">{trend >= 0 ? 'trending_up' : 'trending_down'}</span>
+							<span>{trend >= 0 ? '+' : ''}{trend}</span>
+						</div>
+					{/if}
 				</button>
 			{/each}
 		</div>
