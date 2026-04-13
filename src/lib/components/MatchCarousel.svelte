@@ -327,7 +327,7 @@
 											src={imgPath(photo, name)}
 											alt={name ?? ''}
 											draggable="false"
-											onerror={(e) => e.currentTarget.style.display = 'none'}
+											onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 										/>
 									</div>
 								{/each}

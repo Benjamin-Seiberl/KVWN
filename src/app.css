@@ -404,7 +404,7 @@ button {
 
 .page.active {
   display: flex;
-  animation: page-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: page-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 /* ============================================================
    Dashboard Widgets – KV Wiener Neustadt
@@ -666,6 +666,7 @@ button {
   gap: var(--space-2);
   flex: 1;
   align-items: center;
+  justify-content: flex-start;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -978,7 +979,7 @@ button {
    ============================================================ */
 .kader-avatars {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--space-2);
 }
 
@@ -987,7 +988,7 @@ button {
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -997,8 +998,8 @@ button {
 }
 
 .widget-kader-panel .kader-avatar {
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
 }
 
 .kader-avatar {
