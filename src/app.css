@@ -1724,7 +1724,7 @@ button {
 
 /* ── Carousel ─────────────────────────────────────── */
 .sb-carousel {
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
   cursor: grab;
   overflow: hidden;
@@ -1853,27 +1853,27 @@ button {
   font-size: var(--text-label-md);
 }
 
-/* ── Player List (row layout) ─────────────────────── */
+/* ── Player List (2-column card grid) ─────────────── */
 .sb-player-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
 }
 
 .sb-player-row {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-2) var(--space-2);
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
   background: none;
   border: none;
   border-radius: var(--radius-lg);
   cursor: default;
-  text-align: left;
+  text-align: center;
   transition: background 0.12s;
   -webkit-tap-highlight-color: transparent;
-  min-height: 60px;
+  position: relative;
 }
 
 .sb-player-row--editable {
@@ -1917,33 +1917,47 @@ button {
   color: var(--color-outline);
 }
 
-/* Row Avatar */
+/* Card Avatar */
 .sb-row-avatar-wrap {
   position: relative;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-full);
-  background: var(--color-surface-container);
-  border: 2px solid var(--color-surface-container-high);
+  width: 64px;
+  height: 64px;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
-.sb-player-row--me .sb-row-avatar-wrap {
+.sb-row-avatar-wrap .sb-pos {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 22px;
+  height: 22px;
+  font-size: 0.6rem;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.sb-row-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+  border: 2.5px solid var(--color-surface-container-high);
+  background: var(--color-surface-container);
+}
+
+.sb-player-row--me .sb-row-avatar {
   border-color: var(--color-secondary);
   box-shadow: 0 0 0 1.5px var(--color-secondary),
               0 0 10px rgba(212,175,55,0.25);
 }
 
-.sb-row-avatar {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top center;
-  display: block;
-}
-
 .sb-row-avatar-add {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
   background: transparent;
   border: 1.5px dashed var(--color-outline-variant);
   display: flex;
@@ -1953,7 +1967,7 @@ button {
 }
 
 .sb-row-avatar-add .material-symbols-outlined {
-  font-size: 1.2rem;
+  font-size: 1.4rem;
   font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
 
@@ -1972,23 +1986,23 @@ button {
   font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }
 
-/* Row info */
-.sb-row-info {
-  flex: 1;
+/* Row meta (score + status badge) */
+.sb-row-meta {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 22px;
 }
 
 .sb-row-name {
   font-family: var(--font-body);
-  font-size: var(--text-body-md);
+  font-size: var(--text-body-sm);
   font-weight: 600;
   color: var(--color-on-surface);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .sb-row-name--placeholder {

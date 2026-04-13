@@ -117,7 +117,7 @@
 
 	// ── Swipe-Carousel ────────────────────────────────────
 	function carousel(widget) {
-		let startX = 0, startOff = 0, lastX = 0, lastT = 0;
+		let startX = 0, startY = 0, startOff = 0, lastX = 0, lastT = 0;
 		let velocity = 0, dragging = false, currentX = 0;
 
 		const DRAG_THRESHOLD = 8; // px – below this = click, not drag
@@ -148,8 +148,9 @@
 
 		function onDown(e) {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
-			dragging = false; // only set true once threshold crossed
+			dragging = false;
 			startX   = e.clientX;
+			startY   = e.clientY;
 			startOff = currentX;
 			lastX    = e.clientX;
 			lastT    = Date.now();
@@ -158,9 +159,9 @@
 
 		function onMove(e) {
 			const dx = Math.abs(e.clientX - startX);
+			const dy = Math.abs(e.clientY - startY);
 			if (!dragging) {
-				if (dx < DRAG_THRESHOLD) return; // not a drag yet, let click through
-				// Threshold crossed – now capture and start dragging
+				if (dx < DRAG_THRESHOLD || dy > dx) return; // not a horizontal drag
 				dragging = true;
 				widget.setPointerCapture(e.pointerId);
 				const t = track();
@@ -368,41 +369,37 @@
 												class="sb-player-row"
 												class:sb-player-row--me={isMe}
 												class:sb-player-row--editable={isKapitaen && editMode}
-												class:sb-player-row--confirmed={p.confirmed === true}
-												class:sb-player-row--declined={p.confirmed === false}
 												onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
 												disabled={!isKapitaen || !editMode}
 											>
-												<span class="sb-pos">{p.position ?? '–'}</span>
 												<div class="sb-row-avatar-wrap">
 													<img
 														class="sb-row-avatar"
 														src={imgPath(photo, name)}
 														alt={name}
 														draggable="false"
-														onerror={(e) => e.currentTarget.style.display='none'}
+														onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 													/>
+													<span class="sb-pos">{p.position ?? '–'}</span>
 													{#if isKapitaen && editMode}
 														<div class="sb-edit-overlay-row">
 															<span class="material-symbols-outlined">edit</span>
 														</div>
 													{/if}
 												</div>
-												<div class="sb-row-info">
-													<span class="sb-row-name">{shortName(name)}</span>
-													{#if p.score}
-														<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
+												<span class="sb-row-name">{shortName(name)}</span>
+												<div class="sb-row-meta">
+													{#if p.score}<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>{/if}
+													{#if p.confirmed === true}
+														<span class="sb-status-badge sb-status-badge--confirmed">
+															<span class="material-symbols-outlined">check</span>
+														</span>
+													{:else if p.confirmed === false}
+														<span class="sb-status-badge sb-status-badge--declined">
+															<span class="material-symbols-outlined">close</span>
+														</span>
 													{/if}
 												</div>
-												{#if p.confirmed === true}
-													<span class="sb-status-badge sb-status-badge--confirmed">
-														<span class="material-symbols-outlined">check</span>
-													</span>
-												{:else if p.confirmed === false}
-													<span class="sb-status-badge sb-status-badge--declined">
-														<span class="material-symbols-outlined">close</span>
-													</span>
-												{/if}
 											</button>
 										{/each}
 
@@ -413,11 +410,14 @@
 													class="sb-player-row sb-player-row--empty"
 													onclick={() => openPicker({ gamePlanPlayerId: null, position: starters.length + j + 1 })}
 												>
-													<span class="sb-pos sb-pos--empty">{starters.length + j + 1}</span>
-													<div class="sb-row-avatar-wrap sb-row-avatar-add">
-														<span class="material-symbols-outlined">person_add</span>
+													<div class="sb-row-avatar-wrap">
+														<div class="sb-row-avatar-add">
+															<span class="material-symbols-outlined">person_add</span>
+														</div>
+														<span class="sb-pos sb-pos--empty">{starters.length + j + 1}</span>
 													</div>
-													<span class="sb-row-name sb-row-name--placeholder">Spieler hinzufügen</span>
+													<span class="sb-row-name sb-row-name--placeholder">Hinzufügen</span>
+													<div class="sb-row-meta"></div>
 												</button>
 											{/each}
 										{/if}
@@ -432,47 +432,44 @@
 
 										<div class="sb-player-list">
 											{#each subs as p}
-												{@const name = p.players?.name ?? p.player_name ?? '–'}
-												{@const isMe = p.player_id === $playerId}
+												{@const name  = p.players?.name ?? p.player_name ?? '–'}
+												{@const photo = p.players?.photo ?? null}
+												{@const isMe  = p.player_id === $playerId}
 												<button
 													class="sb-player-row"
 													class:sb-player-row--me={isMe}
 													class:sb-player-row--editable={isKapitaen && editMode}
-													class:sb-player-row--confirmed={p.confirmed === true}
-													class:sb-player-row--declined={p.confirmed === false}
 													onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
 													disabled={!isKapitaen || !editMode}
 												>
-													<span class="sb-pos">{p.position ?? '–'}</span>
 													<div class="sb-row-avatar-wrap">
 														<img
 															class="sb-row-avatar"
-															src={imgPath(name)}
+															src={imgPath(photo, name)}
 															alt={name}
 															draggable="false"
-															onerror={(e) => e.currentTarget.style.display='none'}
+															onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 														/>
+														<span class="sb-pos">{p.position ?? '–'}</span>
 														{#if isKapitaen && editMode}
 															<div class="sb-edit-overlay-row">
 																<span class="material-symbols-outlined">edit</span>
 															</div>
 														{/if}
 													</div>
-													<div class="sb-row-info">
-														<span class="sb-row-name">{shortName(name)}</span>
-														{#if p.score}
-															<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
+													<span class="sb-row-name">{shortName(name)}</span>
+													<div class="sb-row-meta">
+														{#if p.score}<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>{/if}
+														{#if p.confirmed === true}
+															<span class="sb-status-badge sb-status-badge--confirmed">
+																<span class="material-symbols-outlined">check</span>
+															</span>
+														{:else if p.confirmed === false}
+															<span class="sb-status-badge sb-status-badge--declined">
+																<span class="material-symbols-outlined">close</span>
+															</span>
 														{/if}
 													</div>
-													{#if p.confirmed === true}
-														<span class="sb-status-badge sb-status-badge--confirmed">
-															<span class="material-symbols-outlined">check</span>
-														</span>
-													{:else if p.confirmed === false}
-														<span class="sb-status-badge sb-status-badge--declined">
-															<span class="material-symbols-outlined">close</span>
-														</span>
-													{/if}
 												</button>
 											{/each}
 
@@ -482,11 +479,14 @@
 													class="sb-player-row sb-player-row--empty"
 													onclick={() => openPicker({ gamePlanPlayerId: null, position: plan.players.length + 1 })}
 												>
-													<span class="sb-pos sb-pos--empty">{plan.players.length + 1}</span>
-													<div class="sb-row-avatar-wrap sb-row-avatar-add">
-														<span class="material-symbols-outlined">person_add</span>
+													<div class="sb-row-avatar-wrap">
+														<div class="sb-row-avatar-add">
+															<span class="material-symbols-outlined">person_add</span>
+														</div>
+														<span class="sb-pos sb-pos--empty">{plan.players.length + 1}</span>
 													</div>
-													<span class="sb-row-name sb-row-name--placeholder">Ersatz hinzufügen</span>
+													<span class="sb-row-name sb-row-name--placeholder">Hinzufügen</span>
+													<div class="sb-row-meta"></div>
 												</button>
 											{/if}
 										</div>
