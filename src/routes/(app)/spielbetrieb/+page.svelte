@@ -375,7 +375,7 @@
 
 										<!-- Leere Startslots (EditMode) -->
 										{#if isKapitaen && editMode}
-											{#each { length: Math.max(0, 6 - starters.length) } as _, j}
+											{#each Array.from({ length: Math.max(0, 6 - starters.length) }, (_, i) => i) as j}
 												<button
 													class="sb-player-row sb-player-row--empty"
 													onclick={() => openPicker({ gamePlanPlayerId: null, position: starters.length + j + 1 })}
