@@ -1,9 +1,11 @@
 <script>
 	import MatchCarousel from '$lib/components/MatchCarousel.svelte';
 	import TrainingWidget from '$lib/components/TrainingWidget.svelte';
+	import LineupConfirmCard from '$lib/components/LineupConfirmCard.svelte';
 </script>
 
 <div class="page active">
+	<LineupConfirmCard />
 	<MatchCarousel />
 
 	<div class="widget-row">
