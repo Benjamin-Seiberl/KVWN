@@ -65,7 +65,10 @@
 				.eq('cal_week', m.cal_week)
 				.eq('leagues.name', m.leagues?.name ?? '')
 				.maybeSingle();
-			return (gp?.game_plan_players ?? []).sort((a, b) => a.position - b.position);
+			const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4;
+			return (gp?.game_plan_players ?? [])
+				.filter(p => (p.position ?? 99) <= starterCount)
+				.sort((a, b) => a.position - b.position);
 		}));
 
 		loading = false;
