@@ -218,6 +218,21 @@
 		if (!pickerSlot) return;
 		pickerOpen = false;
 
+		let gp = plans[current];
+
+		// Kein Spielplan vorhanden → erst anlegen
+		if (!gp.gamePlanId) {
+			const m = gp.match;
+			const { data: newGp, error } = await sb
+				.from('game_plans')
+				.insert({ cal_week: m.cal_week, league_id: m.league_id })
+				.select('id')
+				.single();
+			if (error || !newGp) { pickerSlot = null; return; }
+			plans[current] = { ...gp, gamePlanId: newGp.id };
+			gp = plans[current];
+		}
+
 		if (pickerSlot.gamePlanPlayerId) {
 			await sb
 				.from('game_plan_players')
@@ -227,14 +242,14 @@
 			await sb
 				.from('game_plan_players')
 				.insert({
-					game_plan_id: plans[current].gamePlanId,
+					game_plan_id: gp.gamePlanId,
 					player_id:    player.id,
 					player_name:  player.name,
 					position:     pickerSlot.position,
 				});
 		}
 
-		const gp = plans[current];
+		// UI aktualisieren
 		const { data } = await sb
 			.from('game_plan_players')
 			.select('id, position, player_id, player_name, score, confirmed, played, players(name, photo)')
