@@ -74,6 +74,12 @@
 		return { starterCount: 4, maxSubs: 2 };
 	}
 
+	// Festes 3×3 Grid: Wert = DB-Position, null = deaktivierte Zelle
+	const GRID_MAP = {
+		6: [1, 2, 3, 4, 5, 6, null, null, null],
+		4: [1, 2, null, 3, 4, null, null, null, null],
+	};
+
 	// ── Daten laden ───────────────────────────────────────
 	async function loadData() {
 		const range = getWeekRange();
@@ -351,6 +357,23 @@
 		pickerSlot = null;
 	}
 
+	async function removePlayer(gamePlanPlayerId) {
+		pickerOpen = false;
+		await sb.from('game_plan_players').delete().eq('id', gamePlanPlayerId);
+		const gp = plans[current];
+		const { data } = await sb
+			.from('game_plan_players')
+			.select('id, position, player_id, player_name, score, confirmed, played, players(name, photo)')
+			.eq('game_plan_id', gp.gamePlanId);
+		if (data) {
+			plans[current] = {
+				...gp,
+				players: data.sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
+			};
+		}
+		pickerSlot = null;
+	}
+
 	const filteredPlayers = $derived(
 		pickerQuery.trim()
 			? allPlayers.filter(p =>
@@ -529,74 +552,93 @@
 									</div>
 
 									<div class="sb-player-list">
-										{#each starters as p}
-											{@const name  = p.players?.name ?? p.player_name ?? '–'}
-											{@const photo = p.players?.photo ?? null}
-											{@const isMe  = p.player_id === $playerId}
-											{@const pStat = p.player_id ? playerStats[p.player_id] : null}
-											<button
-												class="sb-player-row"
-												class:sb-player-row--me={isMe}
-												class:sb-player-row--editable={isKapitaen && editMode}
-												onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
-												disabled={!isKapitaen || !editMode}
-											>
-												<div class="sb-row-avatar-wrap">
-													<img
-														class="sb-row-avatar"
-														src={imgPath(photo, name)}
-														alt={name}
-														draggable="false"
-														onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
-													/>
-													<span class="sb-pos">{p.position ?? '–'}</span>
-													{#if isMe}
-														<span class="sb-me-badge">Du</span>
-													{/if}
-													{#if isKapitaen && editMode}
-														<div class="sb-edit-overlay-row">
-															<span class="material-symbols-outlined">edit</span>
-														</div>
-													{/if}
-												</div>
-												<span class="sb-row-name">{shortName(name)}</span>
-												<div class="sb-row-meta">
-													{#if pStat}
-														<span class="sb-row-score">&oslash;&thinsp;{pStat.avg5}</span>
-													{:else if p.score}
-														<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
-													{/if}
-													{#if p.confirmed === true}
-														<span class="sb-status-badge sb-status-badge--confirmed">
-															<span class="material-symbols-outlined">check</span>
-														</span>
-													{:else if p.confirmed === false}
-														<span class="sb-status-badge sb-status-badge--declined">
-															<span class="material-symbols-outlined">close</span>
-															</span>
-													{/if}
-												</div>
-											</button>
-										{/each}
-
-										<!-- Leere Startslots (EditMode) -->
-										{#if isKapitaen && editMode}
-											{#each Array.from({ length: Math.max(0, cfg.starterCount - starters.length) }, (_, i) => i) as j}
-												<button
-													class="sb-player-row sb-player-row--empty"
-													onclick={() => openPicker({ gamePlanPlayerId: null, position: starters.length + j + 1 })}
-												>
+										{#each (GRID_MAP[cfg.starterCount] ?? GRID_MAP[6]) as dbPos}
+											{#if dbPos === null}
+												<div class="sb-player-row sb-player-row--disabled" aria-hidden="true">
 													<div class="sb-row-avatar-wrap">
-														<div class="sb-row-avatar-add">
-															<span class="material-symbols-outlined">person_add</span>
-														</div>
-														<span class="sb-pos sb-pos--empty">{starters.length + j + 1}</span>
+														<div class="sb-row-avatar sb-row-avatar--placeholder"></div>
 													</div>
-													<span class="sb-row-name sb-row-name--placeholder">Hinzufügen</span>
-													<div class="sb-row-meta"></div>
-												</button>
-											{/each}
-										{/if}
+													<span class="sb-row-name">&nbsp;</span>
+													<div class="sb-row-meta sb-row-meta--fixed">&nbsp;</div>
+												</div>
+											{:else}
+												{@const p = starters.find(x => x.position === dbPos)}
+												{#if p}
+													{@const name  = p.players?.name ?? p.player_name ?? '–'}
+													{@const photo = p.players?.photo ?? null}
+													{@const isMe  = p.player_id === $playerId}
+													{@const pStat = p.player_id ? playerStats[p.player_id] : null}
+													<button
+														class="sb-player-row"
+														class:sb-player-row--me={isMe}
+														class:sb-player-row--editable={isKapitaen && editMode}
+														onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
+														disabled={!isKapitaen || !editMode}
+													>
+														<div class="sb-row-avatar-wrap">
+															<img
+																class="sb-row-avatar"
+																src={imgPath(photo, name)}
+																alt={name}
+																draggable="false"
+																onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
+															/>
+															<span class="sb-pos">{p.position}</span>
+															{#if isMe}<span class="sb-me-badge">Du</span>{/if}
+															{#if isKapitaen && editMode}
+																<div class="sb-edit-overlay-row">
+																	<span class="material-symbols-outlined">edit</span>
+																</div>
+															{/if}
+														</div>
+														<span class="sb-row-name">{shortName(name)}</span>
+														<div class="sb-row-meta sb-row-meta--fixed">
+															{#if p.confirmed === true}
+																<span class="sb-status-badge sb-status-badge--confirmed">
+																	<span class="material-symbols-outlined">check</span>
+																</span>
+															{:else}
+																{#if pStat}
+																	<span class="sb-row-score">&oslash;&thinsp;{pStat.avg5}</span>
+																{:else if p.score}
+																	<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
+																{:else}
+																	<span class="sb-row-score sb-row-score--empty">–</span>
+																{/if}
+																{#if p.confirmed === false}
+																	<span class="sb-status-badge sb-status-badge--declined">
+																		<span class="material-symbols-outlined">close</span>
+																	</span>
+																{/if}
+															{/if}
+														</div>
+													</button>
+												{:else if isKapitaen && editMode}
+													<button
+														class="sb-player-row sb-player-row--empty"
+														onclick={() => openPicker({ gamePlanPlayerId: null, position: dbPos })}
+													>
+														<div class="sb-row-avatar-wrap">
+															<div class="sb-row-avatar-add">
+																<span class="material-symbols-outlined">person_add</span>
+															</div>
+															<span class="sb-pos sb-pos--empty">{dbPos}</span>
+														</div>
+														<span class="sb-row-name sb-row-name--placeholder">Hinzufügen</span>
+														<div class="sb-row-meta sb-row-meta--fixed">&nbsp;</div>
+													</button>
+												{:else}
+													<div class="sb-player-row sb-player-row--empty-view">
+														<div class="sb-row-avatar-wrap">
+															<div class="sb-row-avatar sb-row-avatar--placeholder"></div>
+															<span class="sb-pos sb-pos--empty">{dbPos}</span>
+														</div>
+														<span class="sb-row-name" style="color:transparent">–</span>
+														<div class="sb-row-meta sb-row-meta--fixed">&nbsp;</div>
+													</div>
+												{/if}
+											{/if}
+										{/each}
 									</div>
 
 									<!-- Ersatzspieler -->
@@ -740,6 +782,12 @@
 <!-- Spieler-Picker (Kapitän) -->
 <BottomSheet bind:open={pickerOpen} title="Spieleranalyse">
 	<div class="picker">
+		{#if pickerSlot?.gamePlanPlayerId}
+			<button class="picker-remove-btn" onclick={() => removePlayer(pickerSlot.gamePlanPlayerId)}>
+				<span class="material-symbols-outlined">person_remove</span>
+				Spieler entfernen
+			</button>
+		{/if}
 		<div class="picker-search-wrap">
 			<span class="material-symbols-outlined picker-search-icon">search</span>
 			<input

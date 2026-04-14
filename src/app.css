@@ -2019,6 +2019,9 @@ button {
 .sb-player-list .sb-player-row:nth-child(4)  { animation-delay: 0.12s; }
 .sb-player-list .sb-player-row:nth-child(5)  { animation-delay: 0.15s; }
 .sb-player-list .sb-player-row:nth-child(6)  { animation-delay: 0.18s; }
+.sb-player-list .sb-player-row:nth-child(7)  { animation-delay: 0.21s; }
+.sb-player-list .sb-player-row:nth-child(8)  { animation-delay: 0.24s; }
+.sb-player-list .sb-player-row:nth-child(9)  { animation-delay: 0.27s; }
 
 .sb-player-row--me .sb-row-name {
   color: var(--color-on-secondary-container);
@@ -2196,6 +2199,60 @@ button {
 .sb-status-badge .material-symbols-outlined {
   font-size: 0.7rem;
   font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 16;
+}
+
+/* Placeholder-Avatar (deaktiviert / leer) */
+.sb-row-avatar--placeholder {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-container-low);
+  border: 2px dashed var(--color-outline-variant);
+}
+
+/* Deaktivierte Grid-Zelle (3. Spalte bei 4er) */
+.sb-player-row--disabled {
+  pointer-events: none;
+  opacity: 0.15;
+}
+
+/* Leerer Slot im View-Modus (Nicht-Kapitän) */
+.sb-player-row--empty-view {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Feste Mindesthöhe für Meta-Zeile → alle Tiles gleich groß */
+.sb-row-meta--fixed {
+  min-height: 18px;
+}
+
+/* Placeholder wenn kein Schnitt vorhanden */
+.sb-row-score--empty {
+  color: var(--color-outline-variant);
+  font-size: 0.65rem;
+}
+
+/* Entfernen-Button im Spieler-Picker */
+.picker-remove-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  color: var(--color-error);
+  background: rgba(186, 26, 26, 0.06);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.picker-remove-btn .material-symbols-outlined {
+  font-size: 1.1rem;
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
 }
 
 /* ── Kapitän FAB ─────────────────────────────────── */
