@@ -567,7 +567,7 @@
 													{@const photo = p.players?.photo ?? null}
 													{@const isMe  = p.player_id === $playerId}
 													{@const pStat = p.player_id ? playerStats[p.player_id] : null}
-													{@const score = pStat?.avg5 ?? p.score ?? null}
+													{@const trend = (pStat?.avg5 && pStat?.overallAvg) ? pStat.avg5 - pStat.overallAvg : null}
 													<button
 														class="sb-slot-card"
 														class:sb-slot-card--me={isMe}
@@ -603,9 +603,22 @@
 														<div class="sb-slot-info">
 															<span class="sb-slot-name">{shortName(name)}</span>
 															{#if p.confirmed !== true}
-																<div class="sb-slot-stat">
-																	<span class="sb-slot-stat-label">Schnitt</span>
-																	<span class="sb-slot-stat-value">{score ?? '–'}</span>
+																<div class="sb-slot-stats">
+																	<div class="sb-slot-stat">
+																		<span class="sb-slot-stat-label">Schnitt</span>
+																		<span class="sb-slot-stat-value">{pStat?.overallAvg ?? p.score ?? '–'}</span>
+																	</div>
+																	<div class="sb-slot-stat">
+																		<span class="sb-slot-stat-label">Form</span>
+																		<div class="sb-slot-form-row">
+																			<span class="sb-slot-stat-value">{pStat?.avg5 ?? '–'}</span>
+																			{#if trend !== null}
+																				<span class="sb-slot-trend" class:sb-slot-trend--up={trend >= 0} class:sb-slot-trend--down={trend < 0}>
+																					<span class="material-symbols-outlined">{trend >= 0 ? 'trending_up' : 'trending_down'}</span>
+																				</span>
+																			{/if}
+																		</div>
+																	</div>
 																</div>
 															{/if}
 														</div>
@@ -650,7 +663,7 @@
 												{@const photo = p.players?.photo ?? null}
 												{@const isMe  = p.player_id === $playerId}
 												{@const pStat = p.player_id ? playerStats[p.player_id] : null}
-												{@const score = pStat?.avg5 ?? p.score ?? null}
+												{@const trend = (pStat?.avg5 && pStat?.overallAvg) ? pStat.avg5 - pStat.overallAvg : null}
 												<button
 													class="sb-slot-card"
 													class:sb-slot-card--me={isMe}
@@ -686,9 +699,22 @@
 													<div class="sb-slot-info">
 														<span class="sb-slot-name">{shortName(name)}</span>
 														{#if p.confirmed !== true}
-															<div class="sb-slot-stat">
-																<span class="sb-slot-stat-label">Schnitt</span>
-																<span class="sb-slot-stat-value">{score ?? '–'}</span>
+															<div class="sb-slot-stats">
+																<div class="sb-slot-stat">
+																	<span class="sb-slot-stat-label">Schnitt</span>
+																	<span class="sb-slot-stat-value">{pStat?.overallAvg ?? p.score ?? '–'}</span>
+																</div>
+																<div class="sb-slot-stat">
+																	<span class="sb-slot-stat-label">Form</span>
+																	<div class="sb-slot-form-row">
+																		<span class="sb-slot-stat-value">{pStat?.avg5 ?? '–'}</span>
+																		{#if trend !== null}
+																			<span class="sb-slot-trend" class:sb-slot-trend--up={trend >= 0} class:sb-slot-trend--down={trend < 0}>
+																				<span class="material-symbols-outlined">{trend >= 0 ? 'trending_up' : 'trending_down'}</span>
+																			</span>
+																		{/if}
+																	</div>
+																</div>
 															</div>
 														{/if}
 													</div>

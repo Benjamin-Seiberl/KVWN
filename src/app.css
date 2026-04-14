@@ -2207,14 +2207,16 @@ button {
   flex-direction: row;
   align-items: stretch;
   background: var(--color-surface);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   border: 1.5px solid var(--color-outline-variant);
+  border-left: 3px solid var(--color-primary);
   text-align: left;
   width: 100%;
-  min-height: 64px;
+  min-height: 68px;
   cursor: default;
   -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   transition: transform 0.15s ease;
 }
 
@@ -2280,7 +2282,7 @@ button {
   width: 15px;
   height: 15px;
   border-radius: var(--radius-full);
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--color-primary);
   color: #fff;
   font-size: 0.5rem;
   font-weight: 700;
@@ -2368,6 +2370,14 @@ button {
   line-height: 1.2;
 }
 
+.sb-slot-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1) var(--space-2);
+  padding-top: 4px;
+  border-top: 1px solid var(--color-outline-variant);
+}
+
 .sb-slot-stat {
   display: flex;
   flex-direction: column;
@@ -2379,7 +2389,7 @@ button {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--color-outline);
+  color: var(--color-secondary);
   line-height: 1;
 }
 
@@ -2389,6 +2399,28 @@ button {
   font-weight: 700;
   color: var(--color-on-surface);
   line-height: 1.1;
+}
+
+.sb-slot-form-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sb-slot-trend {
+  display: flex;
+  align-items: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sb-slot-trend--up   { color: #2e7d32; }
+.sb-slot-trend--down { color: var(--color-error); }
+
+.sb-slot-trend .material-symbols-outlined {
+  font-size: 0.7rem;
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
 }
 
 /* Entfernen-Button im Spieler-Picker */
@@ -2496,6 +2528,7 @@ button {
   align-items: stretch;
   background: var(--color-surface);
   border: 1px solid var(--color-outline-variant);
+  border-left: 4px solid var(--color-primary);
   border-radius: var(--radius-xl);
   overflow: hidden;
   width: 100%;
@@ -2510,13 +2543,13 @@ button {
   transform: scale(0.98);
 }
 
-/* Gold-Rand für Top-Spieler */
+/* Gold-Rand für Top-Spieler (überschreibt roten Linksrand) */
 .picker-scout-card--top {
   background:
     linear-gradient(var(--color-surface), var(--color-surface)) padding-box,
     linear-gradient(to bottom, #d4af37, #fef9e7, #d4af37) border-box;
   border: 1px solid transparent;
-  border-left: 5px solid transparent;
+  border-left: 5px solid var(--color-secondary);
 }
 
 /* Foto */
@@ -2613,7 +2646,7 @@ button {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--color-outline);
+  color: var(--color-secondary);
 }
 
 .picker-scout-stat-value {
