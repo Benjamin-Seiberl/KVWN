@@ -74,10 +74,10 @@
 		return { starterCount: 4, maxSubs: 2 };
 	}
 
-	// Festes 3×3 Grid: Wert = DB-Position, null = deaktivierte Zelle
+	// Festes 2-Spalten-Grid: Wert = DB-Position, null = deaktivierte Zelle
 	const GRID_MAP = {
-		6: [1, 2, 3, 4, 5, 6, null, null, null],
-		4: [1, 2, null, 3, 4, null, null, null, null],
+		6: [1, 2, 3, 4, 5, 6],
+		4: [1, 2, 3, 4, null, null],
 	};
 
 	// ── Daten laden ───────────────────────────────────────
@@ -650,24 +650,32 @@
 												{@const photo = p.players?.photo ?? null}
 												{@const isMe  = p.player_id === $playerId}
 												{@const pStat = p.player_id ? playerStats[p.player_id] : null}
+												{@const score = pStat?.avg5 ?? p.score ?? null}
 												<button
-													class="sb-player-row"
-													class:sb-player-row--me={isMe}
-													class:sb-player-row--editable={isKapitaen && editMode}
+													class="sb-slot-card"
+													class:sb-slot-card--me={isMe}
+													class:sb-slot-card--editable={isKapitaen && editMode}
 													onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
 													disabled={!isKapitaen || !editMode}
 												>
-													<div class="sb-row-avatar-wrap">
+													<div class="sb-slot-photo-wrap">
 														<img
-															class="sb-row-avatar"
+															class="sb-slot-photo"
 															src={imgPath(photo, name)}
 															alt={name}
 															draggable="false"
 															onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 														/>
-														<span class="sb-pos">{p.position ?? '–'}</span>
-														{#if isMe}
-															<span class="sb-me-badge">Du</span>
+														<span class="sb-slot-pos">{p.position}</span>
+														{#if isMe}<span class="sb-me-badge sb-me-badge--slot">Du</span>{/if}
+														{#if p.confirmed === true}
+															<div class="sb-slot-confirmed-overlay">
+																<span class="material-symbols-outlined">check</span>
+															</div>
+														{:else if p.confirmed === false}
+															<div class="sb-slot-declined-dot">
+																<span class="material-symbols-outlined">close</span>
+															</div>
 														{/if}
 														{#if isKapitaen && editMode}
 															<div class="sb-edit-overlay-row">
@@ -675,21 +683,13 @@
 															</div>
 														{/if}
 													</div>
-													<span class="sb-row-name">{shortName(name)}</span>
-													<div class="sb-row-meta">
-														{#if pStat}
-															<span class="sb-row-score">&oslash;&thinsp;{pStat.avg5}</span>
-														{:else if p.score}
-															<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
-														{/if}
-														{#if p.confirmed === true}
-															<span class="sb-status-badge sb-status-badge--confirmed">
-																<span class="material-symbols-outlined">check</span>
-															</span>
-														{:else if p.confirmed === false}
-															<span class="sb-status-badge sb-status-badge--declined">
-																<span class="material-symbols-outlined">close</span>
-															</span>
+													<div class="sb-slot-info">
+														<span class="sb-slot-name">{shortName(name)}</span>
+														{#if p.confirmed !== true}
+															<div class="sb-slot-stat">
+																<span class="sb-slot-stat-label">Schnitt</span>
+																<span class="sb-slot-stat-value">{score ?? '–'}</span>
+															</div>
 														{/if}
 													</div>
 												</button>
@@ -698,17 +698,16 @@
 											<!-- Ersatz hinzufügen (EditMode) -->
 											{#if isKapitaen && editMode}
 												<button
-													class="sb-player-row sb-player-row--empty"
+													class="sb-slot-card sb-slot-card--add"
 													onclick={() => openPicker({ gamePlanPlayerId: null, position: plan.players.length + 1 })}
 												>
-													<div class="sb-row-avatar-wrap">
-														<div class="sb-row-avatar-add">
-															<span class="material-symbols-outlined">person_add</span>
-														</div>
-														<span class="sb-pos sb-pos--empty">{plan.players.length + 1}</span>
+													<div class="sb-slot-photo-wrap sb-slot-photo-wrap--add">
+														<span class="material-symbols-outlined">person_add</span>
+														<span class="sb-slot-pos sb-slot-pos--empty">{plan.players.length + 1}</span>
 													</div>
-													<span class="sb-row-name sb-row-name--placeholder">Hinzufügen</span>
-													<div class="sb-row-meta"></div>
+													<div class="sb-slot-info">
+														<span class="sb-slot-name" style="opacity:0.5">Hinzufügen</span>
+													</div>
 												</button>
 											{/if}
 										</div>

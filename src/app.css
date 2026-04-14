@@ -1971,10 +1971,10 @@ button {
   font-size: var(--text-label-md);
 }
 
-/* ── Player List (3-column compact grid) ──────────── */
+/* ── Player List (2-column card grid) ──────────── */
 .sb-player-list {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-2);
 }
 
