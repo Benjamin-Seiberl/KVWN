@@ -110,37 +110,43 @@
 	async function loadAllPlayers() {
 		const { data } = await sb
 			.from('players')
-			.select('id, name, photo, avg_score')
+			.select('id, name, photo')
 			.eq('active', true)
-			.order('avg_score', { ascending: false });
+			.order('name');
 		if (!data?.length) return;
 
-		// Form: letzte 5 gespielte Spiele, eine Query für alle Spieler
+		// Letzte Spielergebnisse für alle aktiven Spieler laden
 		const { data: recent } = await sb
 			.from('game_plan_players')
-			.select('player_id, score')
+			.select('player_id, score, game_plans!inner(cal_week)')
 			.in('player_id', data.map(p => p.id))
 			.eq('played', true)
 			.not('score', 'is', null)
-			.order('id', { ascending: false })
+			.order('cal_week', { referencedTable: 'game_plans', ascending: false })
 			.limit(500);
 
-		const formMap = {};
+		// Scores pro Spieler gruppieren (bereits DESC sortiert)
+		const scoreMap = {};
 		for (const g of recent ?? []) {
-			if (!formMap[g.player_id]) formMap[g.player_id] = [];
-			if (formMap[g.player_id].length < 5) formMap[g.player_id].push(Number(g.score));
+			if (!scoreMap[g.player_id]) scoreMap[g.player_id] = [];
+			scoreMap[g.player_id].push(Number(g.score));
 		}
 
-		allPlayers = data.map(p => ({
-			...p,
-			recentScores: formMap[p.id] ?? []
-		}));
+		allPlayers = data.map(p => {
+			const scores = scoreMap[p.id] ?? [];
+			const last5  = scores.slice(0, 5);
+			return {
+				...p,
+				recentScores: last5,
+				avg_score: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+				avg5:      last5.length  ? Math.round(last5.reduce((a, b) => a + b, 0)  / last5.length)  : null,
+			};
+		}).sort((a, b) => (b.avg_score ?? 0) - (a.avg_score ?? 0));
 	}
 
 	function formTrend(p) {
-		if (!p.recentScores?.length || !p.avg_score) return null;
-		const recentAvg = p.recentScores.reduce((a, b) => a + b, 0) / p.recentScores.length;
-		return +(recentAvg - p.avg_score).toFixed(1);
+		if (!p.avg5 || !p.avg_score) return null;
+		return +(p.avg5 - p.avg_score).toFixed(1);
 	}
 
 	// ── Spieler-Statistiken laden ─────────────────────
@@ -398,8 +404,8 @@
 						{@const subs     = plan.players.filter(p => (p.position ?? 99) > cfg.starterCount)}
 						{@const starterAvgs = starters.filter(p => p.player_id && playerStats[p.player_id]).map(p => playerStats[p.player_id].avg5)}
 						{@const teamAvg5 = starterAvgs.length ? Math.round(starterAvgs.reduce((a, b) => a + b, 0) / starterAvgs.length) : null}
-						{@const teamOverallAvgs = starters.filter(p => p.player_id && playerStats[p.player_id]).map(p => playerStats[p.player_id].overallAvg)}
-						{@const teamOverallAvg = teamOverallAvgs.length ? Math.round(teamOverallAvgs.reduce((a, b) => a + b, 0) / teamOverallAvgs.length) : null}
+						{@const confirmedCount = starters.filter(p => p.confirmed === true).length}
+						{@const declinedCount  = starters.filter(p => p.confirmed === false).length}
 						<div class="sb-slide">
 
 							<!-- Match Header -->
@@ -413,26 +419,16 @@
 									{/if}
 									<h2 class="sb-opponent">vs. {m.opponent}</h2>
 								</div>
-								<p class="sb-date">{dateLabel(m)}</p>
-							</div>
-
-							<!-- Team Stats -->
-							{#if teamOverallAvg || teamAvg5}
-								<div class="sb-team-stats">
-									{#if teamOverallAvg}
-										<div class="sb-team-stat">
-											<span class="sb-team-stat-label">Gesamtschnitt</span>
-											<span class="sb-team-stat-value">{teamOverallAvg}</span>
-										</div>
-									{/if}
+								<div class="sb-header-meta-row">
+									<p class="sb-date">{dateLabel(m)}</p>
 									{#if teamAvg5}
-										<div class="sb-team-stat">
-											<span class="sb-team-stat-label">Schnitt letzte 5</span>
-											<span class="sb-team-stat-value sb-team-stat-value--accent">{teamAvg5}</span>
-										</div>
+										<span class="sb-header-stat-pill">
+											<span class="material-symbols-outlined">bar_chart</span>
+											Ø&thinsp;{teamAvg5}
+										</span>
 									{/if}
 								</div>
-							{/if}
+							</div>
 
 							<!-- Players Area -->
 							<div class="sb-players-area">
@@ -447,7 +443,21 @@
 									<!-- Startaufstellung -->
 									<div class="sb-section-label">
 										<span>Startaufstellung</span>
-										<span class="sb-count">{starters.length}&thinsp;/&thinsp;{cfg.starterCount}</span>
+										<div class="sb-section-label-right">
+											{#if confirmedCount > 0}
+												<span class="sb-confirmed-chip sb-confirmed-chip--ok">
+													<span class="material-symbols-outlined">check</span>
+													{confirmedCount}
+												</span>
+											{/if}
+											{#if declinedCount > 0}
+												<span class="sb-confirmed-chip sb-confirmed-chip--no">
+													<span class="material-symbols-outlined">close</span>
+													{declinedCount}
+												</span>
+											{/if}
+											<span class="sb-count">{starters.length}&thinsp;/&thinsp;{cfg.starterCount}</span>
+										</div>
 									</div>
 
 									<div class="sb-player-list">
@@ -472,6 +482,9 @@
 														onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 													/>
 													<span class="sb-pos">{p.position ?? '–'}</span>
+													{#if isMe}
+														<span class="sb-me-badge">Du</span>
+													{/if}
 													{#if isKapitaen && editMode}
 														<div class="sb-edit-overlay-row">
 															<span class="material-symbols-outlined">edit</span>
@@ -492,7 +505,7 @@
 													{:else if p.confirmed === false}
 														<span class="sb-status-badge sb-status-badge--declined">
 															<span class="material-symbols-outlined">close</span>
-														</span>
+															</span>
 													{/if}
 												</div>
 											</button>
@@ -547,6 +560,9 @@
 															onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 														/>
 														<span class="sb-pos">{p.position ?? '–'}</span>
+														{#if isMe}
+															<span class="sb-me-badge">Du</span>
+														{/if}
 														{#if isKapitaen && editMode}
 															<div class="sb-edit-overlay-row">
 																<span class="material-symbols-outlined">edit</span>
@@ -619,7 +635,7 @@
 </div>
 
 <!-- Spieler-Picker (Kapitän) -->
-<BottomSheet bind:open={pickerOpen} title="Spieler auswählen">
+<BottomSheet bind:open={pickerOpen} title="Spieleranalyse">
 	<div class="picker">
 		<div class="picker-search-wrap">
 			<span class="material-symbols-outlined picker-search-icon">search</span>
@@ -631,30 +647,68 @@
 				autocomplete="off"
 			/>
 		</div>
-		<div class="picker-list">
-			{#each filteredPlayers as p}
-				{@const trend = formTrend(p)}
-				<button class="picker-item" onclick={() => assignPlayer(p)}>
-					<img
-						class="picker-avatar"
-						src={imgPath(p.photo, p.name)}
-						alt={p.name}
-						draggable="false"
-						onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
-					/>
-					<span class="picker-name">{p.name}</span>
-					{#if p.avg_score}
-						<div class="picker-stat">
-							<span class="picker-stat-value">{p.avg_score}</span>
-							<span class="picker-stat-label">&thinsp;Holz</span>
+		<div class="picker-scout-list">
+			{#each filteredPlayers as p, idx}
+				{@const trend  = formTrend(p)}
+				{@const isTop  = idx === 0 && !pickerQuery.trim()}
+				<button
+					class="picker-scout-card"
+					class:picker-scout-card--top={isTop}
+					onclick={() => assignPlayer(p)}
+				>
+					<!-- Photo -->
+					<div class="picker-scout-photo-wrap">
+						<img
+							class="picker-scout-photo"
+							src={imgPath(p.photo, p.name)}
+							alt={p.name}
+							draggable="false"
+							onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
+						/>
+					</div>
+
+					<!-- Info -->
+					<div class="picker-scout-info">
+						<div class="picker-scout-header">
+							<span class="picker-scout-name">{p.name}</span>
+							<div class="picker-scout-add" class:picker-scout-add--top={isTop}>
+								<span class="material-symbols-outlined">add</span>
+							</div>
 						</div>
-					{/if}
-					{#if trend !== null}
-						<div class="picker-form" class:picker-form--up={trend >= 0} class:picker-form--down={trend < 0}>
-							<span class="material-symbols-outlined">{trend >= 0 ? 'trending_up' : 'trending_down'}</span>
-							<span>{trend >= 0 ? '+' : ''}{trend}</span>
+
+						<div class="picker-scout-stats">
+							<!-- Gesamtschnitt -->
+							<div class="picker-scout-stat">
+								<span class="picker-scout-stat-label">Schnitt</span>
+								<span class="picker-scout-stat-value">
+									{p.avg_score ?? '–'}&thinsp;<span class="picker-scout-stat-unit">Holz</span>
+								</span>
+							</div>
+
+							<!-- Form letzte 5 -->
+							<div class="picker-scout-stat">
+								<span class="picker-scout-stat-label">Form (5 Spiele)</span>
+								<div class="picker-scout-form-row">
+									<span class="picker-scout-form-value">{p.avg5 ?? '–'}</span>
+									{#if trend !== null}
+										<span
+											class="picker-scout-trend"
+											class:picker-scout-trend--up={trend >= 0}
+											class:picker-scout-trend--down={trend < 0}
+										>
+											<span class="material-symbols-outlined">
+												{trend >= 0 ? 'trending_up' : 'trending_down'}
+											</span>
+											{trend >= 0 ? '+' : ''}{trend}
+										</span>
+									{/if}
+								</div>
+								{#if trend !== null}
+									<span class="picker-scout-vs-label">vs. Schnitt</span>
+								{/if}
+							</div>
 						</div>
-					{/if}
+					</div>
 				</button>
 			{/each}
 		</div>
