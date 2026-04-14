@@ -554,87 +554,83 @@
 									<div class="sb-player-list">
 										{#each (GRID_MAP[cfg.starterCount] ?? GRID_MAP[6]) as dbPos}
 											{#if dbPos === null}
-												<div class="sb-player-row sb-player-row--disabled" aria-hidden="true">
-													<div class="sb-row-avatar-wrap">
-														<div class="sb-row-avatar sb-row-avatar--placeholder"></div>
-													</div>
-													<span class="sb-row-name">&nbsp;</span>
-													<div class="sb-row-meta sb-row-meta--fixed">&nbsp;</div>
+												<!-- Deaktivierte Zelle (4er: 3. Spalte + Reihe 3) -->
+												<div class="sb-slot-card sb-slot-card--disabled" aria-hidden="true">
+													<div class="sb-slot-photo-wrap"></div>
+													<div class="sb-slot-info"></div>
 												</div>
 											{:else}
 												{@const p = starters.find(x => x.position === dbPos)}
 												{#if p}
+													<!-- Belegter Slot -->
 													{@const name  = p.players?.name ?? p.player_name ?? '–'}
 													{@const photo = p.players?.photo ?? null}
 													{@const isMe  = p.player_id === $playerId}
 													{@const pStat = p.player_id ? playerStats[p.player_id] : null}
+													{@const score = pStat?.avg5 ?? p.score ?? null}
 													<button
-														class="sb-player-row"
-														class:sb-player-row--me={isMe}
-														class:sb-player-row--editable={isKapitaen && editMode}
+														class="sb-slot-card"
+														class:sb-slot-card--me={isMe}
+														class:sb-slot-card--editable={isKapitaen && editMode}
 														onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
 														disabled={!isKapitaen || !editMode}
 													>
-														<div class="sb-row-avatar-wrap">
+														<div class="sb-slot-photo-wrap">
 															<img
-																class="sb-row-avatar"
+																class="sb-slot-photo"
 																src={imgPath(photo, name)}
 																alt={name}
 																draggable="false"
 																onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
 															/>
-															<span class="sb-pos">{p.position}</span>
-															{#if isMe}<span class="sb-me-badge">Du</span>{/if}
+															<span class="sb-slot-pos">{p.position}</span>
+															{#if isMe}<span class="sb-me-badge sb-me-badge--slot">Du</span>{/if}
+															{#if p.confirmed === true}
+																<div class="sb-slot-confirmed-overlay">
+																	<span class="material-symbols-outlined">check</span>
+																</div>
+															{:else if p.confirmed === false}
+																<div class="sb-slot-declined-dot">
+																	<span class="material-symbols-outlined">close</span>
+																</div>
+															{/if}
 															{#if isKapitaen && editMode}
 																<div class="sb-edit-overlay-row">
 																	<span class="material-symbols-outlined">edit</span>
 																</div>
 															{/if}
 														</div>
-														<span class="sb-row-name">{shortName(name)}</span>
-														<div class="sb-row-meta sb-row-meta--fixed">
-															{#if p.confirmed === true}
-																<span class="sb-status-badge sb-status-badge--confirmed">
-																	<span class="material-symbols-outlined">check</span>
-																</span>
-															{:else}
-																{#if pStat}
-																	<span class="sb-row-score">&oslash;&thinsp;{pStat.avg5}</span>
-																{:else if p.score}
-																	<span class="sb-row-score">&oslash;&thinsp;{p.score}</span>
-																{:else}
-																	<span class="sb-row-score sb-row-score--empty">–</span>
-																{/if}
-																{#if p.confirmed === false}
-																	<span class="sb-status-badge sb-status-badge--declined">
-																		<span class="material-symbols-outlined">close</span>
-																	</span>
-																{/if}
+														<div class="sb-slot-info">
+															<span class="sb-slot-name">{shortName(name)}</span>
+															{#if p.confirmed !== true}
+																<div class="sb-slot-stat">
+																	<span class="sb-slot-stat-label">Schnitt</span>
+																	<span class="sb-slot-stat-value">{score ?? '–'}</span>
+																</div>
 															{/if}
 														</div>
 													</button>
 												{:else if isKapitaen && editMode}
+													<!-- Leerer Slot: Hinzufügen -->
 													<button
-														class="sb-player-row sb-player-row--empty"
+														class="sb-slot-card sb-slot-card--add"
 														onclick={() => openPicker({ gamePlanPlayerId: null, position: dbPos })}
 													>
-														<div class="sb-row-avatar-wrap">
-															<div class="sb-row-avatar-add">
-																<span class="material-symbols-outlined">person_add</span>
-															</div>
-															<span class="sb-pos sb-pos--empty">{dbPos}</span>
+														<div class="sb-slot-photo-wrap sb-slot-photo-wrap--add">
+															<span class="material-symbols-outlined">person_add</span>
+															<span class="sb-slot-pos sb-slot-pos--empty">{dbPos}</span>
 														</div>
-														<span class="sb-row-name sb-row-name--placeholder">Hinzufügen</span>
-														<div class="sb-row-meta sb-row-meta--fixed">&nbsp;</div>
+														<div class="sb-slot-info">
+															<span class="sb-slot-name" style="opacity:0.5">Hinzufügen</span>
+														</div>
 													</button>
 												{:else}
-													<div class="sb-player-row sb-player-row--empty-view">
-														<div class="sb-row-avatar-wrap">
-															<div class="sb-row-avatar sb-row-avatar--placeholder"></div>
-															<span class="sb-pos sb-pos--empty">{dbPos}</span>
+													<!-- Leerer Slot: View-only Placeholder -->
+													<div class="sb-slot-card sb-slot-card--empty-view">
+														<div class="sb-slot-photo-wrap sb-slot-photo-wrap--empty">
+															<span class="sb-slot-pos sb-slot-pos--empty">{dbPos}</span>
 														</div>
-														<span class="sb-row-name" style="color:transparent">–</span>
-														<div class="sb-row-meta sb-row-meta--fixed">&nbsp;</div>
+														<div class="sb-slot-info"></div>
 													</div>
 												{/if}
 											{/if}

@@ -2201,36 +2201,194 @@ button {
   font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 16;
 }
 
-/* Placeholder-Avatar (deaktiviert / leer) */
-.sb-row-avatar--placeholder {
+/* ── Slot Cards (3×3 Aufstellungs-Grid) ─────────── */
+.sb-slot-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1.5px solid var(--color-outline-variant);
+  text-align: left;
+  width: 100%;
+  min-height: 64px;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease;
+}
+
+.sb-slot-card--editable { cursor: pointer; }
+.sb-slot-card--editable:active { transform: scale(0.96); }
+
+.sb-slot-card--me {
+  border-color: var(--color-secondary);
+  box-shadow: 0 0 0 1px var(--color-secondary);
+}
+
+.sb-slot-card--disabled {
+  pointer-events: none;
+  opacity: 0.1;
+}
+
+.sb-slot-card--empty-view {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.sb-slot-card--add {
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+/* Foto-Bereich */
+.sb-slot-photo-wrap {
   width: 52px;
-  height: 52px;
+  min-width: 52px;
+  position: relative;
+  background: var(--color-surface-container);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sb-slot-photo-wrap--add,
+.sb-slot-photo-wrap--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1.5px dashed var(--color-outline-variant);
+}
+
+.sb-slot-photo-wrap--add .material-symbols-outlined {
+  font-size: 1.2rem;
+  color: var(--color-outline);
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+}
+
+.sb-slot-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Positions-Badge */
+.sb-slot-pos {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 15px;
+  height: 15px;
   border-radius: var(--radius-full);
-  background: var(--color-surface-container-low);
-  border: 2px dashed var(--color-outline-variant);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
-/* Deaktivierte Grid-Zelle (3. Spalte bei 4er) */
-.sb-player-row--disabled {
-  pointer-events: none;
-  opacity: 0.15;
+.sb-slot-pos--empty {
+  background: transparent;
+  border: 1.5px dashed var(--color-outline-variant);
+  color: var(--color-outline);
 }
 
-/* Leerer Slot im View-Modus (Nicht-Kapitän) */
-.sb-player-row--empty-view {
-  opacity: 0.3;
-  pointer-events: none;
+/* Du-Badge */
+.sb-me-badge--slot {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  font-size: 0.45rem;
+  font-weight: 800;
+  background: var(--color-secondary);
+  color: var(--color-on-secondary);
+  border-radius: var(--radius-full);
+  padding: 1px 4px;
+  line-height: 1.4;
 }
 
-/* Feste Mindesthöhe für Meta-Zeile → alle Tiles gleich groß */
-.sb-row-meta--fixed {
-  min-height: 18px;
+/* Bestätigt-Overlay (grüner Haken über Foto) */
+.sb-slot-confirmed-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(46, 125, 50, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
 }
 
-/* Placeholder wenn kein Schnitt vorhanden */
-.sb-row-score--empty {
-  color: var(--color-outline-variant);
-  font-size: 0.65rem;
+.sb-slot-confirmed-overlay .material-symbols-outlined {
+  font-size: 1.6rem;
+  font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Abgelehnt-Dot */
+.sb-slot-declined-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  background: var(--color-error);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.sb-slot-declined-dot .material-symbols-outlined {
+  font-size: 0.7rem;
+  font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 16;
+}
+
+/* Info-Bereich */
+.sb-slot-info {
+  flex: 1;
+  padding: 6px 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.sb-slot-name {
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: var(--color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.sb-slot-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sb-slot-stat-label {
+  font-size: 0.48rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-outline);
+  line-height: 1;
+}
+
+.sb-slot-stat-value {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-on-surface);
+  line-height: 1.1;
 }
 
 /* Entfernen-Button im Spieler-Picker */
