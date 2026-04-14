@@ -4,15 +4,22 @@
 	import { sb }             from '$lib/supabase';
 	import { playerRole, playerId } from '$lib/stores/auth';
 	import BottomSheet        from '$lib/components/BottomSheet.svelte';
+	import MatchTimeline      from '$lib/components/spielbetrieb/MatchTimeline.svelte';
+	import MeetupCard         from '$lib/components/spielbetrieb/MeetupCard.svelte';
+	import SupportersCard     from '$lib/components/spielbetrieb/SupportersCard.svelte';
+	import CarpoolCard        from '$lib/components/spielbetrieb/CarpoolCard.svelte';
+	import VenueCard          from '$lib/components/spielbetrieb/VenueCard.svelte';
+	import FeedbackCard       from '$lib/components/spielbetrieb/FeedbackCard.svelte';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
 	// ── State ────────────────────────────────────────────────
 	let loading      = $state(true);
-	let plans        = $state([]);   // [{ match, gamePlanId, players[] }]
+	let plans        = $state([]);   // [{ match, gamePlanId, players[], workflow{ meetup, carpools, venues, votes, supporters, myFeedback } }]
 	let current      = $state(0);
 	let editMode     = $state(false);
 	let playerStats  = $state({});   // { [playerId]: { avg5: number, overallAvg: number } }
+	let feedbackQuestions = $state([]);
 
 	// Kapitän: Spieler-Picker
 	let pickerOpen  = $state(false);
@@ -351,9 +358,70 @@
 			: allPlayers
 	);
 
+	// ── Match-Workflow Daten (Treffpunkt, Fahrten, Lokale, Feedback) ──
+	async function loadWorkflow(matchId) {
+		const [meetupRes, carpoolsRes, seatsRes, venuesRes, votesRes, supportersRes, feedbackRes] = await Promise.all([
+			sb.from('match_meetups').select('*').eq('match_id', matchId).maybeSingle(),
+			sb.from('match_carpools')
+				.select('id, match_id, driver_id, seats_total, depart_time, depart_from, note, driver:players!driver_id(id, name, photo)')
+				.eq('match_id', matchId),
+			sb.from('match_carpool_seats')
+				.select('carpool_id, passenger_id, passenger:players!passenger_id(id, name, photo)'),
+			sb.from('match_venues').select('*').eq('match_id', matchId).order('created_at'),
+			sb.from('match_venue_votes')
+				.select('match_id, player_id, venue_id, player:players!player_id(id, name, photo)')
+				.eq('match_id', matchId),
+			sb.from('match_supporters')
+				.select('match_id, player_id, players(id, name, photo)')
+				.eq('match_id', matchId),
+			$playerId
+				? sb.from('match_feedback').select('*').eq('match_id', matchId).eq('player_id', $playerId).maybeSingle()
+				: Promise.resolve({ data: null }),
+		]);
+
+		const carpools = (carpoolsRes.data ?? []).map(c => ({
+			...c,
+			seats: (seatsRes.data ?? []).filter(s => s.carpool_id === c.id),
+		}));
+
+		return {
+			meetup:     meetupRes.data ?? null,
+			carpools,
+			venues:     venuesRes.data ?? [],
+			votes:      votesRes.data ?? [],
+			supporters: supportersRes.data ?? [],
+			myFeedback: feedbackRes.data ?? null,
+		};
+	}
+
+	async function refreshWorkflow(idx) {
+		const p = plans[idx];
+		if (!p) return;
+		p.workflow = await loadWorkflow(p.match.id);
+		plans = [...plans]; // trigger reactivity
+	}
+
+	async function loadFeedbackQuestions() {
+		const { data } = await sb
+			.from('feedback_questions')
+			.select('id, prompt')
+			.eq('active', true)
+			.order('created_at');
+		feedbackQuestions = data ?? [];
+	}
+
 	onMount(async () => {
 		await loadData();
 		await loadPlayerStats(plans);
+		// Workflow-Daten parallel für alle Matches laden
+		await Promise.all([
+			loadFeedbackQuestions(),
+			...plans.map(async (p, i) => {
+				p.workflow = await loadWorkflow(p.match.id);
+				plans[i] = p;
+			}),
+		]);
+		plans = [...plans];
 		if (isKapitaen) await loadAllPlayers();
 	});
 
@@ -610,6 +678,41 @@
 
 								{/if}
 							</div>
+
+							<!-- Match-Workflow -->
+							{#if plan.workflow}
+								{@const wf = plan.workflow}
+								<MatchTimeline match={m} meetup={wf.meetup} />
+								<MeetupCard
+									match={m}
+									meetup={wf.meetup}
+									canEdit={isKapitaen}
+									onSaved={() => refreshWorkflow(i)}
+								/>
+								<SupportersCard
+									match={m}
+									supporters={wf.supporters}
+									onChanged={() => refreshWorkflow(i)}
+								/>
+								<CarpoolCard
+									match={m}
+									meetup={wf.meetup}
+									carpools={wf.carpools}
+									onChanged={() => refreshWorkflow(i)}
+								/>
+								<VenueCard
+									match={m}
+									venues={wf.venues}
+									votes={wf.votes}
+									onChanged={() => refreshWorkflow(i)}
+								/>
+								<FeedbackCard
+									match={m}
+									questions={feedbackQuestions}
+									existingFeedback={wf.myFeedback}
+									onSaved={() => refreshWorkflow(i)}
+								/>
+							{/if}
 
 						</div>
 					{/each}
