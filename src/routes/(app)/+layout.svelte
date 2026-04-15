@@ -2,6 +2,7 @@
 	import { isMember } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
+	import { page, navigating } from '$app/stores';
 	import BottomNav from '$lib/components/BottomNav.svelte';
 
 	let { children } = $props();
@@ -16,7 +17,22 @@
 <div class="app-shell">
 
 	<main class="page-content">
-		{@render children()}
+		{#if $navigating}
+			<!-- Skeleton während Navigation -->
+			<div class="page-skeleton animate-fade-float">
+				<div class="skeleton-card skeleton-card--short animate-pulse-skeleton"></div>
+				<div class="skeleton-card skeleton-card--tall animate-pulse-skeleton" style="animation-delay:80ms"></div>
+				<div class="skeleton-card animate-pulse-skeleton" style="animation-delay:160ms"></div>
+				<div class="skeleton-card skeleton-card--short animate-pulse-skeleton" style="animation-delay:240ms"></div>
+			</div>
+		{:else}
+			<!-- Page Content mit fadeFloat-Transition -->
+			{#key $page.url.pathname}
+				<div class="animate-fade-float">
+					{@render children()}
+				</div>
+			{/key}
+		{/if}
 	</main>
 
 	<BottomNav />

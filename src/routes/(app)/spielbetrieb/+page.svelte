@@ -12,6 +12,7 @@
 	import FeedbackCard       from '$lib/components/spielbetrieb/FeedbackCard.svelte';
 	import ScoreInputRow      from '$lib/components/spielbetrieb/ScoreInputRow.svelte';
 	import TournamentMatchCard from '$lib/components/spielbetrieb/TournamentMatchCard.svelte';
+	import StatsView          from '$lib/components/statistiken/StatsView.svelte';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
@@ -21,6 +22,7 @@
 	let current      = $state(0);
 	let editMode     = $state(false);
 	let scoreMode    = $state(false);
+	let activeView   = $state('spielbetrieb'); // 'spielbetrieb' | 'statistiken'
 	let playerStats  = $state({});   // { [playerId]: { avg5: number, overallAvg: number } }
 	let feedbackQuestions = $state([]);
 
@@ -457,6 +459,30 @@
 </script>
 
 <div class="page active">
+
+	<!-- View-Tabs: Spielbetrieb / Statistiken -->
+	<div class="sb-view-tabs">
+		<button
+			class="sb-view-tab"
+			class:active={activeView === 'spielbetrieb'}
+			onclick={() => activeView = 'spielbetrieb'}
+		>
+			<span class="material-symbols-outlined">emoji_events</span>
+			Spielbetrieb
+		</button>
+		<button
+			class="sb-view-tab"
+			class:active={activeView === 'statistiken'}
+			onclick={() => activeView = 'statistiken'}
+		>
+			<span class="material-symbols-outlined">bar_chart</span>
+			Statistiken
+		</button>
+	</div>
+
+	{#if activeView === 'statistiken'}
+		<StatsView />
+	{:else}
 	<div class="sb-page">
 
 		{#if loading}
@@ -822,6 +848,7 @@
 		{/if}
 
 	</div>
+	{/if}<!-- end activeView -->
 </div>
 
 <!-- Spieler-Picker (Kapitän) -->

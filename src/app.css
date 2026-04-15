@@ -3161,3 +3161,240 @@ button {
   margin-top: var(--space-4);
 }
 
+/* ============================================================
+   Page Transitions + Skeleton Screens
+   ============================================================ */
+
+@keyframes fadeFloat {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-float {
+  animation: fadeFloat 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes pulseSkeleton {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+.animate-pulse-skeleton {
+  animation: pulseSkeleton 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.page-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
+}
+
+.skeleton-card {
+  height: 160px;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-container-low);
+  border: 1px solid var(--color-surface-container-highest);
+}
+
+.skeleton-card--tall  { height: 220px; }
+.skeleton-card--short { height: 80px; }
+
+/* ============================================================
+   New Pill Navigation
+   ============================================================ */
+
+.pill-nav-outer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  padding: 0.625rem 1rem calc(0.625rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: center;
+  z-index: 100;
+  transition: transform 500ms ease-out;
+  pointer-events: none;
+}
+.pill-nav-outer.nav-hidden { transform: translateY(110%); }
+
+.pill-nav {
+  display: flex;
+  width: 100%;
+  max-width: 480px;
+  padding: 0.375rem;
+  border-radius: 2rem;
+  background: var(--color-surface-container-lowest);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  pointer-events: auto;
+}
+
+.pill-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 3rem;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--color-on-surface-variant);
+  background: transparent;
+  transition:
+    flex 500ms ease-out,
+    background-color 400ms ease-out,
+    color 300ms ease-out;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pill-tab.active {
+  flex: 0 0 40%;
+  background: rgba(204, 0, 0, 0.09);
+  color: var(--color-primary);
+}
+
+.pill-tab-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  transition: font-variation-settings 300ms ease-out;
+  line-height: 1;
+}
+
+.pill-tab.active .pill-tab-icon {
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+}
+
+.pill-tab-label-wrap {
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns 500ms ease-out;
+  flex-shrink: 0;
+}
+
+.pill-tab.active .pill-tab-label-wrap {
+  grid-template-columns: 1fr;
+}
+
+.pill-tab-label-inner {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pill-tab-label {
+  display: block;
+  padding-left: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+.pill-tab.active .pill-tab-label {
+  opacity: 1;
+  transition: opacity 250ms ease-out 160ms;
+}
+
+/* ============================================================
+   Spielbetrieb View-Tabs (Spielbetrieb / Statistiken)
+   ============================================================ */
+
+.sb-view-tabs {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) 0;
+  border-bottom: 1px solid var(--color-surface-container);
+}
+
+.sb-view-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  font-size: var(--text-label-md);
+  font-weight: 700;
+  color: var(--color-on-surface-variant);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  transition: color 200ms, border-color 200ms;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sb-view-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.sb-view-tab .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+/* ============================================================
+   Profil – Admin-Section
+   ============================================================ */
+
+.profil-admin {
+  background: var(--color-surface-container-lowest);
+  border: 1px solid var(--color-surface-container);
+  border-radius: 14px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.profil-admin h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-label-md);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.admin-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.admin-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-container);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: var(--color-on-surface);
+  font-size: var(--text-label-sm);
+  font-weight: 700;
+  text-align: center;
+  transition: background 150ms, border-color 150ms;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-tile:active { background: var(--color-surface-container-low); }
+
+.admin-tile .material-symbols-outlined {
+  font-size: 1.4rem;
+  color: var(--color-primary);
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+

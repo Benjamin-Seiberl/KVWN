@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
-	import { playerId, user, signOut } from '$lib/stores/auth';
+	import { playerId, user, signOut, playerRole } from '$lib/stores/auth';
 	import { registerPush, unregisterPush, pushStatus } from '$lib/push/register.js';
 
 	let me = $state(null);
@@ -131,6 +131,41 @@
 				{/each}
 			</div>
 		</section>
+
+		{#if $playerRole === 'admin'}
+			<section class="profil-admin">
+				<h3>
+					<span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24;font-size:1.1rem">shield_person</span>
+					Admin-Bereich
+				</h3>
+				<div class="admin-tile-grid">
+					<a href="/admin/spieler" class="admin-tile">
+						<span class="material-symbols-outlined">group</span>
+						Spieler
+					</a>
+					<a href="/admin/teams" class="admin-tile">
+						<span class="material-symbols-outlined">shield</span>
+						Teams
+					</a>
+					<a href="/admin/saison" class="admin-tile">
+						<span class="material-symbols-outlined">upload_file</span>
+						Saison
+					</a>
+					<a href="/admin/training" class="admin-tile">
+						<span class="material-symbols-outlined">fitness_center</span>
+						Training
+					</a>
+					<a href="/admin/news" class="admin-tile">
+						<span class="material-symbols-outlined">campaign</span>
+						News
+					</a>
+					<a href="/admin" class="admin-tile">
+						<span class="material-symbols-outlined">dashboard</span>
+						Übersicht
+					</a>
+				</div>
+			</section>
+		{/if}
 
 		<button class="btn btn--ghost" onclick={signOut}>
 			<span class="material-symbols-outlined">logout</span> Abmelden
