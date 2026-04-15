@@ -8,7 +8,7 @@
 
 	const startTime = $derived(shortTime(match?.time));
 	const arrivalTime = $derived(offsetTime(match?.time, -timing.arrivalOffsetMin));
-	const endTime = $derived(offsetTime(match?.time, timing.matchDurationMin));
+	const endTime = $derived(offsetTime(match?.time, timing.matchDurationMin + timing.delayBufferMin));
 </script>
 
 <section class="mw-card">

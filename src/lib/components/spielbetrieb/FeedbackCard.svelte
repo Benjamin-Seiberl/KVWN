@@ -65,6 +65,9 @@
 			class="mw-feedback__textarea"
 			bind:value={answer}
 			placeholder="Deine Antwort… (nur du &amp; Kapitän/Admin sehen das)"
+			enterkeyhint="send"
+			autocapitalize="sentences"
+			inputmode="text"
 		></textarea>
 		<button
 			class="mw-btn mw-btn--primary mw-btn--wide"

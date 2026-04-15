@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import BottomSheet from './BottomSheet.svelte';
+	import { playerRole, signOut } from '$lib/stores/auth';
 
 	const pages = [
 		{ href: '/',             label: 'Dashboard',    icon: 'dashboard'     },
@@ -9,12 +10,16 @@
 		{ href: '/kalender',     label: 'Kalender',     icon: 'calendar_today'},
 	];
 
-	const drawerLinks = [
-		{ href: '/spielbetrieb', icon: 'sports_score',  label: 'Aufstellung',     desc: 'Mannschaftsaufstellungen' },
-		{ href: '/kalender',     icon: 'calendar_today',label: 'Kalender',         desc: 'Trainings & Spiele'        },
+	const baseDrawer = [
+		{ href: '/profil',       icon: 'person',        label: 'Profil',          desc: 'Foto, Kontakt, Benachrichtigungen' },
 		{ href: '/statistiken',  icon: 'leaderboard',   label: 'Statistiken',      desc: 'Rankings & Performance'   },
 		{ href: '/mehr',         icon: 'info',          label: 'Über den Verein',  desc: 'Infos & Kontakt'           },
 	];
+	const adminLink = { href: '/admin', icon: 'shield_person', label: 'Admin-Panel', desc: 'Spieler, Teams, Saison, News' };
+
+	const drawerLinks = $derived(
+		$playerRole === 'admin' ? [adminLink, ...baseDrawer] : baseDrawer
+	);
 
 	let navEl      = $state(null);
 	let indicatorLeft = $state(0);
@@ -100,5 +105,16 @@
 				<span class="material-symbols-outlined drawer-item-chevron">chevron_right</span>
 			</a>
 		{/each}
+		<button
+			class="drawer-item drawer-item--logout"
+			type="button"
+			onclick={async () => { drawerOpen = false; await signOut(); }}
+		>
+			<span class="drawer-item-icon material-symbols-outlined">logout</span>
+			<div class="drawer-item-text">
+				<span class="drawer-item-label">Abmelden</span>
+				<span class="drawer-item-desc">Aus dem Account ausloggen</span>
+			</div>
+		</button>
 	</nav>
 </BottomSheet>
