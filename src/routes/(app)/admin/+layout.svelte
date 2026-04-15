@@ -21,6 +21,7 @@
 </script>
 
 {#if $playerRole === 'admin'}
+	<!-- playerRole ist definitiv 'admin' → rendern -->
 	<header class="admin-hdr">
 		<h1 class="admin-hdr__title">
 			<span class="material-symbols-outlined">shield_person</span>
@@ -42,9 +43,11 @@
 	<section class="admin-body">
 		{@render children()}
 	</section>
-{:else}
+{:else if $playerRole && $playerRole !== 'admin'}
+	<!-- Definitiv kein Admin → Zugriff verweigert -->
 	<p class="admin-guard">Zugriff nur für Admins.</p>
 {/if}
+<!-- Wenn playerRole noch null/initialisiert → nichts rendern (kein Flackern) -->
 
 <style>
 	.admin-hdr {
