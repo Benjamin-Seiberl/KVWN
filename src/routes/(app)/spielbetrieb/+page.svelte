@@ -10,6 +10,8 @@
 	import CarpoolCard        from '$lib/components/spielbetrieb/CarpoolCard.svelte';
 	import VenueCard          from '$lib/components/spielbetrieb/VenueCard.svelte';
 	import FeedbackCard       from '$lib/components/spielbetrieb/FeedbackCard.svelte';
+	import ScoreInputRow      from '$lib/components/spielbetrieb/ScoreInputRow.svelte';
+	import TournamentMatchCard from '$lib/components/spielbetrieb/TournamentMatchCard.svelte';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
@@ -18,6 +20,7 @@
 	let plans        = $state([]);   // [{ match, gamePlanId, players[], workflow{ meetup, carpools, venues, votes, supporters, myFeedback } }]
 	let current      = $state(0);
 	let editMode     = $state(false);
+	let scoreMode    = $state(false);
 	let playerStats  = $state({});   // { [playerId]: { avg5: number, overallAvg: number } }
 	let feedbackQuestions = $state([]);
 
@@ -85,7 +88,7 @@
 		const range = getWeekRange();
 		const { data: matches } = await sb
 			.from('matches')
-			.select('id, date, time, opponent, home_away, cal_week, league_id, leagues(name)')
+			.select('id, date, time, opponent, home_away, cal_week, league_id, is_tournament, tournament_title, tournament_location, leagues(name)')
 			.gte('date', range.from)
 			.lte('date', range.to)
 			.order('date').order('time');
@@ -499,6 +502,9 @@
 						{@const declinedCount  = starters.filter(p => p.confirmed === false).length}
 						<div class="sb-slide">
 
+							{#if m.is_tournament}
+								<TournamentMatchCard match={m} />
+							{:else}
 							<!-- Match Header -->
 							<div class="sb-match-header">
 								<p class="sb-league">{m.leagues?.name ?? ''}</p>
@@ -777,23 +783,41 @@
 								/>
 							{/if}
 
+							{#if isKapitaen && scoreMode && !m.is_tournament}
+								<div class="score-list">
+									<h3 style="font-family:'Lexend';font-weight:600;font-size:1rem;margin:var(--space-3) 0 var(--space-2);">Ergebnisse eintragen</h3>
+									{#each plan.players as pp}
+										<ScoreInputRow player={pp} onSaved={() => loadData()} />
+									{/each}
+								</div>
+							{/if}
+
+							{/if}
 						</div>
 					{/each}
 				</div>
 			</div>
 
-			<!-- Kapitän FAB -->
+			<!-- Kapitän FABs -->
 			{#if isKapitaen}
-				<button
-					class="sb-fab"
-					class:sb-fab--active={editMode}
-					onclick={() => editMode = !editMode}
-					aria-label={editMode ? 'Bearbeitung beenden' : 'Aufstellung bearbeiten'}
-				>
-					<span class="material-symbols-outlined">
-						{editMode ? 'check' : 'edit'}
-					</span>
-				</button>
+				<div class="sb-fab-group">
+					<button
+						class="sb-fab sb-fab--score"
+						class:sb-fab--active={scoreMode}
+						onclick={() => { scoreMode = !scoreMode; if (scoreMode) editMode = false; }}
+						aria-label={scoreMode ? 'Score-Modus beenden' : 'Ergebnisse eintragen'}
+					>
+						<span class="material-symbols-outlined">{scoreMode ? 'check' : 'scoreboard'}</span>
+					</button>
+					<button
+						class="sb-fab"
+						class:sb-fab--active={editMode}
+						onclick={() => { editMode = !editMode; if (editMode) scoreMode = false; }}
+						aria-label={editMode ? 'Bearbeitung beenden' : 'Aufstellung bearbeiten'}
+					>
+						<span class="material-symbols-outlined">{editMode ? 'check' : 'edit'}</span>
+					</button>
+				</div>
 			{/if}
 		{/if}
 
