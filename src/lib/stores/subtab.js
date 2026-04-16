@@ -20,8 +20,9 @@ export const PAGE_CONFIG = {
 		title: 'Spielbetrieb',
 		tabs: [
 			{ key: 'spiele',      label: 'Spiele',      icon: 'emoji_events' },
-			{ key: 'turnier',     label: 'Turnier',     icon: 'military_tech' },
-			{ key: 'statistiken', label: 'Statistiken', icon: 'bar_chart' },
+			{ key: 'turnier',        label: 'Turnier',        icon: 'military_tech' },
+			{ key: 'landesbewerb',   label: 'Landesbewerb',   icon: 'workspace_premium' },
+			{ key: 'statistiken',    label: 'Statistiken',    icon: 'bar_chart' },
 		],
 	},
 	'/profil': {

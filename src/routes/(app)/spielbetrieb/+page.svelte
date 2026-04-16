@@ -204,6 +204,72 @@
 		}
 	});
 
+	// ── Landesbewerb tab ───────────────────────────────────────────
+	let landesbewerbe        = $state([]);
+	let loadingLandes        = $state(false);
+	let landesSearch         = $state('');
+	let selectedLandes       = $state(null);
+	let landesCreateOpen     = $state(false);
+
+	let landesTitle    = $state('');
+	let landesDate     = $state('');
+	let landesTime     = $state('');
+	let landesLocation = $state('');
+	let landesSaving   = $state(false);
+
+	const filteredLandes = $derived.by(() => {
+		const q = landesSearch.toLowerCase().trim();
+		if (!q) return landesbewerbe;
+		return landesbewerbe.filter(t =>
+			t.tournament_title?.toLowerCase().includes(q) ||
+			t.tournament_location?.toLowerCase().includes(q) ||
+			chipDate(t).toLowerCase().includes(q)
+		);
+	});
+
+	async function loadLandesbewerbe() {
+		loadingLandes = true;
+		const today = new Date();
+		const from  = new Date(today); from.setDate(today.getDate() - 365);
+		const to    = new Date(today); to.setDate(today.getDate() + 365);
+		const { data } = await sb
+			.from('matches')
+			.select('id, date, time, tournament_title, tournament_location, home_away, opponent')
+			.eq('is_landesbewerb', true)
+			.gte('date', fmt(from))
+			.lte('date', fmt(to))
+			.order('date', { ascending: false });
+		landesbewerbe = data ?? [];
+		loadingLandes = false;
+	}
+
+	async function createLandesbewerb() {
+		if (!landesTitle || !landesDate) return;
+		landesSaving = true;
+		const { data, error } = await sb.from('matches').insert({
+			is_landesbewerb:     true,
+			is_tournament:       true,
+			tournament_title:    landesTitle,
+			tournament_location: landesLocation || null,
+			date:                landesDate,
+			time:                landesTime || null,
+			opponent:            landesTitle,
+			home_away:           'HEIM',
+		}).select().single();
+		landesSaving = false;
+		if (error) { triggerToast('Fehler beim Erstellen'); return; }
+		landesCreateOpen = false;
+		landesTitle = ''; landesDate = ''; landesTime = ''; landesLocation = '';
+		await loadLandesbewerbe();
+		selectedLandes = data;
+	}
+
+	$effect(() => {
+		if ($currentSubtab === 'landesbewerb' && !landesbewerbe.length && !loadingLandes) {
+			loadLandesbewerbe();
+		}
+	});
+
 	onMount(() => loadMatches());
 </script>
 
@@ -319,6 +385,118 @@
 				disabled={!newTitle || !newDate || saving}
 			>
 				{saving ? 'Speichern…' : 'Turnier anlegen'}
+			</button>
+		</div>
+	</BottomSheet>
+
+</div>
+{:else if $currentSubtab === 'landesbewerb'}
+<div class="sb-page">
+
+	<!-- ── LANDESBEWERB PICKER ───────────────────────────────────── -->
+	{#if !selectedLandes}
+
+		<div class="mp-search-wrap">
+			<div class="tp-search-row">
+				<div class="mp-input-wrap" style="flex:1">
+					<span class="material-symbols-outlined mp-search-icon">search</span>
+					<input
+						class="mp-input"
+						type="search"
+						placeholder="Landesbewerb suchen…"
+						autocomplete="off"
+						bind:value={landesSearch}
+					/>
+					{#if landesSearch}
+						<button class="mp-clear" onclick={() => landesSearch = ''} aria-label="Löschen">
+							<span class="material-symbols-outlined">cancel</span>
+						</button>
+					{/if}
+				</div>
+				{#if isAdmin}
+					<button class="tp-add-btn" onclick={() => landesCreateOpen = true} aria-label="Landesbewerb erstellen">
+						<span class="material-symbols-outlined">add</span>
+					</button>
+				{/if}
+			</div>
+		</div>
+
+		{#if loadingLandes}
+			<div class="sb-loading">
+				<span class="material-symbols-outlined sb-loading-icon">workspace_premium</span>
+				<p>Lade Landesbewerbe…</p>
+			</div>
+		{:else if filteredLandes.length === 0}
+			<div class="sb-empty">
+				<span class="material-symbols-outlined sb-loading-icon">workspace_premium</span>
+				<p>{landesSearch ? 'Keine Treffer' : 'Noch keine Landesbewerbe'}</p>
+				{#if isAdmin && !landesSearch}
+					<button class="tp-create-cta" onclick={() => landesCreateOpen = true}>
+						<span class="material-symbols-outlined">add_circle</span>
+						Landesbewerb erstellen
+					</button>
+				{/if}
+			</div>
+		{:else}
+			<div class="mp-list">
+				{#each filteredLandes as t}
+					<button class="mp-card" class:mp-card--past={isPast(t)} onclick={() => selectedLandes = t}>
+						<div class="mp-card-left">
+							<div class="tp-trophy-badge tp-trophy-badge--landes">
+								<span class="material-symbols-outlined">workspace_premium</span>
+							</div>
+							<h3 class="mp-opponent">{t.tournament_title ?? 'Landesbewerb'}</h3>
+							{#if t.tournament_location}
+								<p class="mp-league">
+									<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-2px">location_on</span>
+									{t.tournament_location}
+								</p>
+							{/if}
+						</div>
+						<div class="mp-card-right">
+							<span class="mp-date">{chipDate(t)}</span>
+							{#if chipTime(t)}<span class="mp-time">{chipTime(t)}</span>{/if}
+							<span class="material-symbols-outlined mp-chevron">chevron_right</span>
+						</div>
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+	<!-- ── LANDESBEWERB DETAIL ────────────────────────────────────── -->
+	{:else}
+		<button class="md-back" onclick={() => { selectedLandes = null; }}>
+			<span class="material-symbols-outlined">arrow_back_ios</span>
+			Alle Landesbewerbe
+		</button>
+
+		<TournamentMatchCard match={selectedLandes} />
+	{/if}
+
+	<BottomSheet bind:open={landesCreateOpen} title="Landesbewerb erstellen">
+		<div class="tp-form">
+			<label class="tp-field">
+				<span class="tp-label">Titel *</span>
+				<input class="tp-input" type="text" placeholder="z.B. NÖ Landesmeisterschaft 2025" bind:value={landesTitle} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Datum *</span>
+				<input class="tp-input" type="date" bind:value={landesDate} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Uhrzeit</span>
+				<input class="tp-input" type="time" bind:value={landesTime} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Ort</span>
+				<input class="tp-input" type="text" placeholder="z.B. Sportzentrum Wiener Neustadt" bind:value={landesLocation} />
+			</label>
+			<button
+				class="tp-save-btn"
+				onclick={createLandesbewerb}
+				disabled={!landesTitle || !landesDate || landesSaving}
+			>
+				{landesSaving ? 'Speichern…' : 'Landesbewerb anlegen'}
 			</button>
 		</div>
 	</BottomSheet>
@@ -574,6 +752,12 @@
 		font-size: 1.1rem;
 		color: var(--color-secondary, #D4AF37);
 		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.tp-trophy-badge--landes {
+		background: rgba(99, 102, 241, 0.1);
+	}
+	.tp-trophy-badge--landes .material-symbols-outlined {
+		color: #6366f1;
 	}
 
 	.tp-create-cta {
