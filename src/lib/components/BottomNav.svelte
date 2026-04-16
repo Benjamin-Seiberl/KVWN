@@ -1,6 +1,6 @@
 <script>
 	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
+	import { scrollY, scrollDirection } from '$lib/stores/scroll.js';
 
 	const tabs = [
 		{ href: '/',             label: 'Dashboard',    icon: 'house'          },
@@ -9,25 +9,12 @@
 		{ href: '/profil',       label: 'Profil',       icon: 'person'         },
 	];
 
-	let navVisible = $state(true);
-	let lastScrollY = 0;
-
-	function handleScroll() {
-		const y = window.scrollY;
-		navVisible = y <= 50 || y < lastScrollY;
-		lastScrollY = y;
-	}
+	let navVisible = $derived($scrollY <= 50 || $scrollDirection === 'up');
 
 	function isActive(href) {
 		if (href === '/') return $page.url.pathname === '/';
 		return $page.url.pathname.startsWith(href);
 	}
-
-	onMount(() => {
-		lastScrollY = window.scrollY;
-		window.addEventListener('scroll', handleScroll, { passive: true });
-		return () => window.removeEventListener('scroll', handleScroll);
-	});
 </script>
 
 <div class="pill-nav-outer" class:nav-hidden={!navVisible} aria-label="Hauptnavigation">

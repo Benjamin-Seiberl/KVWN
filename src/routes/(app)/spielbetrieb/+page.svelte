@@ -3,6 +3,7 @@
 	import { page }           from '$app/stores';
 	import { sb }             from '$lib/supabase';
 	import { playerRole, playerId } from '$lib/stores/auth';
+	import { currentSubtab }  from '$lib/stores/subtab.js';
 	import BottomSheet        from '$lib/components/BottomSheet.svelte';
 	import MatchTimeline      from '$lib/components/spielbetrieb/MatchTimeline.svelte';
 	import MeetupCard         from '$lib/components/spielbetrieb/MeetupCard.svelte';
@@ -22,7 +23,7 @@
 	let current      = $state(0);
 	let editMode     = $state(false);
 	let scoreMode    = $state(false);
-	let activeView   = $state('spielbetrieb'); // 'spielbetrieb' | 'statistiken'
+	let activeView   = $derived($currentSubtab === 'statistiken' ? 'statistiken' : 'spielbetrieb');
 	let playerStats  = $state({});   // { [playerId]: { avg5: number, overallAvg: number } }
 	let feedbackQuestions = $state([]);
 
@@ -459,26 +460,6 @@
 </script>
 
 <div class="page active">
-
-	<!-- View-Tabs: Spielbetrieb / Statistiken -->
-	<div class="sb-view-tabs">
-		<button
-			class="sb-view-tab"
-			class:active={activeView === 'spielbetrieb'}
-			onclick={() => activeView = 'spielbetrieb'}
-		>
-			<span class="material-symbols-outlined">emoji_events</span>
-			Spielbetrieb
-		</button>
-		<button
-			class="sb-view-tab"
-			class:active={activeView === 'statistiken'}
-			onclick={() => activeView = 'statistiken'}
-		>
-			<span class="material-symbols-outlined">bar_chart</span>
-			Statistiken
-		</button>
-	</div>
 
 	{#if activeView === 'statistiken'}
 		<StatsView />

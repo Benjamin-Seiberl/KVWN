@@ -3,7 +3,10 @@
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { page, navigating } from '$app/stores';
+	import { onMount } from 'svelte';
+	import { initScrollListener } from '$lib/stores/scroll.js';
 	import BottomNav from '$lib/components/BottomNav.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let { children } = $props();
 
@@ -11,12 +14,18 @@
 	$effect(() => {
 		if (browser && $isMember === false) goto('/login');
 	});
+
+	onMount(() => {
+		return initScrollListener();
+	});
 </script>
 
 {#if $isMember === true}
 <div class="app-shell">
 
-	<main class="page-content">
+	<PageHeader />
+
+	<main class="page-content" style="padding-top: calc(7.5rem + env(safe-area-inset-top, 0px));">
 		{#if $navigating}
 			<!-- Skeleton während Navigation -->
 			<div class="page-skeleton animate-fade-float">
