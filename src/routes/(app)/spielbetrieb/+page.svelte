@@ -126,74 +126,114 @@
 
 	// ── Swipe-Carousel ────────────────────────────────────────
 	function carousel(widget) {
-		let startX = 0, startY = 0, startOff = 0, lastX = 0, lastT = 0;
-		let velocity = 0, dragging = false, currentX = 0;
+		// pressing = pointer is down, direction not yet decided
+		// dragging = confirmed horizontal swipe – we own the gesture
+		let pressing = false, dragging = false;
+		let startX = 0, startY = 0, startOff = 0;
+		let lastX = 0, lastT = 0, velocity = 0, currentX = 0;
 
-		const track  = () => trackEl;
-		const W      = () => widget.offsetWidth;
+		const track = () => trackEl;
+		const W     = () => widget.offsetWidth;
 
 		function moveTo(x, animate) {
 			const t = track();
 			if (!t) return;
 			currentX = x;
 			t.style.transition = animate ? 'transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1)' : 'none';
-			t.style.transform  = 'translateX(' + x + 'px)';
+			t.style.transform  = `translateX(${x}px)`;
 		}
 
 		function snapTo(index) {
 			current = Math.max(0, Math.min(plans.length - 1, index));
 			moveTo(-current * W(), true);
-			if (tabsEl) {
-				tabsEl.querySelectorAll('.sb-tab')[current]
-					?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-			}
+			tabsEl?.querySelectorAll('.sb-tab')[current]
+				?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 		}
 
 		function onDown(e) {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
+			pressing = true;
 			dragging = false;
-			startX = e.clientX; startY = e.clientY;
-			startOff = currentX; lastX = e.clientX; lastT = Date.now(); velocity = 0;
+			startX   = e.clientX;
+			startY   = e.clientY;
+			startOff = currentX;
+			lastX    = e.clientX;
+			lastT    = Date.now();
+			velocity = 0;
 		}
+
 		function onMove(e) {
-			const dx = Math.abs(e.clientX - startX), dy = Math.abs(e.clientY - startY);
+			if (!pressing) return;
+
+			const absDx = Math.abs(e.clientX - startX);
+			const absDy = Math.abs(e.clientY - startY);
+
 			if (!dragging) {
-				if (dx < 8 || dy > dx) return;
+				// Wait for at least 6 px of movement before deciding
+				if (absDx < 6 && absDy < 6) return;
+
+				if (absDy >= absDx) {
+					// Vertical dominant → release to browser scroll, stop tracking
+					pressing = false;
+					return;
+				}
+
+				// Horizontal dominant → own this gesture
 				dragging = true;
 				widget.setPointerCapture(e.pointerId);
-				const t = track(); if (t) t.style.transition = 'none';
+				const t = track();
+				if (t) t.style.transition = 'none';
 			}
-			const delta = e.clientX - startX;
-			const minX  = -(plans.length - 1) * W();
-			const raw   = startOff + delta;
-			const x     = raw > 0 ? raw * 0.18 : raw < minX ? minX + (raw - minX) * 0.18 : raw;
+
+			const dx   = e.clientX - startX;
+			const minX = -(plans.length - 1) * W();
+			const raw  = startOff + dx;
+			const x    = raw > 0    ? raw * 0.18
+			           : raw < minX ? minX + (raw - minX) * 0.18
+			           : raw;
 			currentX = x;
-			track().style.transform = 'translateX(' + x + 'px)';
+			track().style.transform = `translateX(${x}px)`;
+
 			const now = Date.now(), dt = now - lastT;
 			if (dt > 0) velocity = (e.clientX - lastX) / dt;
-			lastX = e.clientX; lastT = now;
+			lastX = e.clientX;
+			lastT = now;
 		}
+
 		function onUp(e) {
-			if (!dragging) return;
+			if (!pressing && !dragging) return;
+			const wasDragging = dragging;
+			pressing = false;
 			dragging = false;
-			const delta = e.clientX - startX, w = W();
+
+			if (!wasDragging) return; // was a tap, not a swipe
+
+			const dx = e.clientX - startX;
+			const w  = W();
 			let next = current;
-			if      (delta < -(w * 0.18) || velocity < -0.35) next = current + 1;
-			else if (delta >  (w * 0.18) || velocity >  0.35) next = current - 1;
+			if      (dx < -(w * 0.18) || velocity < -0.35) next = current + 1;
+			else if (dx >  (w * 0.18) || velocity >  0.35) next = current - 1;
 			snapTo(next);
+		}
+
+		function onCancel() {
+			if (dragging) snapTo(current); // snap back if mid-swipe
+			pressing = false;
+			dragging = false;
 		}
 
 		widget.addEventListener('pointerdown',   onDown);
 		widget.addEventListener('pointermove',   onMove);
 		widget.addEventListener('pointerup',     onUp);
-		widget.addEventListener('pointercancel', () => { dragging = false; snapTo(current); });
+		widget.addEventListener('pointercancel', onCancel);
 		widget._snapTo = snapTo;
 
 		return {
 			destroy() {
-				widget.removeEventListener('pointerdown', onDown);
-				widget.removeEventListener('pointermove', onMove);
-				widget.removeEventListener('pointerup',   onUp);
+				widget.removeEventListener('pointerdown',   onDown);
+				widget.removeEventListener('pointermove',   onMove);
+				widget.removeEventListener('pointerup',     onUp);
+				widget.removeEventListener('pointercancel', onCancel);
 			}
 		};
 	}
