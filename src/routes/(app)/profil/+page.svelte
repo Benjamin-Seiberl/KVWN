@@ -307,106 +307,61 @@
 	<!-- ════════════════════════════════════════════════════ -->
 	{#if activeTab === 'meine-daten'}
 
-		<!-- A) Profil-Karte -->
-		<section class="card">
-			<div class="avatar-row">
-				<div class="avatar">
-					{#if me.avatar_url || me.photo}
-						<img src={me.avatar_url || me.photo} alt={me.name} />
-					{:else}
-						<span>{(me.name || '?').slice(0,1).toUpperCase()}</span>
-					{/if}
-				</div>
-				<div class="avatar-meta">
-					<p class="avatar-name">{me.name}</p>
-					<p class="avatar-email">{me.email}</p>
-					<label class="upload">
-						<input type="file" accept="image/*" onchange={uploadAvatar} hidden />
-						<span class="material-symbols-outlined">photo_camera</span>
-						{uploading ? 'Lädt…' : 'Foto ändern'}
-					</label>
-				</div>
-			</div>
-
-			<div class="fields-grid">
-				<label class="field">
-					<span>Name</span>
-					<input type="text" bind:value={me.name} />
-				</label>
-				<label class="field">
-					<span>E-Mail</span>
-					<input type="email" value={me.email} disabled />
-				</label>
-				<label class="field">
-					<span>Telefon</span>
-					<input type="tel" bind:value={me.phone} placeholder="+43 …" />
-				</label>
-				<div class="fields-row">
-					<label class="field">
-						<span>Trikotgröße</span>
-						<select bind:value={me.shirt_size}>
-							<option value="">–</option>
-							{#each ['XS','S','M','L','XL','XXL','XXXL'] as s}
-								<option value={s}>{s}</option>
-							{/each}
-						</select>
-					</label>
-					<label class="field">
-						<span>Hosengröße</span>
-						<input type="text" bind:value={me.pants_size} placeholder="z.B. 32/32" />
-					</label>
-				</div>
-			</div>
-
-			<button class="btn btn--primary" onclick={save}>
-				<span class="material-symbols-outlined">check</span> Speichern
-			</button>
-			{#if msg}<p class="msg">{msg}</p>{/if}
-		</section>
-
-		<!-- B) Meine Stats -->
+		<!-- 1) Performance -->
 		{#if myStats}
-		<section class="stats-mini">
-			<h2 class="section-title">
-				<span class="material-symbols-outlined">bar_chart</span>
-				Meine Performance
-			</h2>
-			<div class="stats-chips">
-				<div class="stats-chip stats-chip--primary">
-					<span class="stats-chip-label">Schnitt</span>
-					<span class="stats-chip-value">{myStats.avg}</span>
+		{@const formDiff = myStats.avg5 - myStats.avg}
+		<section class="perf-card">
+			<!-- Header -->
+			<div class="perf-header">
+				<span class="perf-eyebrow">Meine Performance</span>
+				<span class="perf-games">{myStats.gamesPlayed} Spiele</span>
+			</div>
+
+			<!-- Hero: Saison-Schnitt -->
+			<div class="perf-hero">
+				<span class="material-symbols-outlined perf-trophy">emoji_events</span>
+				<div class="perf-avg-value">{myStats.avg}</div>
+				<div class="perf-avg-label">Saison-Schnitt</div>
+			</div>
+
+			<!-- Divider -->
+			<div class="perf-divider"></div>
+
+			<!-- Supporting stats -->
+			<div class="perf-stats-row">
+				<div class="perf-stat">
+					<span class="perf-stat-value">#{myStats.rank}</span>
+					<span class="perf-stat-label">Vereinsrang</span>
 				</div>
-				<div class="stats-chip">
-					<span class="stats-chip-label">Rang</span>
-					<span class="stats-chip-value">#{myStats.rank}</span>
-				</div>
-				<div class="stats-chip">
-					<span class="stats-chip-label">Form Ø5</span>
-					<span class="stats-chip-value">
+				<div class="perf-stat-sep"></div>
+				<div class="perf-stat">
+					<span class="perf-stat-value perf-stat-form">
 						{myStats.avg5}
-						{#if myStats.avg5 > myStats.avg}
-							<span class="trend-up">▲</span>
-						{:else if myStats.avg5 < myStats.avg}
-							<span class="trend-dn">▼</span>
+						{#if formDiff > 0}
+							<span class="perf-trend perf-trend--up">+{formDiff}</span>
+						{:else if formDiff < 0}
+							<span class="perf-trend perf-trend--dn">{formDiff}</span>
 						{/if}
 					</span>
+					<span class="perf-stat-label">Form Ø5</span>
 				</div>
-				<div class="stats-chip">
-					<span class="stats-chip-label">Rekord</span>
-					<span class="stats-chip-value">{myStats.best}</span>
+				<div class="perf-stat-sep"></div>
+				<div class="perf-stat">
+					<span class="perf-stat-value">{myStats.best}</span>
+					<span class="perf-stat-label">Rekord</span>
 				</div>
 			</div>
 		</section>
 		{/if}
 
-		<!-- C) Nächstes Spiel -->
+		<!-- 2) Nächstes Spiel -->
 		{#if nextMatch}
 		{@const badge = daysUntil(nextMatch.date)}
 		<section class="next-match-card">
 			<div class="next-match-head">
 				<h3 class="section-title">
 					<span class="material-symbols-outlined">emoji_events</span>
-					Nächstes Spiel &amp; Logistik
+					Nächstes Spiel
 				</h3>
 				<span class="days-badge" class:days-badge--urgent={badge === 'Heute' || badge === 'Morgen'}>{badge}</span>
 			</div>
@@ -439,7 +394,69 @@
 		</section>
 		{/if}
 
-		<!-- D) Vereinstermine Agenda -->
+		<!-- 3) Meine Infos (royal) -->
+		<section class="profil-card">
+			<!-- Gradient header mit großem Avatar -->
+			<div class="profil-card-hero">
+				<div class="profil-avatar-ring">
+					<div class="profil-avatar">
+						{#if me.avatar_url || me.photo}
+							<img src={me.avatar_url || me.photo} alt={me.name} />
+						{:else}
+							<span>{(me.name || '?').slice(0,1).toUpperCase()}</span>
+						{/if}
+					</div>
+				</div>
+				<label class="profil-photo-btn">
+					<input type="file" accept="image/*" onchange={uploadAvatar} hidden />
+					<span class="material-symbols-outlined">photo_camera</span>
+				</label>
+			</div>
+
+			<!-- Name + E-Mail -->
+			<div class="profil-card-identity">
+				<h2 class="profil-card-name">{me.name}</h2>
+				<p class="profil-card-email">{me.email}</p>
+				<div class="profil-card-gold-line"></div>
+			</div>
+
+			<!-- Felder -->
+			<div class="profil-card-fields">
+				<label class="field">
+					<span>Name</span>
+					<input type="text" bind:value={me.name} />
+				</label>
+				<label class="field">
+					<span>Telefon</span>
+					<input type="tel" bind:value={me.phone} placeholder="+43 …" />
+				</label>
+				<div class="fields-row">
+					<label class="field">
+						<span>Trikotgröße</span>
+						<select bind:value={me.shirt_size}>
+							<option value="">–</option>
+							{#each ['XS','S','M','L','XL','XXL','XXXL'] as s}
+								<option value={s}>{s}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="field">
+						<span>Hosengröße</span>
+						<input type="text" bind:value={me.pants_size} placeholder="z.B. 32/32" />
+					</label>
+				</div>
+			</div>
+
+			<!-- Speichern -->
+			<div class="profil-card-actions">
+				<button class="btn btn--primary" onclick={save}>
+					<span class="material-symbols-outlined">check</span> Speichern
+				</button>
+				{#if msg}<p class="msg">{msg}</p>{/if}
+			</div>
+		</section>
+
+		<!-- 4) Vereinstermine Agenda -->
 		{#if events.length}
 		<section class="card">
 			<h2 class="section-title">
@@ -756,59 +773,256 @@
 
 .msg { margin: 0; font-size: 0.88rem; color: var(--color-on-surface-variant); }
 
-/* ── Stats Mini ─────────────────────────────────────── */
-.stats-mini {
+/* ── Performance Card ───────────────────────────────── */
+.perf-card {
+	background: linear-gradient(160deg, #1a0000 0%, #3d0000 40%, #6b0000 100%);
+	border-radius: 20px;
+	overflow: hidden;
+	box-shadow: 0 8px 32px rgba(204, 0, 0, 0.28);
+}
+
+.perf-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: var(--space-4) var(--space-5) 0;
+}
+
+.perf-eyebrow {
+	font-family: var(--font-display);
+	font-size: 0.7rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	color: rgba(212, 175, 55, 0.9);
+}
+
+.perf-games {
+	font-size: 0.72rem;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.45);
+	letter-spacing: 0.04em;
+}
+
+.perf-hero {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: var(--space-5) var(--space-5) var(--space-4);
+	gap: var(--space-1);
+}
+
+.perf-trophy {
+	font-size: 2rem;
+	color: var(--color-secondary);
+	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+	margin-bottom: var(--space-1);
+	filter: drop-shadow(0 0 12px rgba(212,175,55,0.6));
+}
+
+.perf-avg-value {
+	font-family: var(--font-display);
+	font-size: 4rem;
+	font-weight: 900;
+	color: #fff;
+	line-height: 1;
+	letter-spacing: -0.02em;
+	text-shadow: 0 2px 16px rgba(0,0,0,0.4);
+}
+
+.perf-avg-label {
+	font-size: 0.78rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: rgba(255,255,255,0.5);
+}
+
+.perf-divider {
+	height: 1px;
+	background: linear-gradient(90deg, transparent, rgba(212,175,55,0.35), transparent);
+	margin: 0 var(--space-5);
+}
+
+.perf-stats-row {
+	display: flex;
+	align-items: stretch;
+	padding: var(--space-4) var(--space-5);
+	gap: 0;
+}
+
+.perf-stat {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+}
+
+.perf-stat-sep {
+	width: 1px;
+	background: rgba(255,255,255,0.12);
+	margin: 0 var(--space-2);
+	align-self: stretch;
+}
+
+.perf-stat-value {
+	font-family: var(--font-display);
+	font-size: 1.45rem;
+	font-weight: 900;
+	color: #fff;
+	line-height: 1;
+	display: flex;
+	align-items: baseline;
+	gap: 4px;
+}
+
+.perf-stat-form { /* override color for form when same */
+	color: #fff;
+}
+
+.perf-trend {
+	font-family: var(--font-display);
+	font-size: 0.72rem;
+	font-weight: 800;
+	padding: 1px 5px;
+	border-radius: 999px;
+}
+
+.perf-trend--up {
+	color: #4ade80;
+	background: rgba(74, 222, 128, 0.15);
+}
+
+.perf-trend--dn {
+	color: #f87171;
+	background: rgba(248, 113, 113, 0.15);
+}
+
+.perf-stat-label {
+	font-size: 0.65rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: rgba(255,255,255,0.4);
+}
+
+/* ── Profil-Karte (royal) ───────────────────────────── */
+.profil-card {
 	background: var(--color-surface-container-lowest);
+	border-radius: 20px;
+	overflow: hidden;
 	border: 1px solid var(--color-surface-container);
-	border-radius: 16px;
-	padding: var(--space-4);
+	box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+}
+
+.profil-card-hero {
+	position: relative;
+	background: linear-gradient(160deg, #1a0000 0%, #850000 100%);
+	height: 88px;
+	display: flex;
+	justify-content: center;
+}
+
+.profil-avatar-ring {
+	position: absolute;
+	bottom: -36px;
+	width: 84px;
+	height: 84px;
+	border-radius: 50%;
+	padding: 3px;
+	background: linear-gradient(135deg, var(--color-secondary), #a07c20);
+	box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.profil-avatar {
+	width: 100%;
+	height: 100%;
+	border-radius: 50%;
+	overflow: hidden;
+	background: var(--color-surface-container);
+	display: grid;
+	place-items: center;
+	font-family: var(--font-display);
+	font-size: 2.2rem;
+	font-weight: 900;
+	color: var(--color-primary);
+	border: 3px solid var(--color-surface-container-lowest);
+}
+
+.profil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.profil-photo-btn {
+	position: absolute;
+	bottom: -28px;
+	left: calc(50% + 26px);
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: var(--color-surface-container-lowest);
+	border: 1.5px solid var(--color-outline-variant);
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+	transition: background 120ms;
+}
+
+.profil-photo-btn:active { background: var(--color-surface-container); }
+
+.profil-photo-btn .material-symbols-outlined {
+	font-size: 1rem;
+	color: var(--color-on-surface-variant);
+}
+
+.profil-card-identity {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: calc(36px + var(--space-4)) var(--space-5) var(--space-4);
+	text-align: center;
+	gap: var(--space-1);
+}
+
+.profil-card-name {
+	font-family: var(--font-display);
+	font-size: 1.35rem;
+	font-weight: 900;
+	color: var(--color-on-surface);
+	margin: 0;
+	letter-spacing: -0.01em;
+}
+
+.profil-card-email {
+	font-size: 0.8rem;
+	color: var(--color-on-surface-variant);
+	margin: 0;
+}
+
+.profil-card-gold-line {
+	width: 40px;
+	height: 2px;
+	border-radius: 999px;
+	background: linear-gradient(90deg, var(--color-secondary), #a07c20);
+	margin-top: var(--space-2);
+}
+
+.profil-card-fields {
+	padding: 0 var(--space-4) var(--space-4);
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
 }
 
-.stats-chips {
-	display: grid;
-	grid-template-columns: repeat(4, 1fr);
+.profil-card-actions {
+	padding: var(--space-3) var(--space-4) var(--space-4);
+	border-top: 1px solid var(--color-surface-container);
+	display: flex;
+	flex-direction: column;
 	gap: var(--space-2);
 }
 
-.stats-chip {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	padding: var(--space-3);
-	background: var(--color-surface-container-low);
-	border-radius: 12px;
-	text-align: center;
-}
-
-.stats-chip--primary {
-	background: var(--gradient-primary);
-}
-
-.stats-chip-label {
-	font-size: 0.65rem;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.07em;
-	color: var(--color-on-surface-variant);
-}
-
-.stats-chip--primary .stats-chip-label { color: rgba(255,255,255,0.75); }
-
-.stats-chip-value {
-	font-family: var(--font-display);
-	font-size: 1.1rem;
-	font-weight: 900;
-	color: var(--color-on-surface);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 2px;
-}
-
-.stats-chip--primary .stats-chip-value { color: #fff; }
+/* keep old stats classes for milestone/etc sections that still use them */
 .trend-up { font-size: 0.7rem; color: #16a34a; }
 .trend-dn { font-size: 0.7rem; color: var(--color-error); }
 
