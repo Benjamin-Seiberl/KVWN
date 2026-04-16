@@ -3425,8 +3425,8 @@ button {
 .di-pill.di-pill--hidden {
   opacity: 0;
   pointer-events: none;
-  /* Subtle start position + soft-focus entry – premium feel */
-  transform: translateX(-50%) translateY(-8px) scale(0.95);
+  /* Fährt von oben rein / nach oben raus */
+  transform: translateX(-50%) translateY(-72px);
   filter: blur(6px);
 }
 
