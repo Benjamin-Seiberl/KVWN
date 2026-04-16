@@ -3,88 +3,99 @@
 	import { scrollY, scrollDirection } from '$lib/stores/scroll.js';
 	import { currentPageConfig, currentSubtab, activeSubtabs, setSubtab } from '$lib/stores/subtab.js';
 
-	let isScrolled = $derived($scrollY > 15);
+	// Transition only after 80px of scroll (was 15 – too eager)
+	let isScrolled = $derived($scrollY > 80);
 
 	// --- Dynamic Island state ---
 	let pillExpanded = $state(false);
-	let isDragging = $state(false);
-	let dragDeltaY = $state(0);
-	let dragStartY = 0;
+	let isDragging   = $state(false);
+	let dragDeltaY   = $state(0);
+	let dragStartY   = 0;
 
-	// Auto-close pill when scrolling down
+	// Auto-close pill when scrolling further down
 	$effect(() => {
 		if ($scrollDirection === 'down' && pillExpanded) {
 			pillExpanded = false;
 		}
 	});
 
-	// Current subtab label for pill head
-	let currentLabel = $derived(() => {
+	// Current subtab label shown in pill head
+	let currentLabel = $derived.by(() => {
 		const config = $currentPageConfig;
-		const sub = $currentSubtab;
+		const sub    = $currentSubtab;
 		if (!config || !sub) return '';
-		const tab = config.tabs.find(t => t.key === sub);
-		return tab?.label ?? '';
+		return config.tabs.find(t => t.key === sub)?.label ?? '';
 	});
 
-	// --- Pill height calculation ---
+	// --- Pill height with drag physics ---
 	const PILL_COLLAPSED = 48;
-	const PILL_EXPANDED = 104;
+	const PILL_EXPANDED  = 130;   // tall enough for content + padding
 
-	let pillHeight = $derived(() => {
+	let pillHeight = $derived.by(() => {
 		const base = pillExpanded ? PILL_EXPANDED : PILL_COLLAPSED;
-		if (isDragging) {
-			const offset = pillExpanded
-				? Math.max(dragDeltaY, -(PILL_EXPANDED - PILL_COLLAPSED))
-				: Math.min(Math.max(dragDeltaY, 0), PILL_EXPANDED - PILL_COLLAPSED);
-			return base + offset;
-		}
-		return base;
+		if (!isDragging) return base;
+
+		const offset = pillExpanded
+			// Expanded: can shrink fully, overshoot open by max 30px
+			? Math.min(Math.max(dragDeltaY, -(PILL_EXPANDED - PILL_COLLAPSED)), 30)
+			// Collapsed: can only grow (drag down)
+			: Math.min(Math.max(dragDeltaY, 0), PILL_EXPANDED - PILL_COLLAPSED);
+
+		return Math.max(PILL_COLLAPSED, base + offset);
 	});
 
-	// --- Pointer handlers for drag physics ---
+	// --- Pointer handlers ---
 	function onPointerDown(e) {
-		isDragging = true;
-		dragStartY = e.clientY;
-		dragDeltaY = 0;
+		isDragging  = true;
+		dragStartY  = e.clientY;
+		dragDeltaY  = 0;
 		e.currentTarget.setPointerCapture(e.pointerId);
 	}
 
 	function onPointerMove(e) {
 		if (!isDragging) return;
 		dragDeltaY = e.clientY - dragStartY;
+
+		// Snap open mid-drag – stays open even if finger pauses
+		if (!pillExpanded && dragDeltaY > 50) {
+			pillExpanded = true;
+			dragStartY   = e.clientY;   // reset so continued drag doesn't over-stretch
+			dragDeltaY   = 0;
+		}
+		// Snap closed mid-drag when pulling up past threshold
+		if (pillExpanded && dragDeltaY < -50) {
+			pillExpanded = false;
+			dragStartY   = e.clientY;
+			dragDeltaY   = 0;
+		}
 	}
 
 	function onPointerUp(e) {
 		if (!isDragging) return;
 		isDragging = false;
 
-		if (Math.abs(dragDeltaY) < 10) {
-			// Clean tap → toggle
+		// Tap (barely moved) → toggle open/closed
+		if (Math.abs(dragDeltaY) < 15) {
 			pillExpanded = !pillExpanded;
 		} else if (!pillExpanded && dragDeltaY > 50) {
 			pillExpanded = true;
 		} else if (pillExpanded && dragDeltaY < -50) {
 			pillExpanded = false;
 		}
-		// else: spring back to current state
+		// otherwise spring back to current state
 
 		dragDeltaY = 0;
 	}
 
 	function selectSubtab(key) {
 		const path = $page.url.pathname;
-		if (key !== $currentSubtab) {
-			setSubtab(path, key);
-		}
+		if (key !== $currentSubtab) setSubtab(path, key);
 		pillExpanded = false;
 	}
 
 	function selectSubtabHeader(key) {
 		const path = $page.url.pathname;
-		if (key !== $currentSubtab) {
-			setSubtab(path, key);
-		}
+		if (key !== $currentSubtab) setSubtab(path, key);
 	}
 </script>
 
@@ -119,18 +130,19 @@
 		class:di-pill--hidden={!isScrolled}
 		class:di-pill--expanded={pillExpanded}
 		class:di-pill--dragging={isDragging}
-		style="height: {pillHeight()}px; {isDragging ? 'transition: none;' : ''}"
+		style="height: {pillHeight}px; {isDragging ? 'transition: none;' : ''}"
 		onpointerdown={onPointerDown}
 		onpointermove={onPointerMove}
 		onpointerup={onPointerUp}
+		onpointercancel={onPointerUp}
 	>
 		<!-- Pill head: current subtab label -->
 		<div class="di-pill-head">
-			<span class="di-pill-label">{currentLabel()}</span>
+			<span class="di-pill-label">{currentLabel}</span>
 			<div class="di-pill-drag-bar"></div>
 		</div>
 
-		<!-- Pill body: subtab options -->
+		<!-- Pill body: subtab options (fades in as pill expands) -->
 		<div
 			class="di-pill-body"
 			class:di-pill-body--hidden={!pillExpanded && dragDeltaY < 30}

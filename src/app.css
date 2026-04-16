@@ -3424,7 +3424,8 @@ button {
 }
 
 .di-pill.di-pill--expanded {
-  border-radius: var(--radius-xl);
+  /* Large but finite radius – always looks rounded, never boxy */
+  border-radius: 22px;
 }
 
 .di-pill-head {
@@ -3469,7 +3470,8 @@ button {
   justify-content: center;
   align-items: center;
   gap: var(--space-4);
-  padding: 0 var(--space-5) var(--space-4);
+  /* Extra horizontal padding keeps buttons well clear of the rounded corners */
+  padding: var(--space-2) var(--space-6) var(--space-5);
   flex-shrink: 0;
   transition: opacity 350ms ease-out;
 }
@@ -3485,7 +3487,8 @@ button {
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-4);
+  /* Generous padding so active background doesn't crowd the pill edges */
+  padding: var(--space-2) var(--space-5);
   border-radius: var(--radius-lg);
   border: none;
   background: none;
