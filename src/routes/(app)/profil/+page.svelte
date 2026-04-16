@@ -2,7 +2,16 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { playerId, signOut, playerRole } from '$lib/stores/auth';
+	import { currentSubtab } from '$lib/stores/subtab.js';
 	import { registerPush, unregisterPush, pushStatus } from '$lib/push/register.js';
+
+	// ── Active Tab ──────────────────────────────────────────
+	// Fall back to meine-daten if admin tab is active but user is no longer admin
+	let activeTab = $derived.by(() => {
+		const t = $currentSubtab;
+		if (t === 'admin' && $playerRole !== 'admin') return 'meine-daten';
+		return t ?? 'meine-daten';
+	});
 
 	// ── State ────────────────────────────────────────────────
 	let me          = $state(null);
@@ -112,7 +121,7 @@
 		if (best >= 600) ms.push({ icon: 'diamond',                    label: '600+ Holz',                    sub: `Bestleistung: ${best}` });
 		const avg = Math.round(scores.reduce((a,b) => a+b,0) / scores.length);
 		if (avg >= 500) ms.push({ icon: 'trending_up',                 label: 'Ø 500+',                       sub: `Durchschnitt: ${avg}` });
-		return ms.reverse(); // neueste/höchste zuerst
+		return ms.reverse();
 	}
 
 	// ── RSVP ────────────────────────────────────────────────
@@ -125,7 +134,6 @@
 		if (!pid) return;
 		const existing = myRsvp(eventId);
 		if (existing === response) {
-			// Toggle off: delete
 			await sb.from('event_rsvps').delete().eq('event_id', eventId).eq('player_id', pid);
 			rsvps = rsvps.filter(r => r.event_id !== eventId);
 		} else {
@@ -189,14 +197,102 @@
 		const d = new Date(dateStr + 'T00:00:00');
 		return `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]}`;
 	}
+
+	// ── Admin: Platzhalter-Aktionen ─────────────────────────
+	function adminPlaceholder(fn) {
+		alert(`⚙️ ${fn}\n\nDiese Funktion wird in einer zukünftigen Version verfügbar sein.`);
+	}
+
+	const ADMIN_SECTIONS = [
+		{
+			title: 'Spielerverwaltung',
+			icon: 'group',
+			color: '#3b82f6',
+			actions: [
+				{ icon: 'person_add',    label: 'Spieler hinzufügen',    fn: 'Spieler hinzufügen' },
+				{ icon: 'edit',          label: 'Spieler bearbeiten',    fn: 'Spieler bearbeiten' },
+				{ icon: 'shield_person', label: 'Rollen verwalten',      fn: 'Rollen & Berechtigungen' },
+				{ icon: 'person_remove', label: 'Spieler deaktivieren',  fn: 'Spieler deaktivieren' },
+			],
+		},
+		{
+			title: 'Spielbetrieb',
+			icon: 'emoji_events',
+			color: '#CC0000',
+			actions: [
+				{ icon: 'edit_calendar', label: 'Aufstellung erstellen', fn: 'Aufstellung erstellen' },
+				{ icon: 'sports_score',  label: 'Ergebnis eintragen',    fn: 'Spielergebnis eintragen' },
+				{ icon: 'leaderboard',   label: 'Tabelle pflegen',       fn: 'Ligatabelle aktualisieren' },
+				{ icon: 'swap_horiz',    label: 'Spieler tauschen',      fn: 'Aufstellung: Spieler tauschen' },
+			],
+		},
+		{
+			title: 'Saison & Ligen',
+			icon: 'upload_file',
+			color: '#D4AF37',
+			actions: [
+				{ icon: 'add_circle',    label: 'Neue Saison anlegen',   fn: 'Neue Saison anlegen' },
+				{ icon: 'table_chart',   label: 'Liga importieren',      fn: 'Ligaplan importieren' },
+				{ icon: 'sync',          label: 'Spielplan aktualisieren', fn: 'Spielplan synchronisieren' },
+				{ icon: 'archive',       label: 'Saison abschließen',    fn: 'Saison archivieren' },
+			],
+		},
+		{
+			title: 'Turniere',
+			icon: 'social_leaderboard',
+			color: '#7c3aed',
+			actions: [
+				{ icon: 'add_circle',    label: 'Turnier anlegen',       fn: 'Turnier anlegen' },
+				{ icon: 'group_add',     label: 'Teilnehmer verwalten',  fn: 'Turnier-Teilnehmer' },
+				{ icon: 'bracket',       label: 'Bracket bearbeiten',    fn: 'Turnier-Bracket' },
+				{ icon: 'emoji_events',  label: 'Sieger eintragen',      fn: 'Turnier-Ergebnis' },
+			],
+		},
+		{
+			title: 'Training',
+			icon: 'fitness_center',
+			color: '#059669',
+			actions: [
+				{ icon: 'event',         label: 'Training anlegen',      fn: 'Training anlegen' },
+				{ icon: 'how_to_reg',    label: 'Anwesenheit erfassen',  fn: 'Trainingsanwesenheit' },
+				{ icon: 'notes',         label: 'Trainingsprotokoll',    fn: 'Trainingsprotokoll' },
+			],
+		},
+		{
+			title: 'Vereinskommunikation',
+			icon: 'campaign',
+			color: '#ea580c',
+			actions: [
+				{ icon: 'newspaper',     label: 'News verfassen',        fn: 'Vereinsnews verfassen' },
+				{ icon: 'notifications', label: 'Push an alle senden',   fn: 'Push-Benachrichtigung senden' },
+				{ icon: 'poll',          label: 'Umfrage erstellen',     fn: 'Vereinsumfrage erstellen' },
+				{ icon: 'celebration',   label: 'Event anlegen',         fn: 'Vereinsevent anlegen' },
+			],
+		},
+		{
+			title: 'Statistiken & Daten',
+			icon: 'analytics',
+			color: '#0891b2',
+			actions: [
+				{ icon: 'bar_chart',     label: 'Saisonstatistik',       fn: 'Saisonstatistik anzeigen' },
+				{ icon: 'download',      label: 'Export (CSV)',           fn: 'Statistiken exportieren' },
+				{ icon: 'restart_alt',   label: 'Saison-Reset',          fn: 'Saisonstatistik zurücksetzen' },
+			],
+		},
+		{
+			title: 'System',
+			icon: 'settings',
+			color: '#64748b',
+			actions: [
+				{ icon: 'manage_accounts', label: 'Admin-Zugänge',       fn: 'Admin-Zugänge verwalten' },
+				{ icon: 'backup',          label: 'Datensicherung',      fn: 'Datensicherung erstellen' },
+				{ icon: 'bug_report',      label: 'Debug-Log',           fn: 'Debug-Protokoll anzeigen' },
+			],
+		},
+	];
 </script>
 
 <div class="profil-page">
-
-	<h1 class="phdr">
-		<span class="material-symbols-outlined">person</span>
-		Mein Profil
-	</h1>
 
 	{#if !me}
 		<!-- Loading state -->
@@ -206,275 +302,312 @@
 		</div>
 	{:else}
 
-	<!-- ── A) Profil-Karte ─────────────────────────────── -->
-	<section class="card">
-		<div class="avatar-row">
-			<div class="avatar">
-				{#if me.avatar_url || me.photo}
-					<img src={me.avatar_url || me.photo} alt={me.name} />
-				{:else}
-					<span>{(me.name || '?').slice(0,1).toUpperCase()}</span>
-				{/if}
-			</div>
-			<div class="avatar-meta">
-				<p class="avatar-name">{me.name}</p>
-				<p class="avatar-email">{me.email}</p>
-				<label class="upload">
-					<input type="file" accept="image/*" onchange={uploadAvatar} hidden />
-					<span class="material-symbols-outlined">photo_camera</span>
-					{uploading ? 'Lädt…' : 'Foto ändern'}
-				</label>
-			</div>
-		</div>
+	<!-- ════════════════════════════════════════════════════ -->
+	<!-- TAB: MEINE DATEN                                     -->
+	<!-- ════════════════════════════════════════════════════ -->
+	{#if activeTab === 'meine-daten'}
 
-		<div class="fields-grid">
-			<label class="field">
-				<span>Name</span>
-				<input type="text" bind:value={me.name} />
-			</label>
-			<label class="field">
-				<span>E-Mail</span>
-				<input type="email" value={me.email} disabled />
-			</label>
-			<label class="field">
-				<span>Telefon</span>
-				<input type="tel" bind:value={me.phone} placeholder="+43 …" />
-			</label>
-			<div class="fields-row">
+		<!-- A) Profil-Karte -->
+		<section class="card">
+			<div class="avatar-row">
+				<div class="avatar">
+					{#if me.avatar_url || me.photo}
+						<img src={me.avatar_url || me.photo} alt={me.name} />
+					{:else}
+						<span>{(me.name || '?').slice(0,1).toUpperCase()}</span>
+					{/if}
+				</div>
+				<div class="avatar-meta">
+					<p class="avatar-name">{me.name}</p>
+					<p class="avatar-email">{me.email}</p>
+					<label class="upload">
+						<input type="file" accept="image/*" onchange={uploadAvatar} hidden />
+						<span class="material-symbols-outlined">photo_camera</span>
+						{uploading ? 'Lädt…' : 'Foto ändern'}
+					</label>
+				</div>
+			</div>
+
+			<div class="fields-grid">
 				<label class="field">
-					<span>Trikotgröße</span>
-					<select bind:value={me.shirt_size}>
-						<option value="">–</option>
-						{#each ['XS','S','M','L','XL','XXL','XXXL'] as s}
-							<option value={s}>{s}</option>
-						{/each}
-					</select>
+					<span>Name</span>
+					<input type="text" bind:value={me.name} />
 				</label>
 				<label class="field">
-					<span>Hosengröße</span>
-					<input type="text" bind:value={me.pants_size} placeholder="z.B. 32/32" />
+					<span>E-Mail</span>
+					<input type="email" value={me.email} disabled />
 				</label>
-			</div>
-		</div>
-
-		<button class="btn btn--primary" onclick={save}>
-			<span class="material-symbols-outlined">check</span> Speichern
-		</button>
-		{#if msg}<p class="msg">{msg}</p>{/if}
-	</section>
-
-	<!-- ── B) Meine Stats ────────────────────────────────── -->
-	{#if myStats}
-	<section class="stats-mini">
-		<h2 class="section-title">
-			<span class="material-symbols-outlined">bar_chart</span>
-			Meine Performance
-		</h2>
-		<div class="stats-chips">
-			<div class="stats-chip stats-chip--primary">
-				<span class="stats-chip-label">Schnitt</span>
-				<span class="stats-chip-value">{myStats.avg}</span>
-			</div>
-			<div class="stats-chip">
-				<span class="stats-chip-label">Rang</span>
-				<span class="stats-chip-value">#{myStats.rank}</span>
-			</div>
-			<div class="stats-chip">
-				<span class="stats-chip-label">Form Ø5</span>
-				<span class="stats-chip-value">
-					{myStats.avg5}
-					{#if myStats.avg5 > myStats.avg}
-						<span class="trend-up">▲</span>
-					{:else if myStats.avg5 < myStats.avg}
-						<span class="trend-dn">▼</span>
-					{/if}
-				</span>
-			</div>
-			<div class="stats-chip">
-				<span class="stats-chip-label">Rekord</span>
-				<span class="stats-chip-value">{myStats.best}</span>
-			</div>
-		</div>
-	</section>
-	{/if}
-
-	<!-- ── C) Nächstes Spiel ─────────────────────────────── -->
-	{#if nextMatch}
-	{@const badge = daysUntil(nextMatch.date)}
-	<section class="next-match-card">
-		<div class="next-match-head">
-			<h3 class="section-title">
-				<span class="material-symbols-outlined">emoji_events</span>
-				Nächstes Spiel &amp; Logistik
-			</h3>
-			<span class="days-badge" class:days-badge--urgent={badge === 'Heute' || badge === 'Morgen'}>{badge}</span>
-		</div>
-		<div class="next-match-body">
-			<div class="next-match-info">
-				<div>
-					<p class="match-meta-label">Gegner / Liga</p>
-					<h4 class="match-opponent">{nextMatch.opponent}</h4>
-					<p class="match-league">{nextMatch.leagues?.name ?? ''} · {nextMatch.home_away === 'HEIM' ? 'Heimspiel' : 'Auswärts'}</p>
-				</div>
-				<div class="match-date-block">
-					<p class="match-meta-label">Termin</p>
-					<p class="match-date">{fmtDate(nextMatch.date)}</p>
-					{#if nextMatch.time}
-						<p class="match-time">{String(nextMatch.time).slice(0,5)} Uhr</p>
-					{/if}
-				</div>
-			</div>
-			<a href="/spielbetrieb" class="match-link-row">
-				<div class="match-link-icon">
-					<span class="material-symbols-outlined">sports_score</span>
-				</div>
-				<div class="match-link-text">
-					<p class="match-meta-label">Spielbetrieb</p>
-					<p class="match-link-label">Aufstellung &amp; Treffpunkt ansehen</p>
-				</div>
-				<span class="material-symbols-outlined match-link-arrow">open_in_new</span>
-			</a>
-		</div>
-	</section>
-	{/if}
-
-	<!-- ── D) Vereinstermine Agenda ──────────────────────── -->
-	{#if events.length}
-	<section class="card">
-		<h2 class="section-title">
-			<span class="material-symbols-outlined">event</span>
-			Vereinstermine
-		</h2>
-		<div class="agenda">
-			{#each events as ev}
-			{@const d = new Date(ev.date + 'T00:00:00')}
-			{@const myR = myRsvp(ev.id)}
-			<div class="agenda-item">
-				<div class="agenda-date-col">
-					<span class="agenda-day">{d.getDate()}</span>
-					<span class="agenda-month">{MONTHS[d.getMonth()]}</span>
-				</div>
-				<div class="agenda-info">
-					<p class="agenda-title">{ev.title}</p>
-					{#if ev.time || ev.location}
-						<p class="agenda-sub">
-							{#if ev.time}{String(ev.time).slice(0,5)} Uhr{/if}
-							{#if ev.time && ev.location} · {/if}
-							{#if ev.location}{ev.location}{/if}
-						</p>
-					{/if}
-				</div>
-				<div class="agenda-rsvp">
-					<button
-						class="rsvp-btn rsvp-btn--yes"
-						class:active={myR === 'yes'}
-						onclick={() => rsvp(ev.id, 'yes')}
-						aria-label="Zusagen"
-					>
-						<span class="material-symbols-outlined">check</span>
-					</button>
-					<button
-						class="rsvp-btn rsvp-btn--no"
-						class:active={myR === 'no'}
-						onclick={() => rsvp(ev.id, 'no')}
-						aria-label="Absagen"
-					>
-						<span class="material-symbols-outlined">close</span>
-					</button>
-				</div>
-			</div>
-			{/each}
-		</div>
-	</section>
-	{/if}
-
-	<!-- ── E) Karriere-Meilensteine ─────────────────────── -->
-	{#if milestones.length}
-	<section class="milestones">
-		<h2 class="section-title">
-			<span class="material-symbols-outlined">workspace_premium</span>
-			Karriere-Meilensteine
-		</h2>
-		<div class="milestones-scroll">
-			{#each milestones as m}
-			<div class="milestone-card">
-				<span class="milestone-icon material-symbols-outlined">{m.icon}</span>
-				<p class="milestone-label">{m.label}</p>
-				<p class="milestone-sub">{m.sub}</p>
-			</div>
-			{/each}
-		</div>
-	</section>
-	{/if}
-
-	<!-- ── F) Benachrichtigungen ─────────────────────────── -->
-	<section class="card">
-		<h2 class="section-title">
-			<span class="material-symbols-outlined">notifications</span>
-			Benachrichtigungen
-		</h2>
-		<button class="btn btn--outline btn--push" onclick={togglePush}>
-			<span class="material-symbols-outlined">{pushOn ? 'notifications_active' : 'notifications_off'}</span>
-			{pushOn ? 'Push deaktivieren' : 'Push aktivieren'}
-		</button>
-		<div class="prefs">
-			{#each [
-				{ k: 'lineup',  label: 'Aufstellung' },
-				{ k: 'meetup',  label: 'Treffpunkt'  },
-				{ k: 'news',    label: 'News'        },
-				{ k: 'poll',    label: 'Umfragen'    },
-			] as p}
-				<label class="toggle">
-					<span>{p.label}</span>
-					<input
-						type="checkbox"
-						checked={me.push_prefs?.[p.k] ?? true}
-						onchange={(e) => updatePref(p.k, e.target.checked)}
-					/>
+				<label class="field">
+					<span>Telefon</span>
+					<input type="tel" bind:value={me.phone} placeholder="+43 …" />
 				</label>
-			{/each}
-		</div>
-	</section>
+				<div class="fields-row">
+					<label class="field">
+						<span>Trikotgröße</span>
+						<select bind:value={me.shirt_size}>
+							<option value="">–</option>
+							{#each ['XS','S','M','L','XL','XXL','XXXL'] as s}
+								<option value={s}>{s}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="field">
+						<span>Hosengröße</span>
+						<input type="text" bind:value={me.pants_size} placeholder="z.B. 32/32" />
+					</label>
+				</div>
+			</div>
 
-	<!-- ── G) Abwesenheiten (Placeholder) ────────────────── -->
-	<section class="card placeholder-section">
-		<h2 class="section-title">
-			<span class="material-symbols-outlined">event_busy</span>
-			Abwesenheiten
-		</h2>
-		<p class="placeholder-hint">Demnächst: Abwesenheiten für Spieltermine melden, damit der Kapitän bei der Aufstellung Bescheid weiß.</p>
-	</section>
+			<button class="btn btn--primary" onclick={save}>
+				<span class="material-symbols-outlined">check</span> Speichern
+			</button>
+			{#if msg}<p class="msg">{msg}</p>{/if}
+		</section>
 
-	<!-- ── H) Offene Aktionen (Placeholder) ──────────────── -->
-	<section class="card placeholder-section">
-		<h2 class="section-title">
-			<span class="material-symbols-outlined">pending_actions</span>
-			Offene Aktionen
-		</h2>
-		<p class="placeholder-hint">Hier erscheinen bald Aktionen wie die Bestätigung zur Jahreshauptversammlung oder Abstimmungen zum Vereinsdress.</p>
-	</section>
-
-	<!-- ── I) Admin-Bereich ───────────────────────────────── -->
-	{#if $playerRole === 'admin'}
-		<section class="profil-admin">
-			<h3>
-				<span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24;font-size:1.1rem">shield_person</span>
-				Admin-Bereich
-			</h3>
-			<div class="admin-tile-grid">
-				<a href="/admin/spieler"  class="admin-tile"><span class="material-symbols-outlined">group</span>Spieler</a>
-				<a href="/admin/teams"    class="admin-tile"><span class="material-symbols-outlined">shield</span>Teams</a>
-				<a href="/admin/saison"   class="admin-tile"><span class="material-symbols-outlined">upload_file</span>Saison</a>
-				<a href="/admin/training" class="admin-tile"><span class="material-symbols-outlined">fitness_center</span>Training</a>
-				<a href="/admin/news"     class="admin-tile"><span class="material-symbols-outlined">campaign</span>News</a>
-				<a href="/admin"          class="admin-tile"><span class="material-symbols-outlined">dashboard</span>Übersicht</a>
+		<!-- B) Meine Stats -->
+		{#if myStats}
+		<section class="stats-mini">
+			<h2 class="section-title">
+				<span class="material-symbols-outlined">bar_chart</span>
+				Meine Performance
+			</h2>
+			<div class="stats-chips">
+				<div class="stats-chip stats-chip--primary">
+					<span class="stats-chip-label">Schnitt</span>
+					<span class="stats-chip-value">{myStats.avg}</span>
+				</div>
+				<div class="stats-chip">
+					<span class="stats-chip-label">Rang</span>
+					<span class="stats-chip-value">#{myStats.rank}</span>
+				</div>
+				<div class="stats-chip">
+					<span class="stats-chip-label">Form Ø5</span>
+					<span class="stats-chip-value">
+						{myStats.avg5}
+						{#if myStats.avg5 > myStats.avg}
+							<span class="trend-up">▲</span>
+						{:else if myStats.avg5 < myStats.avg}
+							<span class="trend-dn">▼</span>
+						{/if}
+					</span>
+				</div>
+				<div class="stats-chip">
+					<span class="stats-chip-label">Rekord</span>
+					<span class="stats-chip-value">{myStats.best}</span>
+				</div>
 			</div>
 		</section>
-	{/if}
+		{/if}
 
-	<button class="btn btn--ghost btn--logout" onclick={signOut}>
-		<span class="material-symbols-outlined">logout</span> Abmelden
-	</button>
+		<!-- C) Nächstes Spiel -->
+		{#if nextMatch}
+		{@const badge = daysUntil(nextMatch.date)}
+		<section class="next-match-card">
+			<div class="next-match-head">
+				<h3 class="section-title">
+					<span class="material-symbols-outlined">emoji_events</span>
+					Nächstes Spiel &amp; Logistik
+				</h3>
+				<span class="days-badge" class:days-badge--urgent={badge === 'Heute' || badge === 'Morgen'}>{badge}</span>
+			</div>
+			<div class="next-match-body">
+				<div class="next-match-info">
+					<div>
+						<p class="match-meta-label">Gegner / Liga</p>
+						<h4 class="match-opponent">{nextMatch.opponent}</h4>
+						<p class="match-league">{nextMatch.leagues?.name ?? ''} · {nextMatch.home_away === 'HEIM' ? 'Heimspiel' : 'Auswärts'}</p>
+					</div>
+					<div class="match-date-block">
+						<p class="match-meta-label">Termin</p>
+						<p class="match-date">{fmtDate(nextMatch.date)}</p>
+						{#if nextMatch.time}
+							<p class="match-time">{String(nextMatch.time).slice(0,5)} Uhr</p>
+						{/if}
+					</div>
+				</div>
+				<a href="/spielbetrieb" class="match-link-row">
+					<div class="match-link-icon">
+						<span class="material-symbols-outlined">sports_score</span>
+					</div>
+					<div class="match-link-text">
+						<p class="match-meta-label">Spielbetrieb</p>
+						<p class="match-link-label">Aufstellung &amp; Treffpunkt ansehen</p>
+					</div>
+					<span class="material-symbols-outlined match-link-arrow">open_in_new</span>
+				</a>
+			</div>
+		</section>
+		{/if}
+
+		<!-- D) Vereinstermine Agenda -->
+		{#if events.length}
+		<section class="card">
+			<h2 class="section-title">
+				<span class="material-symbols-outlined">event</span>
+				Vereinstermine
+			</h2>
+			<div class="agenda">
+				{#each events as ev}
+				{@const d = new Date(ev.date + 'T00:00:00')}
+				{@const myR = myRsvp(ev.id)}
+				<div class="agenda-item">
+					<div class="agenda-date-col">
+						<span class="agenda-day">{d.getDate()}</span>
+						<span class="agenda-month">{MONTHS[d.getMonth()]}</span>
+					</div>
+					<div class="agenda-info">
+						<p class="agenda-title">{ev.title}</p>
+						{#if ev.time || ev.location}
+							<p class="agenda-sub">
+								{#if ev.time}{String(ev.time).slice(0,5)} Uhr{/if}
+								{#if ev.time && ev.location} · {/if}
+								{#if ev.location}{ev.location}{/if}
+							</p>
+						{/if}
+					</div>
+					<div class="agenda-rsvp">
+						<button
+							class="rsvp-btn rsvp-btn--yes"
+							class:active={myR === 'yes'}
+							onclick={() => rsvp(ev.id, 'yes')}
+							aria-label="Zusagen"
+						>
+							<span class="material-symbols-outlined">check</span>
+						</button>
+						<button
+							class="rsvp-btn rsvp-btn--no"
+							class:active={myR === 'no'}
+							onclick={() => rsvp(ev.id, 'no')}
+							aria-label="Absagen"
+						>
+							<span class="material-symbols-outlined">close</span>
+						</button>
+					</div>
+				</div>
+				{/each}
+			</div>
+		</section>
+		{/if}
+
+		<!-- E) Karriere-Meilensteine -->
+		{#if milestones.length}
+		<section class="milestones">
+			<h2 class="section-title">
+				<span class="material-symbols-outlined">workspace_premium</span>
+				Karriere-Meilensteine
+			</h2>
+			<div class="milestones-scroll">
+				{#each milestones as m}
+				<div class="milestone-card">
+					<span class="milestone-icon material-symbols-outlined">{m.icon}</span>
+					<p class="milestone-label">{m.label}</p>
+					<p class="milestone-sub">{m.sub}</p>
+				</div>
+				{/each}
+			</div>
+		</section>
+		{/if}
+
+	<!-- ════════════════════════════════════════════════════ -->
+	<!-- TAB: EINSTELLUNGEN                                   -->
+	<!-- ════════════════════════════════════════════════════ -->
+	{:else if activeTab === 'einstellungen'}
+
+		<!-- F) Benachrichtigungen -->
+		<section class="card">
+			<h2 class="section-title">
+				<span class="material-symbols-outlined">notifications</span>
+				Benachrichtigungen
+			</h2>
+			<button class="btn btn--outline btn--push" onclick={togglePush}>
+				<span class="material-symbols-outlined">{pushOn ? 'notifications_active' : 'notifications_off'}</span>
+				{pushOn ? 'Push deaktivieren' : 'Push aktivieren'}
+			</button>
+			<div class="prefs">
+				{#each [
+					{ k: 'lineup',  label: 'Aufstellung' },
+					{ k: 'meetup',  label: 'Treffpunkt'  },
+					{ k: 'news',    label: 'News'        },
+					{ k: 'poll',    label: 'Umfragen'    },
+				] as p}
+					<label class="toggle">
+						<span>{p.label}</span>
+						<input
+							type="checkbox"
+							checked={me.push_prefs?.[p.k] ?? true}
+							onchange={(e) => updatePref(p.k, e.target.checked)}
+						/>
+					</label>
+				{/each}
+			</div>
+		</section>
+
+		<!-- G) Abwesenheiten (Placeholder) -->
+		<section class="card placeholder-section">
+			<h2 class="section-title">
+				<span class="material-symbols-outlined">event_busy</span>
+				Abwesenheiten
+			</h2>
+			<p class="placeholder-hint">Demnächst: Abwesenheiten für Spieltermine melden, damit der Kapitän bei der Aufstellung Bescheid weiß.</p>
+		</section>
+
+		<!-- H) Offene Aktionen (Placeholder) -->
+		<section class="card placeholder-section">
+			<h2 class="section-title">
+				<span class="material-symbols-outlined">pending_actions</span>
+				Offene Aktionen
+			</h2>
+			<p class="placeholder-hint">Hier erscheinen bald Aktionen wie die Bestätigung zur Jahreshauptversammlung oder Abstimmungen zum Vereinsdress.</p>
+		</section>
+
+		<!-- Abmelden -->
+		<button class="btn btn--ghost btn--logout" onclick={signOut}>
+			<span class="material-symbols-outlined">logout</span> Abmelden
+		</button>
+
+	<!-- ════════════════════════════════════════════════════ -->
+	<!-- TAB: ADMIN                                           -->
+	<!-- ════════════════════════════════════════════════════ -->
+	{:else if activeTab === 'admin' && $playerRole === 'admin'}
+
+		<div class="admin-header">
+			<span class="material-symbols-outlined admin-header-icon">shield_person</span>
+			<div>
+				<h2 class="admin-header-title">Admin-Panel</h2>
+				<p class="admin-header-sub">Verwaltung · KV Wiener Neustadt</p>
+			</div>
+		</div>
+
+		{#each ADMIN_SECTIONS as section}
+		<section class="admin-section">
+			<div class="admin-section-head">
+				<div class="admin-section-icon" style="background: {section.color}20; color: {section.color}">
+					<span class="material-symbols-outlined">{section.icon}</span>
+				</div>
+				<h3 class="admin-section-title">{section.title}</h3>
+			</div>
+			<div class="admin-action-grid">
+				{#each section.actions as action}
+				<button
+					class="admin-action"
+					onclick={() => adminPlaceholder(action.fn)}
+				>
+					<span class="material-symbols-outlined admin-action-icon" style="color: {section.color}">{action.icon}</span>
+					<span class="admin-action-label">{action.label}</span>
+					<span class="admin-action-badge">Bald</span>
+				</button>
+				{/each}
+			</div>
+		</section>
+		{/each}
+
+		<div class="admin-version">
+			<span class="material-symbols-outlined">info</span>
+			Admin-Panel v0.1 · Alle Funktionen sind Platzhalter
+		</div>
+
+	{/if}
+	<!-- end tab conditionals -->
 
 	{/if}<!-- end {#if me} -->
 </div>
@@ -492,18 +625,6 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-4);
-}
-
-/* ── Header ─────────────────────────────────────────── */
-.phdr {
-	display: flex;
-	gap: 6px;
-	align-items: center;
-	font-family: var(--font-display);
-	font-weight: 700;
-	font-size: 1.3rem;
-	color: var(--color-primary);
-	margin: 0;
 }
 
 /* ── Sektion-Titel ──────────────────────────────────── */
@@ -978,5 +1099,141 @@
 	color: var(--color-on-surface-variant);
 	margin: 0;
 	line-height: 1.5;
+}
+
+/* ── Admin Panel ────────────────────────────────────── */
+.admin-header {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	background: linear-gradient(135deg, rgba(204,0,0,0.08) 0%, rgba(204,0,0,0.04) 100%);
+	border: 1px solid rgba(204,0,0,0.15);
+	border-radius: 16px;
+}
+
+.admin-header-icon {
+	font-size: 2rem;
+	color: var(--color-primary);
+	font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 48;
+	flex-shrink: 0;
+}
+
+.admin-header-title {
+	font-family: var(--font-display);
+	font-weight: 900;
+	font-size: 1.15rem;
+	color: var(--color-on-surface);
+	margin: 0;
+}
+
+.admin-header-sub {
+	font-size: 0.78rem;
+	color: var(--color-on-surface-variant);
+	margin: 2px 0 0;
+}
+
+.admin-section {
+	background: var(--color-surface-container-lowest);
+	border: 1px solid var(--color-surface-container);
+	border-radius: 16px;
+	padding: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.admin-section-head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.admin-section-icon {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	display: grid;
+	place-items: center;
+	flex-shrink: 0;
+}
+
+.admin-section-icon .material-symbols-outlined {
+	font-size: 1.2rem;
+	font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
+.admin-section-title {
+	font-family: var(--font-display);
+	font-weight: 800;
+	font-size: 0.9rem;
+	color: var(--color-on-surface);
+	margin: 0;
+}
+
+.admin-action-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.admin-action {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-2);
+	border: none;
+	background: none;
+	border-radius: 10px;
+	cursor: pointer;
+	text-align: left;
+	font-family: inherit;
+	-webkit-tap-highlight-color: transparent;
+	transition: background 120ms;
+	width: 100%;
+}
+
+.admin-action:active {
+	background: var(--color-surface-container-low);
+}
+
+.admin-action-icon {
+	font-size: 1.2rem;
+	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	flex-shrink: 0;
+	width: 24px;
+	text-align: center;
+}
+
+.admin-action-label {
+	flex: 1;
+	font-size: 0.88rem;
+	font-weight: 600;
+	color: var(--color-on-surface);
+}
+
+.admin-action-badge {
+	font-size: 0.68rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--color-surface-container-high);
+	color: var(--color-on-surface-variant);
+}
+
+.admin-version {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	font-size: 0.75rem;
+	color: var(--color-on-surface-variant);
+	padding: var(--space-3);
+}
+
+.admin-version .material-symbols-outlined {
+	font-size: 1rem;
 }
 </style>

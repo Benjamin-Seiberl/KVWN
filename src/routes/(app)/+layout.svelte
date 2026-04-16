@@ -7,6 +7,7 @@
 	import { initScrollListener } from '$lib/stores/scroll.js';
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import PagePill   from '$lib/components/PagePill.svelte';
 
 	let { children } = $props();
 
@@ -23,8 +24,12 @@
 {#if $isMember === true}
 <div class="app-shell">
 
+	<!-- Dynamic Island Pill – lives OUTSIDE <main> so position:fixed
+	     is always relative to the viewport (no overflow-y:auto ancestor) -->
+	<PagePill />
+
 	<main class="page-content">
-		<!-- Header scrollt mit dem Inhalt; Pill bleibt via position:fixed oben -->
+		<!-- Header scrolls with content -->
 		<PageHeader />
 
 		{#if $navigating}
