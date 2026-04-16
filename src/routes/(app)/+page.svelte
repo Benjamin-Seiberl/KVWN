@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { user } from '$lib/stores/auth';
 	import { currentSubtab } from '$lib/stores/subtab.js';
@@ -9,7 +10,14 @@
 	import QuickActions    from '$lib/components/dashboard/QuickActions.svelte';
 	import UpcomingEvents  from '$lib/components/dashboard/UpcomingEvents.svelte';
 
-	let firstName = $state('');
+	let firstName        = $state('');
+	let greetingVisible  = $state(true);
+
+	// Wave animation: 0.8s delay + 2.4s duration = 3.2s. Collapse shortly after.
+	onMount(() => {
+		const t = setTimeout(() => { greetingVisible = false; }, 3600);
+		return () => clearTimeout(t);
+	});
 
 	function greeting() {
 		const h = new Date().getHours();
@@ -38,7 +46,7 @@
 <div class="page active dash">
 
 	<!-- Greeting header -->
-	<header class="dash-header" style="--i:0">
+	<header class="dash-header" class:dash-header--gone={!greetingVisible} style="--i:0">
 		<p class="dash-date">{todayLabel()}</p>
 		<h1 class="dash-greeting">
 			{greeting()}{firstName ? ', ' + firstName : ''}
@@ -106,6 +114,18 @@
 		padding: var(--space-4) var(--space-5) var(--space-2);
 		animation: dash-up 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
 		animation-delay: calc(var(--i) * 60ms + 40ms);
+		max-height: 120px;
+		overflow: hidden;
+		transition:
+			max-height 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+			opacity    0.4s  ease,
+			padding    0.55s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+	.dash-header--gone {
+		max-height: 0;
+		opacity: 0;
+		padding-top: 0;
+		padding-bottom: 0;
 	}
 	.dash-date {
 		margin: 0 0 2px;
