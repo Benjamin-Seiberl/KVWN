@@ -5,9 +5,11 @@
 	import { page, navigating } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { initScrollListener } from '$lib/stores/scroll.js';
-	import BottomNav from '$lib/components/BottomNav.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import PagePill   from '$lib/components/PagePill.svelte';
+	import BottomNav       from '$lib/components/BottomNav.svelte';
+	import PageHeader      from '$lib/components/PageHeader.svelte';
+	import PagePill        from '$lib/components/PagePill.svelte';
+	import SpotlightSearch from '$lib/components/SpotlightSearch.svelte';
+	import { spotlightOpen } from '$lib/stores/spotlight.js';
 
 	let { children } = $props();
 
@@ -214,6 +216,9 @@
 	</main>
 
 	<BottomNav />
+
+	<!-- Spotlight Search Overlay (portal'd to body) -->
+	<SpotlightSearch bind:open={$spotlightOpen} />
 
 </div>
 {/if}
