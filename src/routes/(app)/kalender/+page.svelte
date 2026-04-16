@@ -68,7 +68,7 @@
 
 	function eventType(d) {
 		const key = fmt(viewYear, viewMonth, d);
-		if (matches.some(x => x.date === key)) return 'match';
+		if (matches.some(x => x.date === key && x.opponent?.toLowerCase() !== 'spielfrei')) return 'match';
 		if (events.some(x  => x.date === key)) return 'event';
 		return null;
 	}
@@ -113,7 +113,7 @@
 
 	const selectedKey = $derived(selectedDay ? fmt(viewYear, viewMonth, selectedDay) : null);
 
-	const selectedMatches = $derived(matches.filter(m => m.date === selectedKey));
+	const selectedMatches = $derived(matches.filter(m => m.date === selectedKey && m.opponent?.toLowerCase() !== 'spielfrei'));
 	const selectedEvents  = $derived(events.filter(e => e.date === selectedKey));
 
 	// ── Unified chronological timeline for selected day ───────────────────────
@@ -380,7 +380,6 @@
 				{/each}
 			</div>
 			<div class="kal-legend">
-				<div class="kal-legend-item"><span class="kal-legend-dot kal-legend-dot--training"></span><span>Training</span></div>
 				<div class="kal-legend-item"><span class="kal-legend-dot kal-legend-dot--match"></span><span>Match</span></div>
 				<div class="kal-legend-item"><span class="kal-legend-dot kal-legend-dot--event"></span><span>Event</span></div>
 			</div>
