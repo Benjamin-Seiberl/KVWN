@@ -17,14 +17,14 @@
 
 	// ── 8 Siri-style suggestions (4 × 2 grid) ──────────────────
 	const SUGGESTIONS = [
-		{ id: 's1', label: 'Spielbetrieb', icon: 'emoji_events',   grad: 'linear-gradient(145deg,#CC0000,#9E0000)',   path: '/spielbetrieb' },
-		{ id: 's2', label: 'Kalender',     icon: 'calendar_month', grad: 'linear-gradient(145deg,#2563EB,#1D4ED8)',   path: '/kalender'     },
-		{ id: 's3', label: 'Statistiken',  icon: 'bar_chart',      grad: 'linear-gradient(145deg,#D4AF37,#B8960C)',   path: '/spielbetrieb' },
-		{ id: 's4', label: 'Training',     icon: 'fitness_center', grad: 'linear-gradient(145deg,#16A34A,#15803D)',   path: '/kalender'     },
-		{ id: 's5', label: 'Aufstellung',  icon: 'groups',         grad: 'linear-gradient(145deg,#7C3AED,#6D28D9)',   path: '/spielbetrieb' },
-		{ id: 's6', label: 'Neuigkeiten',  icon: 'newspaper',      grad: 'linear-gradient(145deg,#EA580C,#C2410C)',   path: '/'             },
-		{ id: 's7', label: 'Profil',       icon: 'person',         grad: 'linear-gradient(145deg,#0891B2,#0E7490)',   path: '/profil'       },
-		{ id: 's8', label: 'Events',       icon: 'celebration',    grad: 'linear-gradient(145deg,#DB2777,#BE185D)',   path: '/'             },
+		{ id: 's1', label: 'Spielbetrieb', emoji: '🎳', grad: 'linear-gradient(160deg,#E53E3E,#9E0000)',   path: '/spielbetrieb' },
+		{ id: 's2', label: 'Kalender',     emoji: '📅', grad: 'linear-gradient(160deg,#4299E1,#1A56DB)',   path: '/kalender'     },
+		{ id: 's3', label: 'Statistiken',  emoji: '📊', grad: 'linear-gradient(160deg,#ECC94B,#B7791F)',   path: '/spielbetrieb' },
+		{ id: 's4', label: 'Training',     emoji: '🎯', grad: 'linear-gradient(160deg,#48BB78,#276749)',   path: '/kalender'     },
+		{ id: 's5', label: 'Aufstellung',  emoji: '🏅', grad: 'linear-gradient(160deg,#9F7AEA,#553C9A)',   path: '/spielbetrieb' },
+		{ id: 's6', label: 'Neuigkeiten',  emoji: '📰', grad: 'linear-gradient(160deg,#F6AD55,#C05621)',   path: '/'             },
+		{ id: 's7', label: 'Profil',       emoji: '🪪', grad: 'linear-gradient(160deg,#4FD1C5,#285E61)',   path: '/profil'       },
+		{ id: 's8', label: 'Events',       emoji: '🎉', grad: 'linear-gradient(160deg,#F687B3,#97266D)',   path: '/'             },
 	];
 
 	// ── Portal: rendert direkt in <body> ──────────────────────
@@ -168,7 +168,7 @@
 					"
 				>
 					<div class="spot-app-icon" style="background:{s.grad}">
-						<span class="material-symbols-outlined">{s.icon}</span>
+						<span class="spot-app-emoji">{s.emoji}</span>
 					</div>
 					<span class="spot-app-label">{s.label}</span>
 				</button>
@@ -284,9 +284,9 @@
 	flex-direction: column;
 	overflow-y: auto;
 	-webkit-overflow-scrolling: touch;
-	background: rgba(0, 0, 0, 0.25);
-	backdrop-filter: blur(25px) saturate(1.5);
-	-webkit-backdrop-filter: blur(25px) saturate(1.5);
+	background: rgba(4, 4, 12, 0.72);
+	backdrop-filter: blur(60px) saturate(1.8);
+	-webkit-backdrop-filter: blur(60px) saturate(1.8);
 	padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
 	padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
 }
@@ -424,10 +424,11 @@
 		0 1px 4px rgba(0, 0, 0, 0.2);
 	transition: transform 150ms cubic-bezier(0.34, 1.3, 0.64, 1);
 }
-.spot-app-icon .material-symbols-outlined {
-	font-size: 1.6rem;
-	color: #fff;
-	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+.spot-app-emoji {
+	font-size: 1.75rem;
+	line-height: 1;
+	display: block;
+	filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
 }
 
 .spot-app-label {
@@ -459,11 +460,11 @@
 
 /* Glassmorphism container for result rows */
 .spot-glass-box {
-	background: rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.09);
 	backdrop-filter: blur(24px);
 	-webkit-backdrop-filter: blur(24px);
 	border-radius: 20px;
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.14);
 	overflow: hidden;
 }
 
