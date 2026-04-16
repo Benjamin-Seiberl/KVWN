@@ -96,19 +96,9 @@
 	});
 
 	let lineupCount = $derived(!loadingLineup && pendingEntry ? 1 : 0);
-	let totalCount  = $derived(lineupCount); // extend when other sections are real
 </script>
 
 <div class="widget widget--card ah">
-	<!-- Header -->
-	<div class="widget-header">
-		<span class="material-symbols-outlined widget-icon">task_alt</span>
-		<h3 class="widget-title">Meine Aufgaben</h3>
-		{#if totalCount > 0}
-			<span class="ah-total-badge">{totalCount}</span>
-		{/if}
-	</div>
-
 	<!-- Aufstellungsbestätigung -->
 	<div
 		class="ah-item"
@@ -238,28 +228,6 @@
 	/* Action Hub container – gap override: items have own spacing */
 	.ah {
 		gap: 0;
-	}
-
-	.ah .widget-header {
-		padding-bottom: var(--space-4);
-		border-bottom: 1px solid var(--color-outline-variant);
-		margin-bottom: var(--space-1);
-	}
-
-	.ah-total-badge {
-		margin-left: auto;
-		min-width: 1.4rem;
-		height: 1.4rem;
-		padding: 0 var(--space-2);
-		background: var(--color-primary);
-		color: #fff;
-		border-radius: var(--radius-full);
-		font-family: var(--font-display);
-		font-size: 0.72rem;
-		font-weight: 700;
-		display: flex;
-		align-items: center;
-		justify-content: center;
 	}
 
 	/* --- Item row --- */

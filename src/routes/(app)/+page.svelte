@@ -48,19 +48,31 @@
 
 	{#if $currentSubtab === 'neuigkeiten'}
 
-		<!-- Action Hub (lineup confirm + polls + events + tournaments + LM) -->
+		<!-- Match carousel -->
 		<div class="dash-section" style="--i:1">
-			<ActionHub />
+			<div class="sec-head">
+				<span class="material-symbols-outlined sec-icon">sports_score</span>
+				<h3 class="sec-title">Spiele der Woche</h3>
+			</div>
+			<MatchCarousel />
 		</div>
 
 		<!-- My next match (only if on lineup) -->
 		<div class="dash-section" style="--i:2; padding: 0 var(--space-5);">
+			<div class="sec-head">
+				<span class="material-symbols-outlined sec-icon">emoji_events</span>
+				<h3 class="sec-title">Mein nächstes Spiel</h3>
+			</div>
 			<MyNextMatchCard />
 		</div>
 
-		<!-- Match carousel -->
+		<!-- Action Hub (lineup confirm + polls + events + tournaments + LM) -->
 		<div class="dash-section" style="--i:3">
-			<MatchCarousel />
+			<div class="sec-head">
+				<span class="material-symbols-outlined sec-icon">task_alt</span>
+				<h3 class="sec-title">Meine Aufgaben</h3>
+			</div>
+			<ActionHub />
 		</div>
 
 		<!-- Quick Actions -->
@@ -136,5 +148,26 @@
 	@keyframes dash-up {
 		from { opacity: 0; transform: translateY(20px); }
 		to   { opacity: 1; transform: translateY(0); }
+	}
+
+	/* Section header — matches QuickActions .qa-header style */
+	.sec-head {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		padding: 0 var(--space-5);
+		margin-bottom: var(--space-3);
+	}
+	.sec-icon {
+		font-size: 1.1rem;
+		color: var(--color-primary);
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.sec-title {
+		margin: 0;
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: 1rem;
+		color: var(--color-on-surface);
 	}
 </style>
