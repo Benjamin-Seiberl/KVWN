@@ -6,9 +6,8 @@
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
-	let matches     = $state([]);
-	let kaders      = $state([]);
-	let loading     = $state(true);
+	let matches  = $state([]);
+	let loading  = $state(true);
 	let current     = $state(0);
 	let dotProgress = $state(0);   // float, z.B. 1.47 während des Swipens
 	let hasSwiped   = $state(false);
@@ -51,11 +50,6 @@
 			d.getDate() + '.' + (d.getMonth() + 1) + '. \u2022 ' + formatTime(m.time) + ' Uhr';
 	}
 
-	function imgPath(photo, name) {
-		const key = photo || name;
-		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
-	}
-
 	// ── Daten laden ───────────────────────────────────────────
 	async function loadData() {
 		const range = getWeekRange();
@@ -74,23 +68,6 @@
 
 		if (error || !data?.length) { loading = false; return; }
 		matches = data;
-
-		kaders = await Promise.all(matches.map(async m => {
-			const { data: gp } = await sb
-				.from('game_plans')
-				.select('id, leagues!inner(name), game_plan_players(player_name, score, played, position, players(name, photo))')
-				.eq('cal_week', m.cal_week)
-				.eq('leagues.name', m.leagues?.name ?? '')
-				.maybeSingle();
-			const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4;
-			const starters = (gp?.game_plan_players ?? [])
-				.filter(p => (p.position ?? 99) <= starterCount)
-				.sort((a, b) => a.position - b.position);
-			// Nur noch nicht gespielte Spieler anzeigen
-			const pending = starters.filter(p => p.played !== true);
-			return { starters, pending };
-		}));
-
 		loading = false;
 	}
 
@@ -102,7 +79,9 @@
 
 		const track  = () => trackEl;
 		const W      = () => widget.offsetWidth;
-		const stride = () => W();
+		// Stride must equal slide width (widget--match-combined), not the
+		// carousel-container width which includes side padding.
+		const stride = () => widgetEl?.offsetWidth ?? W();
 		const count  = () => matches.length;
 
 		// ── Parallax + Live-Glow: Content und Liga-Name basierend auf Scroll-Position
@@ -303,13 +282,6 @@
 					<div class="skel-bar skel-bar--opponent shimmer-box"></div>
 					<!-- Datum -->
 					<div class="skel-bar skel-bar--date shimmer-box"></div>
-					<!-- Avatar-Zeile -->
-					<div class="skel-avatars">
-						<div class="skel-avatar shimmer-box"></div>
-						<div class="skel-avatar shimmer-box"></div>
-						<div class="skel-avatar shimmer-box"></div>
-						<div class="skel-avatar shimmer-box"></div>
-					</div>
 				</div>
 			</div>
 		{:else if matches.length === 0}
@@ -321,11 +293,7 @@
 			</div>
 		{:else}
 			{#each matches as m, i}
-				{@const kader      = kaders[i]?.pending  ?? []}
-				{@const allPlayed  = (kaders[i]?.starters?.length ?? 0) > 0 && kader.length === 0}
-				{@const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4}
 				<div class="match-slide">
-					<!-- Hero -->
 					<div class="match-hero-content">
 						<!-- Liga prominent oben -->
 						<div class="match-meta">
@@ -356,34 +324,6 @@
 							</span>
 						{/if}
 					</div>
-
-					<!-- Kader: nur noch nicht gespielte Spieler -->
-					<div class="widget-kader-panel">
-						{#if kader.length > 0}
-							<div class="kader-avatars" class:kader-avatars--6={starterCount === 6}>
-								{#each kader as p}
-									{@const name  = p.players?.name ?? p.player_name}
-									{@const photo = p.players?.photo ?? null}
-									<div class="kader-player">
-										<img
-											class="kader-avatar"
-											src={imgPath(photo, name)}
-											alt={name ?? ''}
-											draggable="false"
-											onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
-										/>
-									</div>
-								{/each}
-							</div>
-						{:else if allPlayed}
-							<p class="kader-empty-text">
-								<span class="material-symbols-outlined" style="font-size:1.1rem;vertical-align:-3px">check_circle</span>
-								Alle haben gespielt
-							</p>
-						{:else}
-							<p class="kader-empty-text">Noch keine Aufstellung</p>
-						{/if}
-					</div>
 				</div>
 			{/each}
 		{/if}
@@ -409,10 +349,8 @@
 
 {#if matches.length > 0}
 	{@const sm = matches[sheetIdx]}
-	{@const sk = kaders[sheetIdx]}
 	{#if sm}
 		<BottomSheet bind:open={sheetOpen} title="Match-Details">
-			<!-- Hero -->
 			<div class="mds-hero">
 				<div class="mds-league">{sm.leagues?.name ?? ''}</div>
 				<div class="mds-chips">
@@ -428,38 +366,6 @@
 					{dateLabelLong(sm)}
 				</p>
 			</div>
-
-			<!-- Aufstellung -->
-			<p class="mds-section">Aufstellung</p>
-			{#if (sk?.starters?.length ?? 0) > 0}
-				<div class="mds-lineup">
-					{#each sk.starters as p}
-						{@const name  = p.players?.name ?? p.player_name}
-						{@const photo = p.players?.photo ?? null}
-						{@const played = p.played === true}
-						<div class="mds-player" class:mds-player--played={played}>
-							<div class="mds-avatar">
-								<img
-									src={imgPath(photo, name)}
-									alt={name ?? ''}
-									onerror={(e) => { e.currentTarget.style.display='none'; }}
-								/>
-								<span class="mds-initial">{(name ?? '?').slice(0,1)}</span>
-							</div>
-							<span class="mds-name">{name}</span>
-							{#if played && p.score != null}
-								<span class="mds-score">{p.score}</span>
-							{:else if played}
-								<span class="material-symbols-outlined mds-check">check_circle</span>
-							{:else}
-								<span class="mds-pos">{p.position}</span>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<p class="mds-empty">Noch keine Aufstellung eingetragen.</p>
-			{/if}
 		</BottomSheet>
 	{/if}
 {/if}
