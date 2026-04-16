@@ -17,7 +17,6 @@
 		return `vor ${Math.floor(s/86400)} Tg.`;
 	}
 
-	// ── Context menu actions ───────────────────────────────────────────────────
 	async function togglePin() {
 		const { error } = await sb
 			.from('announcements')
@@ -76,18 +75,40 @@
 </script>
 
 <ContextMenu actions={contextActions}>
-	<button class="ncard" type="button" onclick={() => open = true}>
+	<button class="ncard" class:ncard--hero={!!news.image_url} type="button" onclick={() => open = true}>
+
 		{#if news.image_url}
-			<img class="ncard-img" src={news.image_url} alt="" />
-		{/if}
-		<div class="ncard-body">
-			<div class="ncard-meta">
-				{#if news.pinned}<span class="ncard-pin">📌</span>{/if}
-				<span>{timeAgo(news.created_at)}</span>
+			<!-- Hero style: full-bleed image with gradient overlay -->
+			<div class="ncard-img-wrap">
+				<img class="ncard-img" src={news.image_url} alt="" draggable="false" />
+				<div class="ncard-img-gradient"></div>
+				{#if news.pinned}
+					<span class="ncard-pin-badge">
+						<span class="material-symbols-outlined">keep</span>
+					</span>
+				{/if}
+				<div class="ncard-img-content">
+					<span class="ncard-meta-hero">{timeAgo(news.created_at)}</span>
+					<h4 class="ncard-title-hero">{news.title}</h4>
+				</div>
 			</div>
-			<h4 class="ncard-title">{news.title}</h4>
-			<p class="ncard-preview">{news.body?.slice(0, 110)}{news.body?.length > 110 ? '…' : ''}</p>
-		</div>
+		{:else}
+			<!-- Editorial style: accent stripe + clean text -->
+			<div class="ncard-editorial">
+				<div class="ncard-accent-bar"></div>
+				<div class="ncard-body">
+					<div class="ncard-meta">
+						{#if news.pinned}
+							<span class="ncard-pin-icon material-symbols-outlined">keep</span>
+						{/if}
+						<span class="ncard-time">{timeAgo(news.created_at)}</span>
+					</div>
+					<h4 class="ncard-title">{news.title}</h4>
+					<p class="ncard-preview">{news.body?.slice(0, 120)}{(news.body?.length ?? 0) > 120 ? '…' : ''}</p>
+				</div>
+			</div>
+		{/if}
+
 	</button>
 </ContextMenu>
 
@@ -97,25 +118,158 @@
 </BottomSheet>
 
 <style>
+	/* ── Base card ── */
 	.ncard {
-		border: 1px solid var(--color-border, #eee);
-		background: var(--color-surface, #fff);
-		border-radius: 14px;
+		display: flex;
+		flex-direction: column;
+		border: none;
 		padding: 0;
+		background: none;
 		text-align: left;
 		cursor: pointer;
 		overflow: hidden;
-		display: flex; flex-direction: column;
-		box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 		width: 100%;
-		transition: transform 150ms cubic-bezier(0.32, 0.72, 0, 1);
+		border-radius: 18px;
+		box-shadow: 0 2px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+		transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1),
+		            box-shadow 160ms ease;
 	}
-	.ncard-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
-	.ncard-body { padding: var(--space-3); display: flex; flex-direction: column; gap: 4px; }
-	.ncard-meta { display: flex; gap: 6px; font-size: 0.72rem; color: var(--color-text-soft, #888); }
-	.ncard-title { margin: 0; font-family: 'Lexend'; font-weight: 600; font-size: 0.95rem; }
-	.ncard-preview { margin: 0; font-size: 0.82rem; color: var(--color-text-soft, #666); }
-	.ncard-pin { color: var(--color-secondary, #D4AF37); }
-	.n-full-img { width: 100%; border-radius: 12px; margin-bottom: var(--space-3); }
-	.n-full-body { white-space: pre-wrap; line-height: 1.6; }
+	.ncard:active {
+		transform: scale(0.97);
+		box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+	}
+
+	/* ── Hero (image) style ── */
+	.ncard-img-wrap {
+		position: relative;
+		width: 100%;
+		aspect-ratio: 16/9;
+		overflow: hidden;
+		border-radius: 18px;
+	}
+	.ncard-img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+		transition: transform 400ms ease;
+	}
+	.ncard:active .ncard-img {
+		transform: scale(1.03);
+	}
+	.ncard-img-gradient {
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			to bottom,
+			transparent 30%,
+			rgba(0,0,0,0.25) 60%,
+			rgba(0,0,0,0.72) 100%
+		);
+	}
+	.ncard-pin-badge {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		background: rgba(212,175,55,0.9);
+		backdrop-filter: blur(8px);
+		border-radius: 50%;
+		width: 30px;
+		height: 30px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.ncard-pin-badge .material-symbols-outlined {
+		font-size: 1rem;
+		color: #fff;
+	}
+	.ncard-img-content {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		padding: 12px 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.ncard-meta-hero {
+		font-size: 0.68rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		color: rgba(255,255,255,0.75);
+		text-transform: uppercase;
+	}
+	.ncard-title-hero {
+		margin: 0;
+		font-family: 'Lexend', sans-serif;
+		font-weight: 700;
+		font-size: 1rem;
+		color: #fff;
+		line-height: 1.25;
+		text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+	}
+
+	/* ── Editorial (no image) style ── */
+	.ncard-editorial {
+		display: flex;
+		background: var(--color-surface, #fff);
+		border-radius: 18px;
+		overflow: hidden;
+		min-height: 100px;
+	}
+	.ncard-accent-bar {
+		width: 4px;
+		flex-shrink: 0;
+		background: linear-gradient(to bottom, var(--color-primary, #CC0000), var(--color-secondary, #D4AF37));
+		border-radius: 4px 0 0 4px;
+	}
+	.ncard-body {
+		padding: 14px 14px 14px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		flex: 1;
+	}
+	.ncard-meta {
+		display: flex;
+		gap: 6px;
+		align-items: center;
+		font-size: 0.70rem;
+		color: var(--color-text-soft, #888);
+	}
+	.ncard-pin-icon {
+		font-size: 0.85rem;
+		color: var(--color-secondary, #D4AF37);
+	}
+	.ncard-time { font-weight: 500; }
+	.ncard-title {
+		margin: 0;
+		font-family: 'Lexend', sans-serif;
+		font-weight: 700;
+		font-size: 0.95rem;
+		color: var(--color-text, #1a1a1a);
+		line-height: 1.3;
+	}
+	.ncard-preview {
+		margin: 0;
+		font-size: 0.80rem;
+		color: var(--color-text-soft, #666);
+		line-height: 1.5;
+	}
+
+	/* ── Bottom sheet content ── */
+	.n-full-img {
+		width: 100%;
+		border-radius: 14px;
+		margin-bottom: var(--space-3);
+		object-fit: cover;
+	}
+	.n-full-body {
+		white-space: pre-wrap;
+		line-height: 1.7;
+		color: var(--color-text, #1a1a1a);
+		font-size: 0.95rem;
+	}
 </style>

@@ -100,6 +100,12 @@
 {#if !dismissed && !loading && pendingEntry && match}
 	<div class="lcc" class:lcc--exit={exiting}>
 
+		<!-- Urgency banner -->
+		<div class="lcc-banner">
+			<span class="lcc-pulse-dot"></span>
+			<span class="lcc-banner-text">Aufstellungsbestätigung erforderlich</span>
+		</div>
+
 		<!-- Header -->
 		<div class="lcc-header">
 			<div class="lcc-header-left">
@@ -112,7 +118,7 @@
 			</div>
 		</div>
 
-		<!-- Aufstellung -->
+		<!-- Avatars -->
 		<div class="lcc-avatars">
 			{#each teammates as p}
 				{@const name  = p.players?.name ?? p.player_name}
@@ -135,7 +141,7 @@
 			{/each}
 		</div>
 
-		<!-- Aktionen -->
+		<!-- Actions -->
 		<div class="lcc-actions">
 			<button class="lcc-btn lcc-btn--decline" onclick={() => respond(false)} disabled={busy}>
 				<span class="material-symbols-outlined">close</span>
@@ -149,3 +155,34 @@
 
 	</div>
 {/if}
+
+<style>
+	/* Urgency banner */
+	.lcc-banner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px var(--space-4);
+		background: rgba(204, 0, 0, 0.06);
+		border-bottom: 1px solid rgba(204, 0, 0, 0.10);
+	}
+	.lcc-banner-text {
+		font-size: 0.70rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--color-primary, #CC0000);
+	}
+	.lcc-pulse-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--color-primary, #CC0000);
+		flex-shrink: 0;
+		animation: lcc-pulse 1.8s ease-in-out infinite;
+	}
+	@keyframes lcc-pulse {
+		0%, 100% { transform: scale(1);   opacity: 1;   box-shadow: 0 0 0 0 rgba(204,0,0,0.5); }
+		50%       { transform: scale(1.1); opacity: 0.8; box-shadow: 0 0 0 5px rgba(204,0,0,0); }
+	}
+</style>
