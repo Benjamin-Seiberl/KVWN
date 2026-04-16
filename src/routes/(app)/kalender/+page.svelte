@@ -419,12 +419,9 @@
 		{/if}
 	</section>
 
-	<div class="tr-divider">
-		<span class="material-symbols-outlined sec-icon">calendar_month</span>
-		<h3 class="sec-title">Kalender</h3>
-	</div>
 {/if}
 
+{#if $currentSubtab === 'events'}
 		<div class="kal-month-header">
 			<div class="kal-month-nav">
 				<button class="kal-nav-btn" onclick={prevMonth} aria-label="Vorheriger Monat">
@@ -620,6 +617,7 @@
 				</div>
 			{/if}
 		</section>
+{/if}
 
 </div>
 </div>
@@ -816,10 +814,6 @@
 		font-weight: 700;
 		font-size: 1rem;
 		color: var(--color-on-surface);
-	}
-	.tr-divider {
-		padding-top: var(--space-2);
-		border-top: 1px solid var(--color-outline-variant);
 	}
 
 	/* ── Training section ── */
