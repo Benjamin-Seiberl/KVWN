@@ -33,14 +33,26 @@
 
 		if (!playerData?.length) { loading = false; return; }
 
-		const { data: allScores } = await sb
-			.from('game_plan_players')
-			.select('player_id, score, game_plans!inner(cal_week)')
-			.in('player_id', playerData.map(p => p.id))
-			.eq('played', true)
-			.not('score', 'is', null)
-			.order('cal_week', { referencedTable: 'game_plans', ascending: false })
-			.limit(1000);
+		// Scores laden – cal_week + league_id für Runden-Lookup mitladen
+		const [{ data: allScores }, { data: matchRounds }] = await Promise.all([
+			sb.from('game_plan_players')
+				.select('player_id, score, game_plans!inner(cal_week, league_id)')
+				.in('player_id', playerData.map(p => p.id))
+				.eq('played', true)
+				.not('score', 'is', null)
+				.order('cal_week', { referencedTable: 'game_plans', ascending: false })
+				.limit(1000),
+			// Runden-Bezeichnungen aller Matches (z.B. F01, H03)
+			sb.from('matches')
+				.select('cal_week, league_id, round')
+				.not('round', 'is', null),
+		]);
+
+		// Lookup: `${cal_week}_${league_id}` → round-Bezeichnung
+		const roundLookup = {};
+		for (const m of matchRounds ?? []) {
+			roundLookup[`${m.cal_week}_${m.league_id}`] = m.round;
+		}
 
 		// Scores pro Spieler gruppieren (bereits DESC nach cal_week)
 		const scoreMap = {};
@@ -49,27 +61,25 @@
 			scoreMap[g.player_id].push(Number(g.score));
 		}
 
-		// Vereinsschnitt pro Runde (cal_week)
-		const weekMap = {};
+		// Vereinsschnitt pro Match-Runde (z.B. F01, H03)
+		const roundMap = {};
 		for (const g of allScores ?? []) {
-			const week = g.game_plans?.cal_week;
-			if (week == null) continue;
-			const key = String(week);
-			if (!weekMap[key]) weekMap[key] = [];
-			weekMap[key].push(Number(g.score));
+			const { cal_week, league_id } = g.game_plans ?? {};
+			if (cal_week == null || league_id == null) continue;
+			const round = roundLookup[`${cal_week}_${league_id}`];
+			if (!round) continue;
+			if (!roundMap[round]) roundMap[round] = [];
+			roundMap[round].push(Number(g.score));
 		}
-		clubAvgSeries = Object.entries(weekMap)
-			.map(([week, scores]) => ({
-				week,
+		clubAvgSeries = Object.entries(roundMap)
+			.map(([round, scores]) => ({
+				round,
 				avg:   Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
 				count: scores.length,
 			}))
-			.sort((a, b) => {
-				const na = Number(a.week), nb = Number(b.week);
-				if (!isNaN(na) && !isNaN(nb)) return na - nb;
-				return a.week.localeCompare(b.week);
-			})
-			.slice(-14); // maximal 14 Runden anzeigen
+			// F01 < F02 < H01 < H02 … funktioniert lexikografisch
+			.sort((a, b) => a.round.localeCompare(b.round))
+			.slice(-6); // letzte 6 Runden
 
 		// Spieler mit Stats aufbauen
 		const withStats = playerData
@@ -245,7 +255,10 @@
 			<div class="stat-card-header">
 				<div>
 					<h2 class="stat-card-title">Vereinsschnitt</h2>
-					<p class="stat-card-sub">Ø aller Spieler · pro Runde · {clubAvgSeries.length} Runden</p>
+					<p class="stat-card-sub">
+						Ø aller Spieler · letzte {clubAvgSeries.length} Runden
+						({clubAvgSeries[0].round}–{clubAvgSeries.at(-1).round})
+					</p>
 				</div>
 				<div class="club-avg-badge">
 					<span class="club-avg-num">{overallClubAvg}</span>
@@ -275,24 +288,24 @@
 				</svg>
 			</div>
 
-			<!-- X-Achse: Rundenbezeichnungen -->
-			<div class="chart-axis chart-axis--club" class:chart-axis--dense={clubAvgSeries.length > 8}>
+			<!-- X-Achse: Rundenbezeichnungen (z.B. F01, H03) -->
+			<div class="chart-axis chart-axis--club">
 				{#each clubAvgSeries as w, i}
-					<span class:axis-active--club={i === clubAvgSeries.length - 1}>{w.week}</span>
+					<span class:axis-active--club={i === clubAvgSeries.length - 1}>{w.round}</span>
 				{/each}
 			</div>
 
 			<!-- Schnitt-Werte -->
-			<div class="chart-scores chart-scores--club" class:chart-scores--dense={clubAvgSeries.length > 8}>
+			<div class="chart-scores chart-scores--club">
 				{#each clubAvgSeries as w, i}
 					<span class:score-active--club={i === clubAvgSeries.length - 1}>{w.avg}</span>
 				{/each}
 			</div>
 
-			<!-- Spieleranzahl pro Runde -->
+			<!-- Ergebnisanzahl pro Runde -->
 			<div class="club-round-row">
 				{#each clubAvgSeries as w}
-					<span class="club-round-count" title="Runde {w.week}">{w.count}×</span>
+					<span class="club-round-count">{w.count}×</span>
 				{/each}
 			</div>
 		</div>
@@ -501,10 +514,8 @@
 .chart-svg  { width: 100%; height: 100%; }
 .chart-axis { display: flex; justify-content: space-between; font-size: var(--text-label-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-on-surface-variant); margin-top: var(--space-2); }
 .chart-axis .axis-active { color: var(--color-primary); }
-.chart-axis--dense { font-size: 0.58rem; letter-spacing: 0.04em; }
 .chart-scores { display: flex; justify-content: space-between; font-family: var(--font-display); font-size: var(--text-label-md); font-weight: 600; color: var(--color-on-surface-variant); margin-top: 2px; }
 .chart-scores .score-active { color: var(--color-primary); font-weight: 800; }
-.chart-scores--dense { font-size: 0.6rem; }
 .chart-axis--club .axis-active--club   { color: var(--color-secondary); }
 .chart-scores--club .score-active--club { color: var(--color-secondary); font-weight: 800; }
 
