@@ -47,11 +47,16 @@
 	// ── Daten laden ───────────────────────────────────────────
 	async function loadData() {
 		const range = getWeekRange();
+		const today = new Date();
+		const todayStr = today.getFullYear() + '-' +
+			String(today.getMonth() + 1).padStart(2, '0') + '-' +
+			String(today.getDate()).padStart(2, '0');
+
 		const { data, error } = await sb
 			.from('matches')
 			.select('id, date, time, home_away, opponent, cal_week, leagues(name)')
-			.gte('date', range.from)
-			.lte('date', range.to)
+			.gte('date', todayStr)   // ab heute
+			.lte('date', range.to)   // bis Ende der laufenden KW
 			.order('date')
 			.order('time');
 
