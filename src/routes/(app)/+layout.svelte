@@ -23,9 +23,10 @@
 {#if $isMember === true}
 <div class="app-shell">
 
-	<PageHeader />
+	<main class="page-content">
+		<!-- Header scrollt mit dem Inhalt; Pill bleibt via position:fixed oben -->
+		<PageHeader />
 
-	<main class="page-content" style="padding-top: calc(7.5rem + env(safe-area-inset-top, 0px));">
 		{#if $navigating}
 			<!-- Skeleton während Navigation -->
 			<div class="page-skeleton animate-fade-float">
