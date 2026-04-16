@@ -4,6 +4,16 @@
 	import { currentPageConfig, currentSubtab, setSubtab } from '$lib/stores/subtab.js';
 	import { playerRole } from '$lib/stores/auth';
 
+	// ── Portal-Action: rendert die Pille direkt in <body> ─────
+	// Verhindert dass overflow-y:auto / position:relative-Ancestors
+	// den Touch-Hit-Test auf iOS Safari blockieren.
+	function portal(node) {
+		document.body.appendChild(node);
+		return {
+			destroy() { node.remove(); }
+		};
+	}
+
 	// ── Visibility ────────────────────────────────────────────
 	let isScrolled = $derived($scrollY > 120);
 
@@ -103,6 +113,7 @@
 <!-- Rendered at the app-shell level so position:fixed is always
      relative to the actual viewport, regardless of overflow ancestors -->
 <div
+	use:portal
 	class="di-pill"
 	class:di-pill--hidden={!isScrolled}
 	class:di-pill--expanded={pillExpanded}
