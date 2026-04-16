@@ -351,7 +351,7 @@
 									<!-- Time column -->
 									<div class="kal-event-time-col kal-event-time-col--training">
 										<span class="kal-event-time-text">
-											{slot.start_time} – {slot.end_time}
+											{slot.end_time} – {slot.start_time}
 										</span>
 									</div>
 
