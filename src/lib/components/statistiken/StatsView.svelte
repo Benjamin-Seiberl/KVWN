@@ -56,12 +56,9 @@
 			roundLookup[`${m.cal_week}_${m.league_id}`] = m.round;
 		}
 
-		// Scores pro Spieler – nur Ligaspiele (via roundLookup-Whitelist)
+		// Scores pro Spieler – alle Spiele inkl. NÖ-Cup
 		const scoreMap = {};
 		for (const g of allScores ?? []) {
-			const { cal_week, league_id } = g.game_plans ?? {};
-			if (cal_week == null || league_id == null) continue;
-			if (!roundLookup[`${cal_week}_${league_id}`]) continue; // Cup herausfiltern
 			if (!scoreMap[g.player_id]) scoreMap[g.player_id] = [];
 			scoreMap[g.player_id].push(Number(g.score));
 		}
