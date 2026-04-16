@@ -10,18 +10,18 @@
 
 	// ── All available shortcuts ──────────────────────────────
 	const ALL_SHORTCUTS = [
-		{ id: 's1',  label: 'Spielbetrieb', emoji: '🎳', grad: 'linear-gradient(160deg,#E53E3E,#9E0000)',  path: '/spielbetrieb' },
-		{ id: 's2',  label: 'Kalender',     emoji: '📅', grad: 'linear-gradient(160deg,#4299E1,#1A56DB)',  path: '/kalender'     },
-		{ id: 's3',  label: 'Statistiken',  emoji: '📊', grad: 'linear-gradient(160deg,#ECC94B,#B7791F)',  path: '/statistiken'  },
-		{ id: 's4',  label: 'Training',     emoji: '🎯', grad: 'linear-gradient(160deg,#48BB78,#276749)',  path: '/kalender'     },
-		{ id: 's5',  label: 'Aufstellung',  emoji: '🏅', grad: 'linear-gradient(160deg,#9F7AEA,#553C9A)',  path: '/spielbetrieb' },
-		{ id: 's6',  label: 'Neuigkeiten',  emoji: '📰', grad: 'linear-gradient(160deg,#F6AD55,#C05621)',  path: '/'             },
-		{ id: 's7',  label: 'Profil',       emoji: '🪪',  grad: 'linear-gradient(160deg,#4FD1C5,#285E61)',  path: '/profil'       },
-		{ id: 's8',  label: 'Events',       emoji: '🎉', grad: 'linear-gradient(160deg,#F687B3,#97266D)',  path: '/'             },
-		{ id: 's9',  label: 'Ergebnisse',   emoji: '🏆', grad: 'linear-gradient(160deg,#F6E05E,#975A16)',  path: '/spielbetrieb' },
-		{ id: 's10', label: 'Tabelle',      emoji: '📋', grad: 'linear-gradient(160deg,#63B3ED,#2C5282)',  path: '/statistiken'  },
-		{ id: 's11', label: 'Mitglieder',   emoji: '👥', grad: 'linear-gradient(160deg,#76E4F7,#0987A0)',  path: '/mehr'         },
-		{ id: 's12', label: 'Absenz',       emoji: '📵', grad: 'linear-gradient(160deg,#FC8181,#9B2C2C)',  path: '/'             },
+		{ id: 's1',  label: 'Spielbetrieb', icon: 'emoji_events',    grad: 'linear-gradient(160deg,#E53E3E,#9E0000)',  path: '/spielbetrieb' },
+		{ id: 's2',  label: 'Kalender',     icon: 'calendar_month',  grad: 'linear-gradient(160deg,#4299E1,#1A56DB)',  path: '/kalender'     },
+		{ id: 's3',  label: 'Statistiken',  icon: 'leaderboard',     grad: 'linear-gradient(160deg,#ECC94B,#B7791F)',  path: '/statistiken'  },
+		{ id: 's4',  label: 'Training',     icon: 'fitness_center',  grad: 'linear-gradient(160deg,#48BB78,#276749)',  path: '/kalender'     },
+		{ id: 's5',  label: 'Aufstellung',  icon: 'sports_score',    grad: 'linear-gradient(160deg,#9F7AEA,#553C9A)',  path: '/spielbetrieb' },
+		{ id: 's6',  label: 'Neuigkeiten',  icon: 'campaign',        grad: 'linear-gradient(160deg,#F6AD55,#C05621)',  path: '/'             },
+		{ id: 's7',  label: 'Profil',       icon: 'person',          grad: 'linear-gradient(160deg,#4FD1C5,#285E61)',  path: '/profil'       },
+		{ id: 's8',  label: 'Events',       icon: 'celebration',     grad: 'linear-gradient(160deg,#F687B3,#97266D)',  path: '/'             },
+		{ id: 's9',  label: 'Ergebnisse',   icon: 'military_tech',   grad: 'linear-gradient(160deg,#F6E05E,#975A16)',  path: '/spielbetrieb' },
+		{ id: 's10', label: 'Tabelle',      icon: 'table_chart',     grad: 'linear-gradient(160deg,#63B3ED,#2C5282)',  path: '/statistiken'  },
+		{ id: 's11', label: 'Mitglieder',   icon: 'group',           grad: 'linear-gradient(160deg,#76E4F7,#0987A0)',  path: '/mehr'         },
+		{ id: 's12', label: 'Absenz',       icon: 'event_busy',      grad: 'linear-gradient(160deg,#FC8181,#9B2C2C)',  path: '/'             },
 	];
 
 	const DEFAULT_IDS   = ['s1','s2','s3','s4','s5','s6','s7','s8'];
@@ -214,7 +214,7 @@
 					"
 				>
 					<div class="spot-app-icon" style="background:{s.grad}">
-						<span class="spot-app-emoji">{s.emoji}</span>
+						<span class="material-symbols-outlined spot-app-ms">{s.icon}</span>
 					</div>
 					<span class="spot-app-label">{s.label}</span>
 				</button>
@@ -324,7 +324,7 @@
 				aria-pressed={isSelected}
 			>
 				<div class="ec-icon-wrap" style="background:{s.grad}">
-					<span class="ec-emoji">{s.emoji}</span>
+					<span class="material-symbols-outlined ec-ms">{s.icon}</span>
 				</div>
 				<span class="ec-label">{s.label}</span>
 				<div class="ec-check" class:ec-check--on={isSelected}>
@@ -503,11 +503,11 @@
 	box-shadow: 0 4px 16px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.2);
 	transition: transform 150ms cubic-bezier(0.34, 1.3, 0.64, 1);
 }
-.spot-app-emoji {
-	font-size: 1.75rem;
-	line-height: 1;
-	display: block;
-	filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35));
+.spot-app-ms {
+	font-size: 1.6rem;
+	color: #fff;
+	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	filter: drop-shadow(0 1px 3px rgba(0,0,0,0.3));
 }
 .spot-app-label {
 	font-size: 0.68rem;
@@ -687,10 +687,11 @@
 	flex-shrink: 0;
 	box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
-.ec-emoji {
-	font-size: 1.35rem;
-	line-height: 1;
-	filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+.ec-ms {
+	font-size: 1.25rem;
+	color: #fff;
+	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
 }
 
 .ec-label {

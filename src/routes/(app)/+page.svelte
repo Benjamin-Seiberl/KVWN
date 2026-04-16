@@ -80,7 +80,7 @@
 		<div class="dash-section" style="--i:3">
 			<div class="sec-head">
 				<span class="material-symbols-outlined sec-icon">task_alt</span>
-				<h3 class="sec-title">Meine Aufgaben</h3>
+				<h3 class="sec-title">Action Hub</h3>
 			</div>
 			<ActionHub />
 		</div>
