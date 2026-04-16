@@ -995,27 +995,56 @@ button {
   min-width: 0;
 }
 
-/* Carousel: Grid-Layout, zentriert */
-.widget-kader-panel .kader-avatars {
-  display: grid;
-  grid-template-columns: repeat(4, auto);
+/* Carousel: eine zentrierte Reihe mit Überlappung, Kreise füllen die Höhe */
+.widget-kader-panel {
+  background: transparent;
+  padding: var(--space-2) var(--space-4);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.widget-kader-panel .kader-avatars,
+.widget-kader-panel .kader-avatars.kader-avatars--6 {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  height: 100%;
   flex: unset;
   overflow: visible;
 }
 
-.widget-kader-panel .kader-avatars.kader-avatars--6 {
-  grid-template-columns: repeat(3, auto);
+.widget-kader-panel .kader-player {
+  /* Fill the panel height, capped so 6 avatars still fit in one row */
+  height: min(100%, 76px);
+  flex: 0 0 auto;
+  position: relative;
+  margin-left: -20px;
 }
 
-.widget-kader-panel .kader-player {
-  flex: 0 0 auto;
+.widget-kader-panel .kader-player:first-child {
+  margin-left: 0;
 }
+
+/* Player 1 visually on top → decreasing z-index left to right */
+.widget-kader-panel .kader-player:nth-child(1) { z-index: 6; }
+.widget-kader-panel .kader-player:nth-child(2) { z-index: 5; }
+.widget-kader-panel .kader-player:nth-child(3) { z-index: 4; }
+.widget-kader-panel .kader-player:nth-child(4) { z-index: 3; }
+.widget-kader-panel .kader-player:nth-child(5) { z-index: 2; }
+.widget-kader-panel .kader-player:nth-child(6) { z-index: 1; }
 
 .widget-kader-panel .kader-avatar {
-  width: 65px;
-  height: 65px;
+  height: 100%;
+  width: auto;
+  aspect-ratio: 1 / 1;
 }
 
 .kader-avatar {
