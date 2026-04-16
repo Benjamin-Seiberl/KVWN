@@ -2702,6 +2702,39 @@ button {
   color: var(--color-outline);
 }
 
+/* Aufstellungs-Liste (Spielbetrieb Spiele-Tab) */
+.sb-lineup-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+/* Eigene Karte hervorheben */
+.picker-scout-card--me {
+  border-color: var(--color-primary);
+  background: rgba(204, 0, 0, 0.03);
+}
+.picker-scout-card--me .picker-scout-name {
+  color: var(--color-primary);
+}
+
+/* Positions-Badge (ersetzt Add-Button in Aufstellung) */
+.sb-pos-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-container-high);
+  color: var(--color-on-surface-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-label-md);
+  font-weight: 700;
+}
+
 /* ============================================================
    MATCH-WORKFLOW  – Timeline, Treffpunkt, Fahrten, Lokal, Feedback
    (siehe src/lib/components/spielbetrieb/*.svelte)
