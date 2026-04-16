@@ -466,15 +466,15 @@
 	.kal-nav-btn:active { transform: scale(0.92); }
 
 	/* ── Calendar card ── */
-	.kal-card { background: var(--color-surface-container-lowest, #fff); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-5); }
-	.kal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+	.kal-card { background: var(--color-surface-container-lowest, #fff); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-5); overflow: hidden; }
+	.kal-grid { display: grid; grid-template-columns: repeat(7, 1fr); width: 100%; }
 	.kal-grid--header { margin-bottom: var(--space-3); }
 	.kal-day-label { text-align: center; font-size: var(--text-label-sm); font-weight: 700; color: var(--color-outline); text-transform: uppercase; letter-spacing: 0.05em; }
 	.kal-grid--days { gap: 2px 0; }
-	.kal-cell { display: flex; justify-content: center; align-items: center; padding: 3px 0; }
+	.kal-cell { display: flex; justify-content: center; align-items: center; padding: 2px 1px; min-width: 0; }
 	.kal-cell--ghost { opacity: 0.25; }
-	.kal-day-ghost { font-size: var(--text-body-md); color: var(--color-outline); padding: 0.6rem; }
-	.kal-day-btn { position: relative; width: 2.75rem; height: 2.75rem; border-radius: var(--radius-md); font-size: var(--text-body-md); font-weight: 500; color: var(--color-on-surface); display: flex; align-items: center; justify-content: center; transition: background 0.12s, transform 0.1s; flex-direction: column; background: none; border: 0; cursor: pointer; }
+	.kal-day-ghost { font-size: var(--text-body-md); color: var(--color-outline); padding: 0.4rem; }
+	.kal-day-btn { position: relative; width: 100%; aspect-ratio: 1; max-width: 2.75rem; border-radius: var(--radius-md); font-size: var(--text-body-md); font-weight: 500; color: var(--color-on-surface); display: flex; align-items: center; justify-content: center; transition: background 0.12s, transform 0.1s; flex-direction: column; background: none; border: 0; cursor: pointer; }
 	.kal-day-btn--today { font-weight: 800; background: var(--color-surface-container); }
 	.kal-day-btn--selected { background: var(--color-primary) !important; color: #fff !important; font-weight: 800; box-shadow: var(--shadow-float); }
 	.kal-day-btn--training { background: rgba(204, 0, 0, 0.07); color: var(--color-primary); font-weight: 700; }
