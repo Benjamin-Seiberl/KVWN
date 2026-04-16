@@ -7,6 +7,7 @@
 	import AdminRollen from '$lib/components/admin/AdminRollen.svelte';
 	import AdminTraining from '$lib/components/admin/AdminTraining.svelte';
 	import AdminErgebnis from '$lib/components/admin/AdminErgebnis.svelte';
+	import AdminAufstellung from '$lib/components/admin/AdminAufstellung.svelte';
 
 	// ── Active Tab ──────────────────────────────────────────
 	// Fall back to meine-daten if admin tab is active but user is no longer admin
@@ -202,14 +203,16 @@
 	}
 
 	// ── Admin: Sheet-State ──────────────────────────────────
-	let rollenOpen   = $state(false);
-	let trainingOpen = $state(false);
-	let ergebnisOpen = $state(false);
+	let rollenOpen      = $state(false);
+	let trainingOpen    = $state(false);
+	let ergebnisOpen    = $state(false);
+	let aufstellungOpen = $state(false);
 
 	const LIVE_ACTIONS = [
 		'Rollen & Berechtigungen',
 		'Training anlegen',
 		'Spielergebnis eintragen',
+		'Aufstellung erstellen',
 	];
 
 	function adminAction(fn) {
@@ -217,6 +220,7 @@
 			case 'Rollen & Berechtigungen': rollenOpen = true; break;
 			case 'Training anlegen':        trainingOpen = true; break;
 			case 'Spielergebnis eintragen': ergebnisOpen = true; break;
+			case 'Aufstellung erstellen':   aufstellungOpen = true; break;
 			default: alert(`⚙️ ${fn}\n\nDiese Funktion wird bald verfügbar sein.`);
 		}
 	}
@@ -654,6 +658,7 @@
 	<AdminRollen bind:open={rollenOpen} />
 	<AdminTraining bind:open={trainingOpen} />
 	<AdminErgebnis bind:open={ergebnisOpen} />
+	<AdminAufstellung bind:open={aufstellungOpen} />
 {/if}
 
 <style>
