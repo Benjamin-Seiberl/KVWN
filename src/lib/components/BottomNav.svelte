@@ -1,105 +1,40 @@
 <script>
 	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
-	import BottomSheet from './BottomSheet.svelte';
+	import { scrollY, scrollDirection } from '$lib/stores/scroll.js';
 
-	const pages = [
-		{ href: '/',             label: 'Dashboard',    icon: 'dashboard'     },
-		{ href: '/spielbetrieb', label: 'Spielbetrieb', icon: 'sports_score'  },
-		{ href: '/kalender',     label: 'Kalender',     icon: 'calendar_today'},
+	const tabs = [
+		{ href: '/',             label: 'Dashboard',    icon: 'house'          },
+		{ href: '/kalender',     label: 'Kalender',     icon: 'calendar_month' },
+		{ href: '/spielbetrieb', label: 'Spielbetrieb', icon: 'emoji_events'   },
+		{ href: '/profil',       label: 'Profil',       icon: 'person'         },
 	];
 
-	const drawerLinks = [
-		{ href: '/spielbetrieb', icon: 'sports_score',   label: 'Aufstellung',     desc: 'Mannschaftsaufstellungen' },
-		{ href: '/kalender',     icon: 'fitness_center',  label: 'Training',         desc: 'Nächstes Training & Bahnen' },
-		{ href: '/kalender',     icon: 'calendar_today',  label: 'Kalender',         desc: 'Trainings & Spiele'        },
-		{ href: '/statistiken',  icon: 'leaderboard',     label: 'Statistiken',      desc: 'Rankings & Performance'   },
-		{ href: '/mehr',         icon: 'info',            label: 'Über den Verein',  desc: 'Infos & Kontakt'           },
-	];
+	let navVisible = $derived($scrollY <= 50 || $scrollDirection === 'up');
 
-	let navEl      = $state(null);
-	let indicatorLeft = $state(0);
-	let pressed    = $state(null);
-	let drawerOpen = $state(false);
-
-	function activeIndex() {
-		return pages.findIndex(i => $page.url.pathname === i.href);
+	function isActive(href) {
+		if (href === '/') return $page.url.pathname === '/';
+		return $page.url.pathname.startsWith(href);
 	}
-
-	function moveIndicator(index) {
-		if (!navEl) return;
-		const navRect = navEl.getBoundingClientRect();
-		const itemEls = navEl.querySelectorAll('.nav-item');
-		const itemEl  = itemEls[index];
-		if (!itemEl) return;
-		const itemRect = itemEl.getBoundingClientRect();
-		const indW    = 60;
-		const centerX = itemRect.left - navRect.left + itemRect.width / 2;
-		indicatorLeft = centerX - indW / 2;
-	}
-
-	$effect(() => {
-		const idx = activeIndex();
-		requestAnimationFrame(() => moveIndicator(idx));
-	});
-
-	onMount(() => {
-		const idx = activeIndex();
-		requestAnimationFrame(() => moveIndicator(idx));
-		window.addEventListener('resize', () => moveIndicator(activeIndex()));
-	});
 </script>
 
-<nav class="bottom-nav" bind:this={navEl}>
-	<span class="nav-indicator" style="left: {indicatorLeft}px" aria-hidden="true"></span>
-
-	{#each pages as item, i}
-		<a
-			class="nav-item"
-			class:active={$page.url.pathname === item.href}
-			class:pressed={pressed === i}
-			href={item.href}
-			aria-label={item.label}
-			onpointerdown={() => pressed = i}
-			onpointerup={() => pressed = null}
-			onpointercancel={() => pressed = null}
-		>
-			<span class="material-symbols-outlined nav-icon">{item.icon}</span>
-			<span class="nav-label">{item.label}</span>
-		</a>
-	{/each}
-
-	<!-- Mehr → öffnet Drawer -->
-	<button
-		class="nav-item nav-item--btn"
-		class:pressed={pressed === 99}
-		aria-label="Mehr"
-		onclick={() => drawerOpen = true}
-		onpointerdown={() => pressed = 99}
-		onpointerup={() => pressed = null}
-		onpointercancel={() => pressed = null}
-	>
-		<span class="material-symbols-outlined nav-icon">menu</span>
-		<span class="nav-label">Mehr</span>
-	</button>
-</nav>
-
-<!-- Bottom-Sheet Drawer -->
-<BottomSheet bind:open={drawerOpen} title="Navigation">
-	<nav class="drawer-nav">
-		{#each drawerLinks as link}
+<div class="pill-nav-outer" class:nav-hidden={!navVisible} aria-label="Hauptnavigation">
+	<nav class="pill-nav">
+		{#each tabs as tab}
+			{@const active = isActive(tab.href)}
 			<a
-				class="drawer-item"
-				href={link.href}
-				onclick={() => drawerOpen = false}
+				class="pill-tab"
+				class:active
+				href={tab.href}
+				aria-label={tab.label}
+				aria-current={active ? 'page' : undefined}
 			>
-				<span class="drawer-item-icon material-symbols-outlined">{link.icon}</span>
-				<div class="drawer-item-text">
-					<span class="drawer-item-label">{link.label}</span>
-					<span class="drawer-item-desc">{link.desc}</span>
+				<span class="material-symbols-outlined pill-tab-icon">{tab.icon}</span>
+				<div class="pill-tab-label-wrap">
+					<div class="pill-tab-label-inner">
+						<span class="pill-tab-label">{tab.label}</span>
+					</div>
 				</div>
-				<span class="material-symbols-outlined drawer-item-chevron">chevron_right</span>
 			</a>
 		{/each}
 	</nav>
-</BottomSheet>
+</div>

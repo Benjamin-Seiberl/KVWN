@@ -4,7 +4,7 @@ import { goto } from '$app/navigation';
 
 export const user       = writable(null);
 export const isMember   = writable(null);   // null = noch nicht geprüft
-export const playerRole = writable('user'); // 'user' | 'kapitaen' | 'admin'
+export const playerRole = writable('user'); // 'user' | 'kapitaen'
 export const playerId   = writable(null);
 
 async function checkMembership(email) {

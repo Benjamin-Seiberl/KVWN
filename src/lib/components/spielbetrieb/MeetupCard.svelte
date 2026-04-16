@@ -16,9 +16,12 @@
 				Treffpunkt
 			</h3>
 			{#if canEdit}
-				<button class="mw-btn mw-btn--soft" onclick={() => sheetOpen = true}>
+				<button
+					class="mw-btn mw-btn--soft"
+					onclick={() => sheetOpen = true}
+					aria-label={meetup ? 'Bearbeiten' : 'Festlegen'}
+				>
 					<span class="material-symbols-outlined">edit</span>
-					{meetup ? 'Bearbeiten' : 'Festlegen'}
 				</button>
 			{/if}
 		</div>

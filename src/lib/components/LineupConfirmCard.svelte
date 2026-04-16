@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { user } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
@@ -79,7 +80,10 @@
 		busy = true;
 		await sb.from('game_plan_players').update({ confirmed }).eq('id', pendingEntry.id);
 		exiting = true;
-		setTimeout(() => { dismissed = true; }, 320);
+		setTimeout(() => {
+			dismissed = true;
+			triggerToast(confirmed ? 'Aufstellung bestätigt!' : 'Absage registriert');
+		}, 320);
 	}
 
 	let loaded = false;
@@ -93,8 +97,41 @@
 	});
 </script>
 
-{#if !dismissed && !loading && pendingEntry && match}
+{#if loading}
+	<div class="lcc lcc--skeleton">
+		<!-- banner bar -->
+		<div class="skel-lcc-banner shimmer-box"></div>
+		<!-- header -->
+		<div class="skel-lcc-header">
+			<div class="skel-lcc-col">
+				<div class="skel-bar skel-bar--league shimmer-box"></div>
+				<div class="skel-bar skel-bar--opponent shimmer-box" style="margin-top:var(--space-2)"></div>
+			</div>
+			<div class="skel-lcc-col skel-lcc-col--right">
+				<div class="skel-lcc-icon shimmer-box"></div>
+				<div class="skel-bar skel-bar--date shimmer-box" style="margin-top:var(--space-2)"></div>
+			</div>
+		</div>
+		<!-- avatar row -->
+		<div class="skel-avatars" style="padding: var(--space-3) var(--space-4)">
+			{#each [0,1,2,3] as _}
+				<div class="skel-avatar shimmer-box"></div>
+			{/each}
+		</div>
+		<!-- action buttons -->
+		<div class="skel-lcc-actions">
+			<div class="skel-lcc-btn shimmer-box"></div>
+			<div class="skel-lcc-btn shimmer-box"></div>
+		</div>
+	</div>
+{:else if !dismissed && pendingEntry && match}
 	<div class="lcc" class:lcc--exit={exiting}>
+
+		<!-- Urgency banner -->
+		<div class="lcc-banner">
+			<span class="lcc-pulse-dot"></span>
+			<span class="lcc-banner-text">Aufstellungsbestätigung erforderlich</span>
+		</div>
 
 		<!-- Header -->
 		<div class="lcc-header">
@@ -108,7 +145,7 @@
 			</div>
 		</div>
 
-		<!-- Aufstellung -->
+		<!-- Avatars -->
 		<div class="lcc-avatars">
 			{#each teammates as p}
 				{@const name  = p.players?.name ?? p.player_name}
@@ -131,7 +168,7 @@
 			{/each}
 		</div>
 
-		<!-- Aktionen -->
+		<!-- Actions -->
 		<div class="lcc-actions">
 			<button class="lcc-btn lcc-btn--decline" onclick={() => respond(false)} disabled={busy}>
 				<span class="material-symbols-outlined">close</span>
@@ -145,3 +182,65 @@
 
 	</div>
 {/if}
+
+<style>
+	/* ── Skeleton shapes ──────────────────────────────────── */
+	.lcc--skeleton { pointer-events: none; }
+
+	.skel-lcc-banner {
+		height: 32px;
+		border-radius: 0;
+	}
+	.skel-lcc-header {
+		display: flex;
+		justify-content: space-between;
+		padding: var(--space-3) var(--space-4);
+		gap: var(--space-3);
+	}
+	.skel-lcc-col { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; }
+	.skel-lcc-col--right { align-items: flex-end; }
+	.skel-lcc-icon {
+		width: 28px;
+		height: 28px;
+		border-radius: var(--radius-md);
+	}
+	.skel-lcc-actions {
+		display: flex;
+		gap: var(--space-3);
+		padding: var(--space-3) var(--space-4) var(--space-4);
+	}
+	.skel-lcc-btn {
+		flex: 1;
+		height: 44px;
+		border-radius: var(--radius-lg);
+	}
+
+	/* Urgency banner */
+	.lcc-banner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px var(--space-4);
+		background: rgba(204, 0, 0, 0.06);
+		border-bottom: 1px solid rgba(204, 0, 0, 0.10);
+	}
+	.lcc-banner-text {
+		font-size: 0.70rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--color-primary, #CC0000);
+	}
+	.lcc-pulse-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--color-primary, #CC0000);
+		flex-shrink: 0;
+		animation: lcc-pulse 1.8s ease-in-out infinite;
+	}
+	@keyframes lcc-pulse {
+		0%, 100% { transform: scale(1);   opacity: 1;   box-shadow: 0 0 0 0 rgba(204,0,0,0.5); }
+		50%       { transform: scale(1.1); opacity: 0.8; box-shadow: 0 0 0 5px rgba(204,0,0,0); }
+	}
+</style>

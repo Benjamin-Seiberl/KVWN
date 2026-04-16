@@ -9,6 +9,7 @@ export function leagueTiming(leagueName) {
 		isTop,
 		arrivalOffsetMin: isTop ? 60 : 40,
 		matchDurationMin: isTop ? 180 : 120,
+		delayBufferMin: 30,
 	};
 }
 

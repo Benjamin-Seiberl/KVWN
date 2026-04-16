@@ -1,40 +1,26 @@
 <script>
-	import { onMount }        from 'svelte';
-	import { page }           from '$app/stores';
-	import { sb }             from '$lib/supabase';
-	import { playerRole, playerId } from '$lib/stores/auth';
-	import BottomSheet        from '$lib/components/BottomSheet.svelte';
-	import MatchTimeline      from '$lib/components/spielbetrieb/MatchTimeline.svelte';
-	import MeetupCard         from '$lib/components/spielbetrieb/MeetupCard.svelte';
-	import SupportersCard     from '$lib/components/spielbetrieb/SupportersCard.svelte';
-	import CarpoolCard        from '$lib/components/spielbetrieb/CarpoolCard.svelte';
-	import VenueCard          from '$lib/components/spielbetrieb/VenueCard.svelte';
-	import FeedbackCard       from '$lib/components/spielbetrieb/FeedbackCard.svelte';
+	import { onMount }   from 'svelte';
+	import { page }      from '$app/stores';
+	import { sb }        from '$lib/supabase';
+	import { playerId }  from '$lib/stores/auth';
+	import { currentSubtab } from '$lib/stores/subtab.js';
+	import StatsView     from '$lib/components/statistiken/StatsView.svelte';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
-	// ── State ────────────────────────────────────────────────
-	let loading      = $state(true);
-	let plans        = $state([]);   // [{ match, gamePlanId, players[], workflow{ meetup, carpools, venues, votes, supporters, myFeedback } }]
-	let current      = $state(0);
-	let editMode     = $state(false);
-	let playerStats  = $state({});   // { [playerId]: { avg5: number, overallAvg: number } }
-	let feedbackQuestions = $state([]);
+	// ── State ─────────────────────────────────────────────────
+	let loading     = $state(true);
+	let plans       = $state([]);   // [{ match, players[], playerStats{} }]
+	let current     = $state(0);
 
-	// Kapitän: Spieler-Picker
-	let pickerOpen  = $state(false);
-	let pickerSlot  = $state(null); // { gamePlanPlayerId, position }
-	let pickerQuery = $state('');
-	let allPlayers  = $state([]);
-
-	let trackEl   = $state(null);
-	let wrapperEl = $state(null);
-	let tabsEl    = $state(null);
+	let trackEl     = $state(null);
+	let wrapperEl   = $state(null);
+	let tabsEl      = $state(null);
 
 	const initMatchId = $page.url.searchParams.get('matchId');
-	const isKapitaen  = $derived($playerRole === 'kapitaen' || $playerRole === 'admin');
+	const activeView  = $derived($currentSubtab === 'statistiken' ? 'statistiken' : 'spielbetrieb');
 
-	// ── Datum-Hilfsfunktionen ─────────────────────────────
+	// ── Hilfsfunktionen ───────────────────────────────────────
 	function getWeekRange() {
 		const today = new Date();
 		const day   = today.getDay();
@@ -54,38 +40,22 @@
 			(m.time ? m.time.substring(0, 5) : '') + ' Uhr';
 	}
 
-	// photo = filename stem from players.photo; name = fallback
 	function imgPath(photo, name) {
 		const key = photo || name;
 		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
 	}
 
-	function shortName(name) {
-		if (!name) return '–';
-		const parts = name.trim().split(' ');
-		if (parts.length < 2) return name;
-		return parts[0] + ' ' + parts[parts.length - 1].charAt(0) + '.';
+	function formTrend(avg5, overallAvg) {
+		if (!avg5 || !overallAvg) return null;
+		return +(avg5 - overallAvg).toFixed(1);
 	}
 
-	// Mannschaftsgröße je Liga
-	function leagueConfig(leagueName) {
-		const n = (leagueName ?? '').toLowerCase();
-		if (n.includes('bundesliga') || n.includes('landesliga')) return { starterCount: 6, maxSubs: 4 };
-		return { starterCount: 4, maxSubs: 2 };
-	}
-
-	// Festes 2-Spalten-Grid: Wert = DB-Position, null = deaktivierte Zelle
-	const GRID_MAP = {
-		6: [1, 2, 3, 4, 5, 6],
-		4: [1, 2, 3, 4, null, null],
-	};
-
-	// ── Daten laden ───────────────────────────────────────
+	// ── Daten laden ───────────────────────────────────────────
 	async function loadData() {
 		const range = getWeekRange();
 		const { data: matches } = await sb
 			.from('matches')
-			.select('id, date, time, opponent, home_away, cal_week, league_id, leagues(name)')
+			.select('id, date, time, opponent, home_away, cal_week, league_id, is_tournament, tournament_title, leagues(name)')
 			.gte('date', range.from)
 			.lte('date', range.to)
 			.order('date').order('time');
@@ -97,17 +67,15 @@
 			if (!m.cal_week || !m.league_id) continue;
 			const { data: gp } = await sb
 				.from('game_plans')
-				.select('id, game_plan_players(id, position, player_id, player_name, score, confirmed, played, players(name, photo))')
+				.select('id, game_plan_players(id, position, player_id, player_name, players(name, photo))')
 				.eq('cal_week', m.cal_week)
 				.eq('league_id', m.league_id)
 				.maybeSingle();
 
-			loaded.push({
-				match:       m,
-				gamePlanId:  gp?.id ?? null,
-				players:     (gp?.game_plan_players ?? [])
-					.sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
-			});
+			const players = (gp?.game_plan_players ?? [])
+				.sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
+
+			loaded.push({ match: m, gamePlanId: gp?.id ?? null, players });
 		}
 
 		plans = loaded;
@@ -117,123 +85,74 @@
 			if (idx >= 0) current = idx;
 		}
 
+		// Spieler-Statistiken laden
+		const playerIds = [...new Set(
+			loaded.flatMap(p => p.players.filter(x => x.player_id).map(x => x.player_id))
+		)];
+
+		if (playerIds.length) {
+			const { data: recent } = await sb
+				.from('game_plan_players')
+				.select('player_id, score, game_plans!inner(cal_week)')
+				.in('player_id', playerIds)
+				.eq('played', true)
+				.not('score', 'is', null)
+				.order('cal_week', { referencedTable: 'game_plans', ascending: false });
+
+			const scoreMap = {};
+			for (const g of recent ?? []) {
+				if (!scoreMap[g.player_id]) scoreMap[g.player_id] = [];
+				scoreMap[g.player_id].push(Number(g.score));
+			}
+
+			for (const plan of plans) {
+				const stats = {};
+				for (const p of plan.players) {
+					if (!p.player_id) continue;
+					const scores = scoreMap[p.player_id] ?? [];
+					const last5  = scores.slice(0, 5);
+					stats[p.player_id] = {
+						overallAvg: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+						avg5:       last5.length  ? Math.round(last5.reduce((a, b) => a + b, 0)  / last5.length)  : null,
+					};
+				}
+				plan.playerStats = stats;
+			}
+			plans = [...plans];
+		}
+
 		loading = false;
 	}
 
-	async function loadAllPlayers() {
-		const { data } = await sb
-			.from('players')
-			.select('id, name, photo')
-			.eq('active', true)
-			.order('name');
-		if (!data?.length) return;
-
-		// Letzte Spielergebnisse für alle aktiven Spieler laden
-		const { data: recent } = await sb
-			.from('game_plan_players')
-			.select('player_id, score, game_plans!inner(cal_week)')
-			.in('player_id', data.map(p => p.id))
-			.eq('played', true)
-			.not('score', 'is', null)
-			.order('cal_week', { referencedTable: 'game_plans', ascending: false })
-			.limit(500);
-
-		// Scores pro Spieler gruppieren (bereits DESC sortiert)
-		const scoreMap = {};
-		for (const g of recent ?? []) {
-			if (!scoreMap[g.player_id]) scoreMap[g.player_id] = [];
-			scoreMap[g.player_id].push(Number(g.score));
-		}
-
-		allPlayers = data.map(p => {
-			const scores = scoreMap[p.id] ?? [];
-			const last5  = scores.slice(0, 5);
-			return {
-				...p,
-				recentScores: last5,
-				avg_score: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
-				avg5:      last5.length  ? Math.round(last5.reduce((a, b) => a + b, 0)  / last5.length)  : null,
-			};
-		}).sort((a, b) => (b.avg_score ?? 0) - (a.avg_score ?? 0));
-	}
-
-	function formTrend(p) {
-		if (!p.avg5 || !p.avg_score) return null;
-		return +(p.avg5 - p.avg_score).toFixed(1);
-	}
-
-	// ── Spieler-Statistiken laden ─────────────────────
-	async function loadPlayerStats(loadedPlans) {
-		const playerIds = [...new Set(
-			loadedPlans.flatMap(plan =>
-				plan.players.filter(p => p.player_id).map(p => p.player_id)
-			)
-		)];
-		if (!playerIds.length) return;
-
-		// Alle gespielten Ergebnisse für diese Spieler, neueste zuerst
-		const { data } = await sb
-			.from('game_plan_players')
-			.select('player_id, score, game_plans!inner(cal_week)')
-			.in('player_id', playerIds)
-			.eq('played', true)
-			.not('score', 'is', null)
-			.order('cal_week', { referencedTable: 'game_plans', ascending: false });
-
-		// Gruppiere Scores pro Spieler (bereits nach cal_week DESC sortiert)
-		const grouped = {};
-		for (const row of data ?? []) {
-			const pid = row.player_id;
-			if (!grouped[pid]) grouped[pid] = [];
-			grouped[pid].push(Number(row.score));
-		}
-
-		// Berechne avg5 (letzte 5) und overallAvg
-		const stats = {};
-		for (const [pid, scores] of Object.entries(grouped)) {
-			const last5 = scores.slice(0, 5);
-			stats[pid] = {
-				avg5:       Math.round(last5.reduce((a, b) => a + b, 0) / last5.length),
-				overallAvg: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
-				count:      scores.length,
-			};
-		}
-		playerStats = stats;
-	}
-
-	// ── Swipe-Carousel ────────────────────────────────────
+	// ── Swipe-Carousel ────────────────────────────────────────
 	function carousel(widget) {
-		let startX = 0, startY = 0, startOff = 0, lastX = 0, lastT = 0;
-		let velocity = 0, dragging = false, currentX = 0;
+		// pressing = pointer is down, direction not yet decided
+		// dragging = confirmed horizontal swipe – we own the gesture
+		let pressing = false, dragging = false;
+		let startX = 0, startY = 0, startOff = 0;
+		let lastX = 0, lastT = 0, velocity = 0, currentX = 0;
 
-		const DRAG_THRESHOLD = 8; // px – below this = click, not drag
-
-		const track  = () => trackEl;
-		const W      = () => widget.offsetWidth;
-		const stride = () => W();
-		const count  = () => plans.length;
+		const track = () => trackEl;
+		const W     = () => widget.offsetWidth;
 
 		function moveTo(x, animate) {
 			const t = track();
 			if (!t) return;
 			currentX = x;
-			t.style.transition = animate
-				? 'transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1)'
-				: 'none';
-			t.style.transform  = 'translateX(' + x + 'px)';
+			t.style.transition = animate ? 'transform 0.45s cubic-bezier(0.34, 1.4, 0.64, 1)' : 'none';
+			t.style.transform  = `translateX(${x}px)`;
 		}
 
 		function snapTo(index) {
-			current = Math.max(0, Math.min(count() - 1, index));
-			moveTo(-current * stride(), true);
-			if (tabsEl) {
-				tabsEl.querySelectorAll('.sb-tab')[current]
-					?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-			}
+			current = Math.max(0, Math.min(plans.length - 1, index));
+			moveTo(-current * W(), true);
+			tabsEl?.querySelectorAll('.sb-tab')[current]
+				?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 		}
 
 		function onDown(e) {
 			if (e.pointerType === 'mouse' && e.button !== 0) return;
+			pressing = true;
 			dragging = false;
 			startX   = e.clientX;
 			startY   = e.clientY;
@@ -244,24 +163,37 @@
 		}
 
 		function onMove(e) {
-			const dx = Math.abs(e.clientX - startX);
-			const dy = Math.abs(e.clientY - startY);
+			if (!pressing) return;
+
+			const absDx = Math.abs(e.clientX - startX);
+			const absDy = Math.abs(e.clientY - startY);
+
 			if (!dragging) {
-				if (dx < DRAG_THRESHOLD || dy > dx) return; // not a horizontal drag
+				// Wait for at least 6 px of movement before deciding
+				if (absDx < 6 && absDy < 6) return;
+
+				if (absDy >= absDx) {
+					// Vertical dominant → release to browser scroll, stop tracking
+					pressing = false;
+					return;
+				}
+
+				// Horizontal dominant → own this gesture
 				dragging = true;
 				widget.setPointerCapture(e.pointerId);
 				const t = track();
 				if (t) t.style.transition = 'none';
 			}
-			const delta = e.clientX - startX;
-			const s     = stride();
-			const minX  = -(count() - 1) * s;
-			const raw   = startOff + delta;
-			const x     = raw > 0    ? raw * 0.18
-			            : raw < minX ? minX + (raw - minX) * 0.18
-			            : raw;
+
+			const dx   = e.clientX - startX;
+			const minX = -(plans.length - 1) * W();
+			const raw  = startOff + dx;
+			const x    = raw > 0    ? raw * 0.18
+			           : raw < minX ? minX + (raw - minX) * 0.18
+			           : raw;
 			currentX = x;
-			track().style.transform = 'translateX(' + x + 'px)';
+			track().style.transform = `translateX(${x}px)`;
+
 			const now = Date.now(), dt = now - lastT;
 			if (dt > 0) velocity = (e.clientX - lastX) / dt;
 			lastX = e.clientX;
@@ -269,28 +201,39 @@
 		}
 
 		function onUp(e) {
-			if (!dragging) return; // was a click – don't interfere
+			if (!pressing && !dragging) return;
+			const wasDragging = dragging;
+			pressing = false;
 			dragging = false;
-			const delta = e.clientX - startX;
-			const w     = W();
-			let next    = current;
-			if      (delta < -(w * 0.18) || velocity < -0.35) next = current + 1;
-			else if (delta >  (w * 0.18) || velocity >  0.35) next = current - 1;
+
+			if (!wasDragging) return; // was a tap, not a swipe
+
+			const dx = e.clientX - startX;
+			const w  = W();
+			let next = current;
+			if      (dx < -(w * 0.18) || velocity < -0.35) next = current + 1;
+			else if (dx >  (w * 0.18) || velocity >  0.35) next = current - 1;
 			snapTo(next);
+		}
+
+		function onCancel() {
+			if (dragging) snapTo(current); // snap back if mid-swipe
+			pressing = false;
+			dragging = false;
 		}
 
 		widget.addEventListener('pointerdown',   onDown);
 		widget.addEventListener('pointermove',   onMove);
 		widget.addEventListener('pointerup',     onUp);
-		widget.addEventListener('pointercancel', () => { dragging = false; snapTo(current); });
-
+		widget.addEventListener('pointercancel', onCancel);
 		widget._snapTo = snapTo;
 
 		return {
 			destroy() {
-				widget.removeEventListener('pointerdown', onDown);
-				widget.removeEventListener('pointermove', onMove);
-				widget.removeEventListener('pointerup',   onUp);
+				widget.removeEventListener('pointerdown',   onDown);
+				widget.removeEventListener('pointermove',   onMove);
+				widget.removeEventListener('pointerup',     onUp);
+				widget.removeEventListener('pointercancel', onCancel);
 			}
 		};
 	}
@@ -300,589 +243,150 @@
 		wrapperEl?._snapTo?.(i);
 	}
 
-	// ── Kapitän: Spieler zuweisen ─────────────────────────
-	function openPicker(slot) {
-		if (!isKapitaen || !editMode) return;
-		pickerSlot  = slot;
-		pickerQuery = '';
-		pickerOpen  = true;
-	}
-
-	async function assignPlayer(player) {
-		if (!pickerSlot) return;
-		pickerOpen = false;
-
-		let gp = plans[current];
-
-		// Kein Spielplan vorhanden → erst anlegen
-		if (!gp.gamePlanId) {
-			const m = gp.match;
-			const { data: newGp, error } = await sb
-				.from('game_plans')
-				.insert({ cal_week: m.cal_week, league_id: m.league_id })
-				.select('id')
-				.single();
-			if (error || !newGp) { pickerSlot = null; return; }
-			plans[current] = { ...gp, gamePlanId: newGp.id };
-			gp = plans[current];
-		}
-
-		if (pickerSlot.gamePlanPlayerId) {
-			await sb
-				.from('game_plan_players')
-				.update({ player_id: player.id, player_name: player.name })
-				.eq('id', pickerSlot.gamePlanPlayerId);
-		} else {
-			await sb
-				.from('game_plan_players')
-				.insert({
-					game_plan_id: gp.gamePlanId,
-					player_id:    player.id,
-					player_name:  player.name,
-					position:     pickerSlot.position,
-				});
-		}
-
-		// UI aktualisieren
-		const { data } = await sb
-			.from('game_plan_players')
-			.select('id, position, player_id, player_name, score, confirmed, played, players(name, photo)')
-			.eq('game_plan_id', gp.gamePlanId);
-		if (data) {
-			plans[current] = {
-				...gp,
-				players: data.sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
-			};
-		}
-		pickerSlot = null;
-	}
-
-	async function removePlayer(gamePlanPlayerId) {
-		pickerOpen = false;
-		await sb.from('game_plan_players').delete().eq('id', gamePlanPlayerId);
-		const gp = plans[current];
-		const { data } = await sb
-			.from('game_plan_players')
-			.select('id, position, player_id, player_name, score, confirmed, played, players(name, photo)')
-			.eq('game_plan_id', gp.gamePlanId);
-		if (data) {
-			plans[current] = {
-				...gp,
-				players: data.sort((a, b) => (a.position ?? 99) - (b.position ?? 99)),
-			};
-		}
-		pickerSlot = null;
-	}
-
-	const filteredPlayers = $derived(
-		pickerQuery.trim()
-			? allPlayers.filter(p =>
-				p.name.toLowerCase().includes(pickerQuery.toLowerCase()))
-			: allPlayers
-	);
-
-	// ── Match-Workflow Daten (Treffpunkt, Fahrten, Lokale, Feedback) ──
-	async function loadWorkflow(matchId) {
-		const [meetupRes, carpoolsRes, seatsRes, venuesRes, votesRes, supportersRes, feedbackRes] = await Promise.all([
-			sb.from('match_meetups').select('*').eq('match_id', matchId).maybeSingle(),
-			sb.from('match_carpools')
-				.select('id, match_id, driver_id, seats_total, depart_time, depart_from, note, driver:players!driver_id(id, name, photo)')
-				.eq('match_id', matchId),
-			sb.from('match_carpool_seats')
-				.select('carpool_id, passenger_id, passenger:players!passenger_id(id, name, photo)'),
-			sb.from('match_venues').select('*').eq('match_id', matchId).order('created_at'),
-			sb.from('match_venue_votes')
-				.select('match_id, player_id, venue_id, player:players!player_id(id, name, photo)')
-				.eq('match_id', matchId),
-			sb.from('match_supporters')
-				.select('match_id, player_id, players(id, name, photo)')
-				.eq('match_id', matchId),
-			$playerId
-				? sb.from('match_feedback').select('*').eq('match_id', matchId).eq('player_id', $playerId).maybeSingle()
-				: Promise.resolve({ data: null }),
-		]);
-
-		const carpools = (carpoolsRes.data ?? []).map(c => ({
-			...c,
-			seats: (seatsRes.data ?? []).filter(s => s.carpool_id === c.id),
-		}));
-
-		return {
-			meetup:     meetupRes.data ?? null,
-			carpools,
-			venues:     venuesRes.data ?? [],
-			votes:      votesRes.data ?? [],
-			supporters: supportersRes.data ?? [],
-			myFeedback: feedbackRes.data ?? null,
-		};
-	}
-
-	async function refreshWorkflow(idx) {
-		const p = plans[idx];
-		if (!p) return;
-		p.workflow = await loadWorkflow(p.match.id);
-		plans = [...plans]; // trigger reactivity
-	}
-
-	async function loadFeedbackQuestions() {
-		const { data } = await sb
-			.from('feedback_questions')
-			.select('id, prompt')
-			.eq('active', true)
-			.order('created_at');
-		feedbackQuestions = data ?? [];
-	}
-
-	onMount(async () => {
-		await loadData();
-		await loadPlayerStats(plans);
-		// Workflow-Daten parallel für alle Matches laden
-		await Promise.all([
-			loadFeedbackQuestions(),
-			...plans.map(async (p, i) => {
-				p.workflow = await loadWorkflow(p.match.id);
-				plans[i] = p;
-			}),
-		]);
-		plans = [...plans];
-		if (isKapitaen) await loadAllPlayers();
-	});
-
-	$effect(() => {
-		if (isKapitaen && allPlayers.length === 0) loadAllPlayers();
-	});
+	onMount(() => loadData());
 </script>
 
 <div class="page active">
-	<div class="sb-page">
 
-		{#if loading}
-			<div class="sb-loading">
-				<span class="material-symbols-outlined sb-loading-icon">sports_score</span>
-				<p>Lade Spielbetrieb…</p>
+{#if activeView === 'statistiken'}
+	<StatsView />
+{:else}
+<div class="sb-page">
+
+	{#if loading}
+		<div class="sb-loading">
+			<span class="material-symbols-outlined sb-loading-icon">sports_score</span>
+			<p>Lade Spielbetrieb…</p>
+		</div>
+
+	{:else if plans.length === 0}
+		<div class="sb-empty">
+			<span class="material-symbols-outlined sb-loading-icon">event_busy</span>
+			<p>Keine Aufstellungen diese Woche</p>
+		</div>
+
+	{:else}
+
+		<!-- Liga-Tabs (nur bei mehreren Matches) -->
+		{#if plans.length > 1}
+			<div class="sb-tabs-bar" bind:this={tabsEl}>
+				{#each plans as plan, i}
+					<button
+						class="sb-tab"
+						class:sb-tab--active={current === i}
+						onclick={() => goToSlide(i)}
+					>
+						{plan.match.leagues?.name ?? 'Liga'}
+					</button>
+				{/each}
 			</div>
+		{/if}
 
-		{:else if plans.length === 0}
-			<div class="sb-empty">
-				<span class="material-symbols-outlined sb-loading-icon">event_busy</span>
-				<p>Keine Aufstellungen diese Woche</p>
-			</div>
+		<!-- Swipe-Carousel -->
+		<div class="sb-carousel" bind:this={wrapperEl} use:carousel>
+			<div class="sb-track" bind:this={trackEl}>
+				{#each plans as plan}
+					{@const m = plan.match}
+					{@const stats = plan.playerStats ?? {}}
+					<div class="sb-slide">
 
-		{:else}
-
-			<!-- League Tabs -->
-			{#if plans.length > 1}
-				<div class="sb-tabs-bar" bind:this={tabsEl}>
-					{#each plans as plan, i}
-						<button
-							class="sb-tab"
-							class:sb-tab--active={current === i}
-							onclick={() => goToSlide(i)}
-						>
-							{plan.match.leagues?.name ?? 'Liga'}
-						</button>
-					{/each}
-				</div>
-			{/if}
-
-			<!-- Swipe Carousel -->
-			<div class="sb-carousel" bind:this={wrapperEl} use:carousel>
-				<div class="sb-track" bind:this={trackEl}>
-					{#each plans as plan, i}
-						{@const m      = plan.match}
-						{@const cfg    = leagueConfig(m.leagues?.name)}
-						{@const starters = plan.players.filter(p => (p.position ?? 99) <= cfg.starterCount)}
-						{@const subs     = plan.players.filter(p => (p.position ?? 99) > cfg.starterCount)}
-						{@const starterAvgs = starters.filter(p => p.player_id && playerStats[p.player_id]).map(p => playerStats[p.player_id].avg5)}
-						{@const teamAvg5 = starterAvgs.length ? Math.round(starterAvgs.reduce((a, b) => a + b, 0) / starterAvgs.length) : null}
-						{@const confirmedCount = starters.filter(p => p.confirmed === true).length}
-						{@const declinedCount  = starters.filter(p => p.confirmed === false).length}
-						<div class="sb-slide">
-
-							<!-- Match Header -->
-							<div class="sb-match-header">
-								<p class="sb-league">{m.leagues?.name ?? ''}</p>
-								<div class="sb-match-row">
-									{#if m.home_away === 'HEIM'}
-										<span class="chip chip--home">Heim</span>
-									{:else}
-										<span class="chip chip--away">Auswärts</span>
-									{/if}
-									<h2 class="sb-opponent">vs. {m.opponent}</h2>
-								</div>
-								<div class="sb-header-meta-row">
-									<p class="sb-date">{dateLabel(m)}</p>
-									{#if teamAvg5}
-										<span class="sb-header-stat-pill">
-											<span class="material-symbols-outlined">bar_chart</span>
-											Ø&thinsp;{teamAvg5}
-										</span>
-									{/if}
-								</div>
-							</div>
-
-							<!-- Players Area -->
-							<div class="sb-players-area">
-
-								{#if plan.players.length === 0 && !(isKapitaen && editMode)}
-									<div class="sb-no-players">
-										<span class="material-symbols-outlined">group_off</span>
-										<p>Noch keine Aufstellung</p>
-									</div>
+						<!-- Match-Header -->
+						<div class="sb-match-header">
+							<p class="sb-league">{m.leagues?.name ?? ''}</p>
+							<div class="sb-match-row">
+								{#if m.home_away === 'HEIM'}
+									<span class="chip chip--home">Heim</span>
 								{:else}
+									<span class="chip chip--away">Auswärts</span>
+								{/if}
+								<h2 class="sb-opponent">vs. {m.opponent}</h2>
+							</div>
+							<p class="sb-date">{dateLabel(m)}</p>
+						</div>
 
-									<!-- Startaufstellung -->
-									<div class="sb-section-label">
-										<span>Startaufstellung</span>
-										<div class="sb-section-label-right">
-											{#if confirmedCount > 0}
-												<span class="sb-confirmed-chip sb-confirmed-chip--ok">
-													<span class="material-symbols-outlined">check</span>
-													{confirmedCount}
-												</span>
-											{/if}
-											{#if declinedCount > 0}
-												<span class="sb-confirmed-chip sb-confirmed-chip--no">
-													<span class="material-symbols-outlined">close</span>
-													{declinedCount}
-												</span>
-											{/if}
-											<span class="sb-count">{starters.length}&thinsp;/&thinsp;{cfg.starterCount}</span>
+						<!-- Aufstellung -->
+						{#if plan.players.length === 0}
+							<div class="sb-no-players">
+								<span class="material-symbols-outlined">group_off</span>
+								<p>Noch keine Aufstellung</p>
+							</div>
+						{:else}
+							<div class="sb-lineup-list">
+								{#each plan.players as p}
+									{@const name      = p.players?.name ?? p.player_name ?? '–'}
+									{@const photo     = p.players?.photo ?? null}
+									{@const isMe      = p.player_id === $playerId}
+									{@const pStat     = stats[p.player_id] ?? null}
+									{@const trend     = formTrend(pStat?.avg5, pStat?.overallAvg)}
+
+									<div
+										class="picker-scout-card"
+										class:picker-scout-card--me={isMe}
+									>
+										<!-- Foto -->
+										<div class="picker-scout-photo-wrap">
+											<img
+												class="picker-scout-photo"
+												src={imgPath(photo, name)}
+												alt={name}
+												draggable="false"
+												onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
+											/>
 										</div>
-									</div>
 
-									<div class="sb-player-list">
-										{#each (GRID_MAP[cfg.starterCount] ?? GRID_MAP[6]) as dbPos}
-											{#if dbPos === null}
-												<!-- Deaktivierte Zelle (4er: 3. Spalte + Reihe 3) -->
-												<div class="sb-slot-card sb-slot-card--disabled" aria-hidden="true">
-													<div class="sb-slot-photo-wrap"></div>
-													<div class="sb-slot-info"></div>
+										<!-- Info -->
+										<div class="picker-scout-info">
+											<div class="picker-scout-header">
+												<span class="picker-scout-name">{name}</span>
+												<!-- Position-Badge statt Add-Button -->
+												<div class="sb-pos-badge">
+													{p.position ?? '–'}
 												</div>
-											{:else}
-												{@const p = starters.find(x => x.position === dbPos)}
-												{#if p}
-													<!-- Belegter Slot -->
-													{@const name  = p.players?.name ?? p.player_name ?? '–'}
-													{@const photo = p.players?.photo ?? null}
-													{@const isMe  = p.player_id === $playerId}
-													{@const pStat = p.player_id ? playerStats[p.player_id] : null}
-													{@const trend = (pStat?.avg5 && pStat?.overallAvg) ? pStat.avg5 - pStat.overallAvg : null}
-													<button
-														class="sb-slot-card"
-														class:sb-slot-card--me={isMe}
-														class:sb-slot-card--editable={isKapitaen && editMode}
-														onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
-														disabled={!isKapitaen || !editMode}
-													>
-														<div class="sb-slot-photo-wrap">
-															<img
-																class="sb-slot-photo"
-																src={imgPath(photo, name)}
-																alt={name}
-																draggable="false"
-																onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
-															/>
-															<span class="sb-slot-pos">{p.position}</span>
-															{#if isMe}<span class="sb-me-badge sb-me-badge--slot">Du</span>{/if}
-															{#if p.confirmed === true}
-																<div class="sb-slot-confirmed-overlay">
-																	<span class="material-symbols-outlined">check</span>
-																</div>
-															{:else if p.confirmed === false}
-																<div class="sb-slot-declined-dot">
-																	<span class="material-symbols-outlined">close</span>
-																</div>
-															{/if}
-															{#if isKapitaen && editMode}
-																<div class="sb-edit-overlay-row">
-																	<span class="material-symbols-outlined">edit</span>
-																</div>
-															{/if}
-														</div>
-														<div class="sb-slot-info">
-															<span class="sb-slot-name">{shortName(name)}</span>
-															{#if p.confirmed !== true}
-																<div class="sb-slot-stats">
-																	<div class="sb-slot-stat">
-																		<span class="sb-slot-stat-label">Schnitt</span>
-																		<span class="sb-slot-stat-value">{pStat?.overallAvg ?? p.score ?? '–'}</span>
-																	</div>
-																	<div class="sb-slot-stat">
-																		<span class="sb-slot-stat-label">Form</span>
-																		<div class="sb-slot-form-row">
-																			<span class="sb-slot-stat-value">{pStat?.avg5 ?? '–'}</span>
-																			{#if trend !== null}
-																				<span class="sb-slot-trend" class:sb-slot-trend--up={trend >= 0} class:sb-slot-trend--down={trend < 0}>
-																					<span class="material-symbols-outlined">{trend >= 0 ? 'trending_up' : 'trending_down'}</span>
-																				</span>
-																			{/if}
-																		</div>
-																	</div>
-																</div>
-															{/if}
-														</div>
-													</button>
-												{:else if isKapitaen && editMode}
-													<!-- Leerer Slot: Hinzufügen -->
-													<button
-														class="sb-slot-card sb-slot-card--add"
-														onclick={() => openPicker({ gamePlanPlayerId: null, position: dbPos })}
-													>
-														<div class="sb-slot-photo-wrap sb-slot-photo-wrap--add">
-															<span class="material-symbols-outlined">person_add</span>
-															<span class="sb-slot-pos sb-slot-pos--empty">{dbPos}</span>
-														</div>
-														<div class="sb-slot-info">
-															<span class="sb-slot-name" style="opacity:0.5">Hinzufügen</span>
-														</div>
-													</button>
-												{:else}
-													<!-- Leerer Slot: View-only Placeholder -->
-													<div class="sb-slot-card sb-slot-card--empty-view">
-														<div class="sb-slot-photo-wrap sb-slot-photo-wrap--empty">
-															<span class="sb-slot-pos sb-slot-pos--empty">{dbPos}</span>
-														</div>
-														<div class="sb-slot-info"></div>
+											</div>
+
+											<div class="picker-scout-stats">
+												<div class="picker-scout-stat">
+													<span class="picker-scout-stat-label">Schnitt</span>
+													<span class="picker-scout-stat-value">
+														{pStat?.overallAvg ?? '–'}&thinsp;<span class="picker-scout-stat-unit">Holz</span>
+													</span>
+												</div>
+												<div class="picker-scout-stat">
+													<span class="picker-scout-stat-label">Form (5 Spiele)</span>
+													<div class="picker-scout-form-row">
+														<span class="picker-scout-form-value">{pStat?.avg5 ?? '–'}</span>
+														{#if trend !== null}
+															<span
+																class="picker-scout-trend"
+																class:picker-scout-trend--up={trend >= 0}
+																class:picker-scout-trend--down={trend < 0}
+															>
+																<span class="material-symbols-outlined">
+																	{trend >= 0 ? 'trending_up' : 'trending_down'}
+																</span>
+																{trend >= 0 ? '+' : ''}{trend}
+															</span>
+														{/if}
 													</div>
-												{/if}
-											{/if}
-										{/each}
+													{#if trend !== null}
+														<span class="picker-scout-vs-label">vs. Schnitt</span>
+													{/if}
+												</div>
+											</div>
+										</div>
 									</div>
-
-									<!-- Ersatzspieler -->
-									{#if subs.length > 0 || (isKapitaen && editMode && starters.length >= cfg.starterCount)}
-										<div class="sb-section-label sb-section-label--sub">
-											<span>Ersatzspieler</span>
-											<span class="sb-count">{subs.length}</span>
-										</div>
-
-										<div class="sb-player-list">
-											{#each subs as p}
-												{@const name  = p.players?.name ?? p.player_name ?? '–'}
-												{@const photo = p.players?.photo ?? null}
-												{@const isMe  = p.player_id === $playerId}
-												{@const pStat = p.player_id ? playerStats[p.player_id] : null}
-												{@const trend = (pStat?.avg5 && pStat?.overallAvg) ? pStat.avg5 - pStat.overallAvg : null}
-												<button
-													class="sb-slot-card"
-													class:sb-slot-card--me={isMe}
-													class:sb-slot-card--editable={isKapitaen && editMode}
-													onclick={() => openPicker({ gamePlanPlayerId: p.id, position: p.position })}
-													disabled={!isKapitaen || !editMode}
-												>
-													<div class="sb-slot-photo-wrap">
-														<img
-															class="sb-slot-photo"
-															src={imgPath(photo, name)}
-															alt={name}
-															draggable="false"
-															onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
-														/>
-														<span class="sb-slot-pos">{p.position}</span>
-														{#if isMe}<span class="sb-me-badge sb-me-badge--slot">Du</span>{/if}
-														{#if p.confirmed === true}
-															<div class="sb-slot-confirmed-overlay">
-																<span class="material-symbols-outlined">check</span>
-															</div>
-														{:else if p.confirmed === false}
-															<div class="sb-slot-declined-dot">
-																<span class="material-symbols-outlined">close</span>
-															</div>
-														{/if}
-														{#if isKapitaen && editMode}
-															<div class="sb-edit-overlay-row">
-																<span class="material-symbols-outlined">edit</span>
-															</div>
-														{/if}
-													</div>
-													<div class="sb-slot-info">
-														<span class="sb-slot-name">{shortName(name)}</span>
-														{#if p.confirmed !== true}
-															<div class="sb-slot-stats">
-																<div class="sb-slot-stat">
-																	<span class="sb-slot-stat-label">Schnitt</span>
-																	<span class="sb-slot-stat-value">{pStat?.overallAvg ?? p.score ?? '–'}</span>
-																</div>
-																<div class="sb-slot-stat">
-																	<span class="sb-slot-stat-label">Form</span>
-																	<div class="sb-slot-form-row">
-																		<span class="sb-slot-stat-value">{pStat?.avg5 ?? '–'}</span>
-																		{#if trend !== null}
-																			<span class="sb-slot-trend" class:sb-slot-trend--up={trend >= 0} class:sb-slot-trend--down={trend < 0}>
-																				<span class="material-symbols-outlined">{trend >= 0 ? 'trending_up' : 'trending_down'}</span>
-																			</span>
-																		{/if}
-																	</div>
-																</div>
-															</div>
-														{/if}
-													</div>
-												</button>
-											{/each}
-
-											<!-- Ersatz hinzufügen (EditMode) -->
-											{#if isKapitaen && editMode}
-												<button
-													class="sb-slot-card sb-slot-card--add"
-													onclick={() => openPicker({ gamePlanPlayerId: null, position: plan.players.length + 1 })}
-												>
-													<div class="sb-slot-photo-wrap sb-slot-photo-wrap--add">
-														<span class="material-symbols-outlined">person_add</span>
-														<span class="sb-slot-pos sb-slot-pos--empty">{plan.players.length + 1}</span>
-													</div>
-													<div class="sb-slot-info">
-														<span class="sb-slot-name" style="opacity:0.5">Hinzufügen</span>
-													</div>
-												</button>
-											{/if}
-										</div>
-									{/if}
-
-								{/if}
+								{/each}
 							</div>
+						{/if}
 
-							<!-- Match-Workflow -->
-							{#if plan.workflow}
-								{@const wf = plan.workflow}
-								<MatchTimeline match={m} meetup={wf.meetup} />
-								<MeetupCard
-									match={m}
-									meetup={wf.meetup}
-									canEdit={isKapitaen}
-									onSaved={() => refreshWorkflow(i)}
-								/>
-								<SupportersCard
-									match={m}
-									supporters={wf.supporters}
-									onChanged={() => refreshWorkflow(i)}
-								/>
-								<CarpoolCard
-									match={m}
-									meetup={wf.meetup}
-									carpools={wf.carpools}
-									onChanged={() => refreshWorkflow(i)}
-								/>
-								<VenueCard
-									match={m}
-									venues={wf.venues}
-									votes={wf.votes}
-									onChanged={() => refreshWorkflow(i)}
-								/>
-								<FeedbackCard
-									match={m}
-									questions={feedbackQuestions}
-									existingFeedback={wf.myFeedback}
-									onSaved={() => refreshWorkflow(i)}
-								/>
-							{/if}
-
-						</div>
-					{/each}
-				</div>
+					</div>
+				{/each}
 			</div>
+		</div>
 
-			<!-- Kapitän FAB -->
-			{#if isKapitaen}
-				<button
-					class="sb-fab"
-					class:sb-fab--active={editMode}
-					onclick={() => editMode = !editMode}
-					aria-label={editMode ? 'Bearbeitung beenden' : 'Aufstellung bearbeiten'}
-				>
-					<span class="material-symbols-outlined">
-						{editMode ? 'check' : 'edit'}
-					</span>
-				</button>
-			{/if}
-		{/if}
+	{/if}
 
-	</div>
 </div>
+{/if}
 
-<!-- Spieler-Picker (Kapitän) -->
-<BottomSheet bind:open={pickerOpen} title="Spieleranalyse">
-	<div class="picker">
-		{#if pickerSlot?.gamePlanPlayerId}
-			<button class="picker-remove-btn" onclick={() => removePlayer(pickerSlot.gamePlanPlayerId)}>
-				<span class="material-symbols-outlined">person_remove</span>
-				Spieler entfernen
-			</button>
-		{/if}
-		<div class="picker-search-wrap">
-			<span class="material-symbols-outlined picker-search-icon">search</span>
-			<input
-				class="picker-search"
-				type="search"
-				placeholder="Name suchen…"
-				bind:value={pickerQuery}
-				autocomplete="off"
-			/>
-		</div>
-		<div class="picker-scout-list">
-			{#each filteredPlayers as p, idx}
-				{@const trend  = formTrend(p)}
-				{@const isTop  = idx === 0 && !pickerQuery.trim()}
-				<button
-					class="picker-scout-card"
-					class:picker-scout-card--top={isTop}
-					onclick={() => assignPlayer(p)}
-				>
-					<!-- Photo -->
-					<div class="picker-scout-photo-wrap">
-						<img
-							class="picker-scout-photo"
-							src={imgPath(p.photo, p.name)}
-							alt={p.name}
-							draggable="false"
-							onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
-						/>
-					</div>
-
-					<!-- Info -->
-					<div class="picker-scout-info">
-						<div class="picker-scout-header">
-							<span class="picker-scout-name">{p.name}</span>
-							<div class="picker-scout-add" class:picker-scout-add--top={isTop}>
-								<span class="material-symbols-outlined">add</span>
-							</div>
-						</div>
-
-						<div class="picker-scout-stats">
-							<!-- Gesamtschnitt -->
-							<div class="picker-scout-stat">
-								<span class="picker-scout-stat-label">Schnitt</span>
-								<span class="picker-scout-stat-value">
-									{p.avg_score ?? '–'}&thinsp;<span class="picker-scout-stat-unit">Holz</span>
-								</span>
-							</div>
-
-							<!-- Form letzte 5 -->
-							<div class="picker-scout-stat">
-								<span class="picker-scout-stat-label">Form (5 Spiele)</span>
-								<div class="picker-scout-form-row">
-									<span class="picker-scout-form-value">{p.avg5 ?? '–'}</span>
-									{#if trend !== null}
-										<span
-											class="picker-scout-trend"
-											class:picker-scout-trend--up={trend >= 0}
-											class:picker-scout-trend--down={trend < 0}
-										>
-											<span class="material-symbols-outlined">
-												{trend >= 0 ? 'trending_up' : 'trending_down'}
-											</span>
-											{trend >= 0 ? '+' : ''}{trend}
-										</span>
-									{/if}
-								</div>
-								{#if trend !== null}
-									<span class="picker-scout-vs-label">vs. Schnitt</span>
-								{/if}
-							</div>
-						</div>
-					</div>
-				</button>
-			{/each}
-		</div>
-	</div>
-</BottomSheet>
+</div>

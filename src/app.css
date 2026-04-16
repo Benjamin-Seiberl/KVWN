@@ -83,6 +83,9 @@
   /* --- Nav --- */
   --nav-height: 4rem;
   --nav-safe:   env(safe-area-inset-bottom, 0px);
+
+  /* --- Skeleton / Shimmer --- */
+  --color-skeleton: var(--color-surface-container);
 }
 /* ============================================================
    Base / Reset – KV Wiener Neustadt
@@ -106,6 +109,8 @@ body {
   color: var(--color-on-background);
   min-height: 100dvh;
   overflow-x: hidden;
+  /* Prevents rubber-band bounce on mobile when scrolling past page edges */
+  overscroll-behavior-y: none;
 }
 
 a {
@@ -128,6 +133,20 @@ button {
   max-width: 480px;
   margin: 0 auto;
   position: relative;
+  background: var(--color-background);
+  /* 3D-Stage-Transition für Bottom-Sheet-Effekt */
+  transform-origin: top center;
+  transition:
+    transform 0.4s cubic-bezier(0.32, 0.72, 0, 1),
+    border-radius 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 3D-Stage: App-Shell wird zurückgedrückt wenn Sheet offen */
+body.sheet-open .app-shell {
+  transform: scale(0.90) translateY(16px);
+  border-radius: 32px;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 /* --- Header ---
@@ -230,6 +249,9 @@ button {
 .page-content {
   flex: 1;
   overflow-y: auto;
+  /* stable: reserves scrollbar gutter always → prevents layout shift when
+     content becomes scrollable (centering stays pixel-perfect) */
+  scrollbar-gutter: stable both-edges;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: calc(var(--nav-height) + var(--nav-safe) + var(--space-6));
   background: var(--color-surface);
@@ -442,8 +464,7 @@ button {
 }
 
 /* ============================================================
-   KOMBINIERTES MATCH + KADER WIDGET
-   Oben: Hero-Gradient / Unten: weiße Kader-Karte
+   MATCH CAROUSEL WIDGET
    ============================================================ */
 .widget--match-combined {
   border-radius: var(--radius-xl);
@@ -452,20 +473,13 @@ button {
   display: flex;
   flex-direction: column;
   position: relative;
-  /* Split-Hintergrund: Rot oben (50%), Weiß unten (50%) – fest hinter den Slides */
-  background: linear-gradient(
-    to bottom,
-    #CC0000 0%,
-    #9E0000 50%,
-    var(--color-surface-container-lowest) 50%
-  );
+  background: linear-gradient(160deg, #CC0000 0%, #7A0000 100%);
 }
 
-/* Hero-Teil – identisch mit widget--hero */
+/* Hero-Teil */
 .widget--match-combined .widget-hero-bg {
   position: absolute;
   inset: 0;
-  height: 60%;          /* Nur oberen Teil überdecken */
   overflow: hidden;
   pointer-events: none;
 }
@@ -509,9 +523,11 @@ button {
 .carousel-container {
   position: relative;
   width: 100%;
+  padding: 0 var(--space-5);
   touch-action: none;
   user-select: none;
   cursor: grab;
+  box-sizing: border-box;
 }
 
 .carousel-container:active {
@@ -520,7 +536,7 @@ button {
 
 /* Das Widget selbst ist der Clip-Rahmen */
 .widget--match-combined {
-  height: 35vh;
+  height: auto;
   overflow: hidden;
 }
 
@@ -529,24 +545,20 @@ button {
 .match-track {
   display: flex;
   width: 100%;
-  height: 100%;
   gap: 0;
   will-change: transform;
 }
 
-/* Jeder Slide – kein Scale-Effekt, volle Breite */
+/* Jeder Slide – volle Breite */
 .match-slide {
   flex: 0 0 100%;
-  height: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-/* Hero: 50% der Slide-Höhe */
 .match-hero-content {
-  flex: 0 0 50%;
-  overflow: hidden;
+  flex: 1;
   position: relative;
   z-index: 1;
   padding: var(--space-5) var(--space-5) var(--space-4);
@@ -555,7 +567,6 @@ button {
   flex-direction: column;
   justify-content: flex-end;
   gap: var(--space-2);
-  will-change: transform;  /* Parallax via JS */
 }
 
 /* Swipe-Hinweis Icon */
@@ -949,11 +960,25 @@ button {
 .widget--card {
   background: var(--color-surface-container-lowest);
   box-shadow: var(--shadow-card);
+  border: 1px solid rgba(0,0,0,0.04);
   padding: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   border-radius: var(--radius-lg);
+  transition: transform 150ms cubic-bezier(0.32, 0.72, 0, 1),
+              box-shadow 150ms ease;
+}
+
+/* Tappable card widgets */
+button.widget--card {
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+button.widget--card:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
 }
 
 .widget-header {
@@ -993,27 +1018,56 @@ button {
   min-width: 0;
 }
 
-/* Carousel: Grid-Layout, zentriert */
-.widget-kader-panel .kader-avatars {
-  display: grid;
-  grid-template-columns: repeat(4, auto);
+/* Carousel: eine zentrierte Reihe mit Überlappung, Kreise füllen die Höhe */
+.widget-kader-panel {
+  background: transparent;
+  padding: var(--space-2) var(--space-4);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.widget-kader-panel .kader-avatars,
+.widget-kader-panel .kader-avatars.kader-avatars--6 {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  height: 100%;
   flex: unset;
   overflow: visible;
 }
 
-.widget-kader-panel .kader-avatars.kader-avatars--6 {
-  grid-template-columns: repeat(3, auto);
+.widget-kader-panel .kader-player {
+  /* Fill the panel height, capped so 6 avatars still fit in one row */
+  height: min(100%, 76px);
+  flex: 0 0 auto;
+  position: relative;
+  margin-left: -20px;
 }
 
-.widget-kader-panel .kader-player {
-  flex: 0 0 auto;
+.widget-kader-panel .kader-player:first-child {
+  margin-left: 0;
 }
+
+/* Player 1 visually on top → decreasing z-index left to right */
+.widget-kader-panel .kader-player:nth-child(1) { z-index: 6; }
+.widget-kader-panel .kader-player:nth-child(2) { z-index: 5; }
+.widget-kader-panel .kader-player:nth-child(3) { z-index: 4; }
+.widget-kader-panel .kader-player:nth-child(4) { z-index: 3; }
+.widget-kader-panel .kader-player:nth-child(5) { z-index: 2; }
+.widget-kader-panel .kader-player:nth-child(6) { z-index: 1; }
 
 .widget-kader-panel .kader-avatar {
-  width: 65px;
-  height: 65px;
+  height: 100%;
+  width: auto;
+  aspect-ratio: 1 / 1;
 }
 
 .kader-avatar {
@@ -1347,6 +1401,20 @@ button {
 /* ============================================================
    TRAINING INFO
    ============================================================ */
+.training-widget-btn {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.training-chevron {
+  font-size: 1.2rem;
+  color: var(--color-outline);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .training-info {
   display: flex;
   flex-direction: column;
@@ -1738,32 +1806,22 @@ button {
 
 /* ── Carousel ─────────────────────────────────────── */
 .sb-carousel {
+  /* pan-y: browser handles vertical scroll, we handle horizontal swipe */
   touch-action: pan-y;
   user-select: none;
-  cursor: grab;
-  overflow: hidden;
-  flex: 1;
-  min-height: 0;
+  overflow: hidden;   /* clip slides horizontally */
+  /* No flex:1 / min-height – height is driven by content, page scrolls normally */
 }
-
-.sb-carousel:active { cursor: grabbing; }
 
 .sb-track {
   display: flex;
-  height: 100%;
   will-change: transform;
 }
 
 .sb-slide {
   flex: 0 0 100%;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-  padding-bottom: calc(var(--nav-height) + var(--nav-safe) + var(--space-10));
+  /* No overflow-y:auto – content is part of the document scroll */
 }
 
 /* Match Header */
@@ -2702,6 +2760,39 @@ button {
   color: var(--color-outline);
 }
 
+/* Aufstellungs-Liste (Spielbetrieb Spiele-Tab) */
+.sb-lineup-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+/* Eigene Karte hervorheben */
+.picker-scout-card--me {
+  border-color: var(--color-primary);
+  background: rgba(204, 0, 0, 0.03);
+}
+.picker-scout-card--me .picker-scout-name {
+  color: var(--color-primary);
+}
+
+/* Positions-Badge (ersetzt Add-Button in Aufstellung) */
+.sb-pos-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-container-high);
+  color: var(--color-on-surface-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-label-md);
+  font-weight: 700;
+}
+
 /* ============================================================
    MATCH-WORKFLOW  – Timeline, Treffpunkt, Fahrten, Lokal, Feedback
    (siehe src/lib/components/spielbetrieb/*.svelte)
@@ -3160,4 +3251,998 @@ button {
   padding: var(--space-2) var(--space-4);
   margin-top: var(--space-4);
 }
+
+/* ============================================================
+   Page Transitions + Skeleton Screens
+   ============================================================ */
+
+@keyframes fadeFloat {
+  from { opacity: 0; transform: translateY(28px) scale(0.96); filter: blur(2px); }
+  to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.animate-fade-float {
+  animation: fadeFloat 580ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Context menu animations */
+@keyframes bouncePop {
+  0%   { transform: scale(0.95); opacity: 0.8; }
+  60%  { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1.02); opacity: 1; }
+}
+.animate-bounce-pop {
+  animation: bouncePop 380ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+@keyframes menuPop {
+  0%   { transform: scale(0.85) translateY(6px); opacity: 0; }
+  60%  { transform: scale(1.02) translateY(-2px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.animate-menu-pop {
+  animation: menuPop 320ms cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
+}
+
+@keyframes shimmer {
+  0%   { transform: translateX(-150%); }
+  50%  { transform: translateX(150%); }
+  100% { transform: translateX(150%); }
+}
+
+/* Apply to concrete placeholder shapes (avatar circles, text bars, card fills).
+   NEVER apply to wrapper containers — only to the actual shape element. */
+.shimmer-box {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-skeleton);
+}
+.shimmer-box::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.8) 50%, transparent 80%);
+  animation: shimmer 2s infinite ease-in-out;
+}
+
+/* Legacy alias — kept so existing .animate-pulse-skeleton classes still compile */
+.animate-pulse-skeleton {
+  animation: shimmer 2s infinite ease-in-out;
+}
+
+.page-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
+}
+
+.skeleton-card {
+  height: 160px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-surface-container-highest);
+}
+
+.skeleton-card--tall  { height: 220px; }
+.skeleton-card--short { height: 80px; }
+
+/* ── MatchCarousel skeleton shapes ───────────────────────── */
+.skel-bar {
+  border-radius: var(--radius-full);
+  height: 14px;
+}
+.skel-bar--league   { width: 55%; height: 11px; opacity: 0.7; }
+.skel-bar--opponent { width: 80%; height: 22px; margin-top: var(--space-2); }
+.skel-bar--date     { width: 50%; height: 11px; margin-top: var(--space-2); opacity: 0.7; }
+
+.skel-avatars {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.skel-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* ── TrainingWidget skeleton shapes ──────────────────────── */
+.skel-tw-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+}
+.skel-tw-line {
+  height: 12px;
+  border-radius: var(--radius-full);
+  width: 70%;
+  margin-top: var(--space-2);
+}
+
+/* ── StatsView skeleton shapes ───────────────────────────── */
+.skel-chart-card {
+  background: var(--color-surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.skel-chart-title { height: 16px; width: 45%; border-radius: var(--radius-full); }
+.skel-chart-sub   { height: 11px; width: 65%; border-radius: var(--radius-full); opacity: 0.6; }
+.skel-chart-area  { height: 9rem; border-radius: var(--radius-md); }
+
+.skel-quick-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+.skel-quick-cell {
+  background: var(--color-surface-container-lowest);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.skel-qs-icon { width: 20px; height: 20px; border-radius: var(--radius-sm); }
+.skel-qs-label { height: 9px;  width: 70%; border-radius: var(--radius-full); opacity: 0.6; }
+.skel-qs-value { height: 14px; width: 50%; border-radius: var(--radius-full); }
+
+.skel-ranking-card {
+  background: var(--color-surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.skel-ranking-header {
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.skel-ranking-htitle { height: 16px; width: 40%; border-radius: var(--radius-full); }
+.skel-ranking-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-surface-container);
+}
+.skel-rank-num  { width: 18px; height: 18px; border-radius: var(--radius-sm); flex-shrink: 0; }
+.skel-row-avatar { width: 36px; height: 36px; border-radius: var(--radius-full); flex-shrink: 0; }
+.skel-row-info  { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); }
+.skel-row-name  { height: 13px; width: 60%; border-radius: var(--radius-full); }
+.skel-row-avg   { height: 10px; width: 40%; border-radius: var(--radius-full); opacity: 0.6; }
+
+/* ============================================================
+   Spotlight Search Overlay (global — bypasses Svelte scoping)
+   backdrop-filter must be global; scoped styles lose effect when
+   the node is portal'd to <body> via use:portal in some browsers.
+   ============================================================ */
+
+.spot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
+  /* Dark base — always visible even if backdrop-filter is unsupported */
+  background-color: rgba(4, 4, 12, 0.88);
+}
+
+/* Browsers that support backdrop-filter get the full blur effect */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .spot-overlay {
+    background-color: rgba(4, 4, 12, 0.72);
+    backdrop-filter: blur(60px) saturate(1.8);
+    -webkit-backdrop-filter: blur(60px) saturate(1.8);
+  }
+}
+
+/* ============================================================
+   New Pill Navigation
+   ============================================================ */
+
+.pill-nav-outer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  padding: 0.625rem 1rem calc(0.625rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: center;
+  z-index: 100;
+  transition: transform 500ms ease-out;
+  pointer-events: none;
+}
+.pill-nav-outer.nav-hidden { transform: translateY(110%); }
+
+.pill-nav {
+  display: flex;
+  width: 100%;
+  max-width: 480px;
+  padding: 0.375rem;
+  border-radius: 2rem;
+  background: var(--color-surface-container-lowest);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  pointer-events: auto;
+}
+
+.pill-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 3rem;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--color-on-surface-variant);
+  background: transparent;
+  transition:
+    flex 500ms ease-out,
+    background-color 400ms ease-out,
+    color 300ms ease-out;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pill-tab.active {
+  flex: 0 0 40%;
+  background: rgba(204, 0, 0, 0.09);
+  color: var(--color-primary);
+}
+
+.pill-tab-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  transition: font-variation-settings 300ms ease-out;
+  line-height: 1;
+}
+
+.pill-tab.active .pill-tab-icon {
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+}
+
+.pill-tab-label-wrap {
+  display: grid;
+  grid-template-columns: 0fr;
+  transition: grid-template-columns 500ms ease-out;
+  flex-shrink: 0;
+}
+
+.pill-tab.active .pill-tab-label-wrap {
+  grid-template-columns: 1fr;
+}
+
+.pill-tab-label-inner {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pill-tab-label {
+  display: block;
+  padding-left: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+.pill-tab.active .pill-tab-label {
+  opacity: 1;
+  transition: opacity 250ms ease-out 160ms;
+}
+
+/* ============================================================
+   Page Header – Static Title + Sub-Tab Bar
+   ============================================================ */
+
+.page-header {
+  /* Scrolls with content – pill stays fixed via its own position:fixed */
+  width: 100%;
+  pointer-events: none;
+}
+
+.page-header-static {
+  width: 100%;
+  /* No max-width / margin:auto here — app-shell already constrains to 480px.
+     Removing redundant centering prevents a shift when scrollbar appears. */
+  padding-top: calc(var(--space-6) + env(safe-area-inset-top, 0px));
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+  transition: opacity 500ms cubic-bezier(0.34, 1.3, 0.64, 1),
+              transform 500ms cubic-bezier(0.34, 1.3, 0.64, 1),
+              filter 400ms ease-out;
+  pointer-events: none;
+}
+
+.page-header-static.header-hidden {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+  filter: blur(6px);
+}
+
+.page-header-title {
+  font-family: var(--font-display);
+  font-size: var(--text-headline-md);
+  font-weight: 900;
+  color: var(--color-primary);
+  text-align: center;
+  margin-bottom: var(--space-5);
+}
+
+.page-header-tabs {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-6);
+  border-bottom: 1px solid var(--color-surface-container-highest);
+  pointer-events: auto;
+}
+
+.page-header-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  font-size: var(--text-title-sm);
+  font-weight: 700;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  position: relative;
+  transition: color 200ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.page-header-tab .material-symbols-outlined {
+  font-size: 1.125rem;
+  font-variation-settings: 'FILL' 0, 'wght' 500;
+}
+
+.page-header-tab.active {
+  color: var(--color-primary);
+}
+
+.page-header-tab.active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 600;
+}
+
+.page-header-tab-indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 0; right: 0;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: var(--radius-full) var(--radius-full) 0 0;
+}
+
+/* ============================================================
+   Dynamic Island Pill
+   ============================================================ */
+
+.di-pill {
+  position: fixed;
+  top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 140px;
+  /* Fixed radius – 24px looks like a full pill at 48px height and a
+     rounded rectangle when expanded. No transition needed, no jarring shape change. */
+  border-radius: 24px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 8px 32px rgba(204, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
+
+  /* GPU-composited – ensures buttery rendering */
+  will-change: transform, opacity, filter;
+  filter: blur(0px);
+
+  /* Default transition (overridden to 'none' during drag via inline style) */
+  transition: height    400ms cubic-bezier(0.34, 1.3, 0.64, 1),
+              opacity   550ms cubic-bezier(0.16, 1,   0.3,  1),
+              transform 550ms cubic-bezier(0.16, 1,   0.3,  1),
+              filter    550ms cubic-bezier(0.16, 1,   0.3,  1);
+}
+
+.di-pill.di-pill--hidden {
+  opacity: 0;
+  pointer-events: none;
+  /* Fährt von oben rein / nach oben raus */
+  transform: translateX(-50%) translateY(-72px);
+  filter: blur(6px);
+}
+
+/* No border-radius override needed – 24px works for both states */
+
+.di-pill-head {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  padding: 0 var(--space-8);
+}
+
+.di-pill-label {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-title-sm);
+  color: var(--color-on-surface);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.di-pill-drag-bar {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.15);
+  transition: opacity 300ms ease-out;
+}
+
+.di-pill--expanded .di-pill-drag-bar,
+.di-pill--dragging .di-pill-drag-bar {
+  opacity: 0;
+}
+
+.di-pill-body {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-4);
+  /* Extra horizontal padding keeps buttons well clear of the rounded corners */
+  padding: var(--space-2) var(--space-6) var(--space-5);
+  flex-shrink: 0;
+  transition: opacity 350ms ease-out;
+}
+
+.di-pill-body.di-pill-body--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.di-pill-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  /* Generous padding so active background doesn't crowd the pill edges */
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background-color 200ms, color 200ms;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--color-on-surface-variant);
+}
+
+.di-pill-option .material-symbols-outlined {
+  font-size: 1.25rem;
+  font-variation-settings: 'FILL' 0, 'wght' 400;
+}
+
+.di-pill-option.active {
+  background: rgba(204, 0, 0, 0.1);
+  color: var(--color-primary);
+}
+
+.di-pill-option.active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 600;
+}
+
+.di-pill-option-label {
+  font-size: var(--text-label-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ── Dynamic Island Toast ──────────────────────────────── */
+
+/* Toast-Modus: Pille morpht sich in Toast-Form */
+.di-pill.di-pill--toast {
+  /* Breite passt sich dem Text an */
+  min-width: 160px;
+  width: max-content;
+  /* Stärkerer roter Glow */
+  box-shadow: 0 8px 32px rgba(204, 0, 0, 0.5);
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ── Crossfade-Schichten ──────────────────────────────── */
+
+/* Toast-Layer: absolute über dem normalen Inhalt */
+.di-pill-toast-layer {
+  position: absolute;
+  inset: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  opacity: 0;
+  transform: scale(0.75);
+  filter: blur(4px);
+  pointer-events: none;
+  transition:
+    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+}
+.di-pill-toast-layer--active {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+}
+
+.di-pill-toast-icon {
+  font-size: 1.2rem;
+  color: var(--color-primary);
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20;
+  flex-shrink: 0;
+}
+
+.di-pill-toast-text {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-primary);
+  white-space: nowrap;
+  padding: 0 var(--space-4);
+}
+
+/* Normal-Layer: weicht unscharf nach hinten aus */
+.di-pill-normal-layer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  transition:
+    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.di-pill-normal-layer--hidden {
+  opacity: 0;
+  transform: scale(1.1);
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+/* ============================================================
+   Profil – Admin-Section
+   ============================================================ */
+
+.profil-admin {
+  background: var(--color-surface-container-lowest);
+  border: 1px solid var(--color-surface-container);
+  border-radius: 14px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.profil-admin h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-label-md);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.admin-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.admin-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-container);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: var(--color-on-surface);
+  font-size: var(--text-label-sm);
+  font-weight: 700;
+  text-align: center;
+  transition: background 150ms, border-color 150ms;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-tile:active { background: var(--color-surface-container-low); }
+
+.admin-tile .material-symbols-outlined {
+  font-size: 1.4rem;
+  color: var(--color-primary);
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* ============================================================
+   BOTTOM SHEET — Reusable iOS-physics sheet
+   ============================================================ */
+
+/* Backdrop: schwarze Overlay-Schicht */
+.bs-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  z-index: 200;
+}
+.bs-backdrop--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Sheet selbst */
+.bs-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(100%);
+  width: min(100%, 480px);
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-container-lowest);
+  border-radius: 24px 24px 0 0;
+  box-shadow:
+    0 -4px 24px rgba(0, 0, 0, 0.18),
+    0 -1px 0 rgba(0, 0, 0, 0.06);
+  z-index: 201;
+  transition: transform 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+  touch-action: none;
+}
+.bs-sheet--open {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Drag-Header: Touch-Ziehlinie + Titel */
+.bs-drag-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-3) var(--space-5) var(--space-3);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  flex-shrink: 0;
+}
+.bs-drag-header:active { cursor: grabbing; }
+
+.bs-drag-bar {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-surface-container-highest);
+  margin-bottom: var(--space-3);
+  flex-shrink: 0;
+}
+
+.bs-title {
+  font-family: var(--font-display);
+  font-size: var(--text-title-md);
+  font-weight: 700;
+  color: var(--color-on-surface);
+  margin: 0 0 var(--space-1);
+  align-self: flex-start;
+}
+
+/* Scrollbarer Content-Bereich */
+.bs-content {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--space-5) var(--space-6);
+  flex: 1;
+}
+
+/* ── Training-Sheet-Inhalt ────────────────────────────────── */
+.bs-training-next {
+  background: linear-gradient(135deg, #1a0000 0%, #4a0000 100%);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.bs-training-next-label {
+  font-size: var(--text-label-sm);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+  margin: 0 0 var(--space-2);
+}
+
+.bs-training-next-date {
+  font-family: var(--font-display);
+  font-size: var(--text-title-lg);
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 var(--space-1);
+}
+
+.bs-training-next-time {
+  font-size: var(--text-body-md);
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+/* Bahnen-Grid */
+.bs-lanes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.bs-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--color-surface-container-low);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid transparent;
+}
+.bs-lane--free {
+  border-color: color-mix(in srgb, var(--color-secondary) 30%, transparent);
+}
+
+.bs-lane-nr {
+  font-size: var(--text-label-sm);
+  font-weight: 700;
+  color: var(--color-outline);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.bs-lane-player {
+  font-size: var(--text-body-md);
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+.bs-lane--free .bs-lane-player {
+  color: var(--color-secondary);
+}
+
+/* Abschnitt-Titel */
+.bs-section-title {
+  font-size: var(--text-label-sm);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-outline);
+  margin: 0 0 var(--space-3);
+}
+
+/* Liste weiterer Trainings */
+.bs-training-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.bs-training-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-container-low);
+  border-radius: var(--radius-md);
+}
+
+.bs-training-row-date {
+  flex: 1;
+  font-size: var(--text-body-md);
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.bs-training-row-time {
+  font-size: var(--text-body-sm);
+  color: var(--color-on-surface-variant);
+}
+
+/* Feste Trainingszeiten-Info */
+.bs-info-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-container-low);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+
+.bs-info-row .material-symbols-outlined {
+  font-size: 1.1rem;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.bs-info-row-text {
+  font-size: var(--text-body-md);
+  color: var(--color-on-surface-variant);
+}
+
+/* ============================================================
+   Match Detail Sheet (MatchCarousel tap)
+   ============================================================ */
+
+.mds-hero {
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+.mds-league {
+  font-size: var(--text-label-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-outline);
+  margin-bottom: var(--space-2);
+}
+.mds-chips { margin-bottom: var(--space-2); }
+.mds-opponent {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-title-md);
+  color: var(--color-on-surface);
+}
+.mds-date {
+  margin: 0;
+  font-size: var(--text-body-sm);
+  color: var(--color-on-surface-variant);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mds-section {
+  font-size: var(--text-label-sm);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-outline);
+  margin: 0 0 var(--space-2);
+}
+
+.mds-lineup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.mds-player {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-container-low);
+  border-radius: var(--radius-md);
+  border: 1.5px solid transparent;
+}
+.mds-player--played {
+  border-color: rgba(42, 157, 87, 0.3);
+  background: rgba(42, 157, 87, 0.04);
+}
+.mds-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--color-surface-container-highest);
+  display: grid;
+  place-items: center;
+  position: relative;
+  flex-shrink: 0;
+}
+.mds-avatar img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  position: absolute; inset: 0;
+}
+.mds-initial {
+  font-weight: 700;
+  font-size: var(--text-body-sm);
+  color: var(--color-outline);
+}
+.mds-name {
+  font-weight: 600;
+  font-size: var(--text-body-md);
+  color: var(--color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mds-score {
+  font-weight: 800;
+  font-size: var(--text-body-md);
+  color: var(--color-primary);
+}
+.mds-check {
+  font-size: 1.2rem;
+  color: #2a9d57;
+  font-variation-settings: 'FILL' 1;
+}
+.mds-pos {
+  font-weight: 700;
+  font-size: var(--text-body-sm);
+  color: var(--color-primary);
+}
+.mds-empty {
+  font-size: var(--text-body-sm);
+  color: var(--color-on-surface-variant);
+  margin: 0 0 var(--space-4);
+}
+.mds-player--me {
+  border-color: rgba(204, 0, 0, 0.25);
+  background: rgba(204, 0, 0, 0.04);
+}
+.mds-declined {
+  font-size: 1.2rem;
+  color: var(--color-error);
+  font-variation-settings: 'FILL' 1;
+}
+.mds-player-skel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
 

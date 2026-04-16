@@ -2,6 +2,7 @@
 	import CarpoolOfferSheet from './CarpoolOfferSheet.svelte';
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
 	import { imgPath, shortName, BLANK_IMG } from '$lib/utils/players.js';
 
 	let { match, meetup, carpools = [], onChanged } = $props();
@@ -25,6 +26,7 @@
 				.delete()
 				.eq('carpool_id', c.id)
 				.eq('passenger_id', $playerId);
+			triggerToast('Fahrt abgemeldet');
 		} else {
 			if ((c.seats?.length ?? 0) >= c.seats_total) return;
 			// Falls in anderer Fahrt eingetragen → zuerst entfernen
@@ -39,6 +41,7 @@
 			await sb
 				.from('match_carpool_seats')
 				.insert({ carpool_id: c.id, passenger_id: $playerId });
+			triggerToast(`Mit ${shortName(c.driver?.name ?? '?')} angemeldet`);
 		}
 		onChanged?.();
 	}
@@ -47,6 +50,7 @@
 		if (!myDriving) return;
 		if (!confirm('Fahrt wirklich zurückziehen?')) return;
 		await sb.from('match_carpools').delete().eq('id', myDriving.id);
+		triggerToast('Fahrt zurückgezogen');
 		onChanged?.();
 	}
 </script>
