@@ -5,6 +5,7 @@
 	import { currentSubtab } from '$lib/stores/subtab.js';
 	import { registerPush, unregisterPush, pushStatus } from '$lib/push/register.js';
 	import AdminRollen from '$lib/components/admin/AdminRollen.svelte';
+	import AdminTraining from '$lib/components/admin/AdminTraining.svelte';
 
 	// ── Active Tab ──────────────────────────────────────────
 	// Fall back to meine-daten if admin tab is active but user is no longer admin
@@ -200,11 +201,18 @@
 	}
 
 	// ── Admin: Sheet-State ──────────────────────────────────
-	let rollenOpen = $state(false);
+	let rollenOpen   = $state(false);
+	let trainingOpen = $state(false);
+
+	const LIVE_ACTIONS = [
+		'Rollen & Berechtigungen',
+		'Training anlegen',
+	];
 
 	function adminAction(fn) {
 		switch (fn) {
 			case 'Rollen & Berechtigungen': rollenOpen = true; break;
+			case 'Training anlegen':        trainingOpen = true; break;
 			default: alert(`⚙️ ${fn}\n\nDiese Funktion wird bald verfügbar sein.`);
 		}
 	}
@@ -617,7 +625,7 @@
 				>
 					<span class="material-symbols-outlined admin-action-icon" style="color: {section.color}">{action.icon}</span>
 					<span class="admin-action-label">{action.label}</span>
-					{#if action.fn !== 'Rollen & Berechtigungen'}
+					{#if !LIVE_ACTIONS.includes(action.fn)}
 						<span class="admin-action-badge">Bald</span>
 					{/if}
 				</button>
@@ -640,6 +648,7 @@
 <!-- Admin Bottom Sheets (außerhalb des Layout-Flows) -->
 {#if $playerRole === 'admin'}
 	<AdminRollen bind:open={rollenOpen} />
+	<AdminTraining bind:open={trainingOpen} />
 {/if}
 
 <style>
