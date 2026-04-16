@@ -50,7 +50,7 @@
 		<div class="dash-header-inner">
 			<p class="dash-date">{todayLabel()}</p>
 			<h1 class="dash-greeting">
-				{greeting()}{firstName ? ', ' + firstName : ''}
+				{greeting()}
 				<span class="dash-wave" aria-hidden="true">👋</span>
 			</h1>
 		</div>
