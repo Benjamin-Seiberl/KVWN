@@ -333,22 +333,18 @@
 {/if}
 
 {#if $currentSubtab === 'events'}
-		<div class="kal-month-header">
+		<div class="kal-card">
 			<div class="kal-month-nav">
 				<button class="kal-nav-btn" onclick={prevMonth} aria-label="Vorheriger Monat">
 					<span class="material-symbols-outlined">chevron_left</span>
 				</button>
-				<div class="kal-month-label">
-					<span class="kal-month-name">{MONTH_NAMES[viewMonth]}</span>
-					<span class="kal-month-year">{viewYear}</span>
-				</div>
+				<span class="kal-month-label">
+					{MONTH_NAMES[viewMonth]} <span class="kal-month-year">{viewYear}</span>
+				</span>
 				<button class="kal-nav-btn" onclick={nextMonth} aria-label="Nächster Monat">
 					<span class="material-symbols-outlined">chevron_right</span>
 				</button>
 			</div>
-		</div>
-
-		<div class="kal-card">
 			<div class="kal-grid kal-grid--header">
 				{#each DAY_NAMES as d}<div class="kal-day-label">{d}</div>{/each}
 			</div>
@@ -456,14 +452,13 @@
 	/* ── Page layout ── */
 	.kal-page { padding: var(--space-5) var(--space-5) var(--space-8); display: flex; flex-direction: column; gap: var(--space-6); }
 
-	/* ── Month nav ── */
-	.kal-month-header { padding-top: var(--space-2); }
-	.kal-month-nav { display: flex; align-items: center; justify-content: space-between; }
-	.kal-month-label { display: flex; flex-direction: column; align-items: center; }
-	.kal-month-name { font-family: var(--font-display); font-size: var(--text-headline-md); font-weight: 800; color: var(--color-on-surface); line-height: 1; }
-	.kal-month-year { font-family: var(--font-display); font-size: var(--text-label-md); font-weight: 700; color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 2px; }
-	.kal-nav-btn { width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); background: var(--color-surface-container-low); color: var(--color-on-surface-variant); transition: background 0.15s, transform 0.1s; border: 0; cursor: pointer; }
-	.kal-nav-btn:active { transform: scale(0.92); }
+	/* ── Month nav (compact strip inside card) ── */
+	.kal-month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+	.kal-month-label { font-family: var(--font-display); font-size: 0.8rem; font-weight: 700; color: var(--color-on-surface-variant); letter-spacing: 0.04em; }
+	.kal-month-year { font-weight: 500; color: var(--color-outline); }
+	.kal-nav-btn { width: 1.6rem; height: 1.6rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: none; color: var(--color-outline); transition: background 0.12s, transform 0.1s; border: 0; cursor: pointer; }
+	.kal-nav-btn .material-symbols-outlined { font-size: 1.1rem; }
+	.kal-nav-btn:active { transform: scale(0.88); background: var(--color-surface-container); }
 
 	/* ── Calendar card ── */
 	.kal-card { background: var(--color-surface-container-lowest, #fff); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-5); overflow: hidden; }
