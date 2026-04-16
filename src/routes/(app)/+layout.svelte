@@ -197,10 +197,10 @@
 		>
 			{#if $navigating}
 				<div class="page-skeleton animate-fade-float">
-					<div class="skeleton-card skeleton-card--short animate-pulse-skeleton"></div>
-					<div class="skeleton-card skeleton-card--tall animate-pulse-skeleton" style="animation-delay:80ms"></div>
-					<div class="skeleton-card animate-pulse-skeleton" style="animation-delay:160ms"></div>
-					<div class="skeleton-card skeleton-card--short animate-pulse-skeleton" style="animation-delay:240ms"></div>
+					<div class="skeleton-card skeleton-card--short shimmer-box"></div>
+					<div class="skeleton-card skeleton-card--tall shimmer-box"></div>
+					<div class="skeleton-card shimmer-box"></div>
+					<div class="skeleton-card skeleton-card--short shimmer-box"></div>
 				</div>
 			{:else}
 				{#key $page.url.pathname}

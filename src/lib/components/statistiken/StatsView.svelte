@@ -223,9 +223,39 @@
 	</div>
 
 	{#if loading}
-		<div class="stats-loading">
-			<span class="material-symbols-outlined loading-icon">hourglass_top</span>
-			<p>Lade Statistiken…</p>
+		<!-- Formkurve card skeleton -->
+		<div class="skel-chart-card">
+			<div class="skel-chart-title shimmer-box"></div>
+			<div class="skel-chart-sub shimmer-box"></div>
+			<div class="skel-chart-area shimmer-box"></div>
+		</div>
+
+		<!-- Schnell-Stats skeleton -->
+		<div class="skel-quick-stats">
+			{#each [0,1,2] as _}
+				<div class="skel-quick-cell">
+					<div class="skel-qs-icon shimmer-box"></div>
+					<div class="skel-qs-label shimmer-box"></div>
+					<div class="skel-qs-value shimmer-box"></div>
+				</div>
+			{/each}
+		</div>
+
+		<!-- Vereinsranking skeleton -->
+		<div class="skel-ranking-card">
+			<div class="skel-ranking-header">
+				<div class="skel-ranking-htitle shimmer-box"></div>
+			</div>
+			{#each [0,1,2,3,4] as _}
+				<div class="skel-ranking-row">
+					<div class="skel-rank-num shimmer-box"></div>
+					<div class="skel-row-avatar shimmer-box"></div>
+					<div class="skel-row-info">
+						<div class="skel-row-name shimmer-box"></div>
+						<div class="skel-row-avg shimmer-box"></div>
+					</div>
+				</div>
+			{/each}
 		</div>
 
 	{:else}

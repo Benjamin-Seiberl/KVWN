@@ -97,7 +97,34 @@
 	});
 </script>
 
-{#if !dismissed && !loading && pendingEntry && match}
+{#if loading}
+	<div class="lcc lcc--skeleton">
+		<!-- banner bar -->
+		<div class="skel-lcc-banner shimmer-box"></div>
+		<!-- header -->
+		<div class="skel-lcc-header">
+			<div class="skel-lcc-col">
+				<div class="skel-bar skel-bar--league shimmer-box"></div>
+				<div class="skel-bar skel-bar--opponent shimmer-box" style="margin-top:var(--space-2)"></div>
+			</div>
+			<div class="skel-lcc-col skel-lcc-col--right">
+				<div class="skel-lcc-icon shimmer-box"></div>
+				<div class="skel-bar skel-bar--date shimmer-box" style="margin-top:var(--space-2)"></div>
+			</div>
+		</div>
+		<!-- avatar row -->
+		<div class="skel-avatars" style="padding: var(--space-3) var(--space-4)">
+			{#each [0,1,2,3] as _}
+				<div class="skel-avatar shimmer-box"></div>
+			{/each}
+		</div>
+		<!-- action buttons -->
+		<div class="skel-lcc-actions">
+			<div class="skel-lcc-btn shimmer-box"></div>
+			<div class="skel-lcc-btn shimmer-box"></div>
+		</div>
+	</div>
+{:else if !dismissed && pendingEntry && match}
 	<div class="lcc" class:lcc--exit={exiting}>
 
 		<!-- Urgency banner -->
@@ -157,6 +184,37 @@
 {/if}
 
 <style>
+	/* ── Skeleton shapes ──────────────────────────────────── */
+	.lcc--skeleton { pointer-events: none; }
+
+	.skel-lcc-banner {
+		height: 32px;
+		border-radius: 0;
+	}
+	.skel-lcc-header {
+		display: flex;
+		justify-content: space-between;
+		padding: var(--space-3) var(--space-4);
+		gap: var(--space-3);
+	}
+	.skel-lcc-col { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; }
+	.skel-lcc-col--right { align-items: flex-end; }
+	.skel-lcc-icon {
+		width: 28px;
+		height: 28px;
+		border-radius: var(--radius-md);
+	}
+	.skel-lcc-actions {
+		display: flex;
+		gap: var(--space-3);
+		padding: var(--space-3) var(--space-4) var(--space-4);
+	}
+	.skel-lcc-btn {
+		flex: 1;
+		height: 44px;
+		border-radius: var(--radius-lg);
+	}
+
 	/* Urgency banner */
 	.lcc-banner {
 		display: flex;

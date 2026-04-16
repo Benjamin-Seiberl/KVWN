@@ -75,7 +75,8 @@
 	</div>
 	<div class="training-info">
 		{#if loading}
-			<p class="training-name">Lade…</p>
+			<div class="skel-tw-icon shimmer-box"></div>
+			<div class="skel-tw-line shimmer-box"></div>
 		{:else if !next}
 			<p class="training-name">Kein Training eingetragen</p>
 		{:else}

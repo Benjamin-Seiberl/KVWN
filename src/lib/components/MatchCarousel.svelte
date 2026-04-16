@@ -295,9 +295,21 @@
 
 	<div class="match-track" bind:this={trackEl}>
 		{#if loading}
-			<div class="match-slide">
-				<div class="match-hero-content" style="justify-content:center">
-					<p class="match-label">Lade Spiele…</p>
+			<div class="match-slide match-slide--skeleton">
+				<div class="match-hero-content">
+					<!-- Liga-Name -->
+					<div class="skel-bar skel-bar--league shimmer-box"></div>
+					<!-- Gegner -->
+					<div class="skel-bar skel-bar--opponent shimmer-box"></div>
+					<!-- Datum -->
+					<div class="skel-bar skel-bar--date shimmer-box"></div>
+					<!-- Avatar-Zeile -->
+					<div class="skel-avatars">
+						<div class="skel-avatar shimmer-box"></div>
+						<div class="skel-avatar shimmer-box"></div>
+						<div class="skel-avatar shimmer-box"></div>
+						<div class="skel-avatar shimmer-box"></div>
+					</div>
 				</div>
 			</div>
 		{:else if matches.length === 0}
