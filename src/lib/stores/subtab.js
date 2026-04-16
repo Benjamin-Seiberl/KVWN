@@ -12,8 +12,8 @@ export const PAGE_CONFIG = {
 	'/kalender': {
 		title: 'Kalender',
 		tabs: [
-			{ key: 'anstehend',  label: 'Anstehend',  icon: 'schedule' },
-			{ key: 'vergangen',  label: 'Vergangen',  icon: 'history' },
+			{ key: 'events',    label: 'Events',    icon: 'calendar_month' },
+			{ key: 'trainings', label: 'Trainings', icon: 'fitness_center' },
 		],
 	},
 	'/spielbetrieb': {
@@ -35,7 +35,7 @@ export const PAGE_CONFIG = {
 
 export const activeSubtabs = writable({
 	'/':             'neuigkeiten',
-	'/kalender':     'anstehend',
+	'/kalender':     'events',
 	'/spielbetrieb': 'spiele',
 	'/profil':       'meine-daten',
 });
