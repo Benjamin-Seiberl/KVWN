@@ -2,18 +2,18 @@
 	import { goto } from '$app/navigation';
 	import { sb } from '$lib/supabase';
 	import { tick } from 'svelte';
-	import { fade } from 'svelte/transition';
 
 	let { open = $bindable(false) } = $props();
 
-	let query       = $state('');
-	let inputEl     = $state(null);
-	let playerRes   = $state([]);
-	let matchRes    = $state([]);
-	let searching   = $state(false);
-	let active      = $state(false);   // entrance trigger for suggestion cascade
-	let resActive   = $state(false);   // entrance trigger for result cascade
-	let searchTimer = null;
+	let query        = $state('');
+	let inputEl      = $state(null);
+	let playerRes    = $state([]);
+	let matchRes     = $state([]);
+	let searching    = $state(false);
+	let active       = $state(false);   // entrance trigger for suggestion cascade
+	let resActive    = $state(false);   // entrance trigger for result cascade
+	let shouldRender = $state(false);   // keeps DOM mounted during exit fade
+	let searchTimer  = null;
 
 	// ── 8 Siri-style suggestions (4 × 2 grid) ──────────────────
 	const SUGGESTIONS = [
@@ -36,16 +36,21 @@
 	// ── Open / close lifecycle ────────────────────────────────
 	$effect(() => {
 		if (open) {
+			shouldRender = true;
 			tick().then(() => {
 				active = true;
 				setTimeout(() => inputEl?.focus(), 60);
 			});
 		} else {
-			active   = false;
+			active    = false;
 			resActive = false;
-			query    = '';
-			playerRes = [];
-			matchRes  = [];
+			// Keep DOM mounted for CSS fade-out (250ms), then unmount
+			setTimeout(() => {
+				shouldRender = false;
+				query     = '';
+				playerRes = [];
+				matchRes  = [];
+			}, 250);
 			clearTimeout(searchTimer);
 		}
 	});
@@ -110,11 +115,11 @@
 	let noResults   = $derived(showResults && !searching && !playerRes.length && !matchRes.length);
 </script>
 
-{#if open}
+{#if shouldRender}
 <div
 	use:portal
-	transition:fade={{ duration: 220 }}
 	class="spot-overlay"
+	class:spot-overlay--active={active}
 	onkeydown={onKeydown}
 	role="dialog"
 	aria-modal="true"
@@ -275,20 +280,13 @@
 {/if}
 
 <style>
-/* ── Overlay: ultra-blur + saturate + dark tint ──────────── */
+/* ── Overlay: opacity transition (backdrop styles live in app.css) ── */
 .spot-overlay {
-	position: fixed;
-	inset: 0;
-	z-index: 500;
-	display: flex;
-	flex-direction: column;
-	overflow-y: auto;
-	-webkit-overflow-scrolling: touch;
-	background: rgba(4, 4, 12, 0.72);
-	backdrop-filter: blur(60px) saturate(1.8);
-	-webkit-backdrop-filter: blur(60px) saturate(1.8);
-	padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
-	padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
+	opacity: 0;
+	transition: opacity 250ms ease;
+}
+.spot-overlay--active {
+	opacity: 1;
 }
 
 /* ── Search bar row ──────────────────────────────────────── */

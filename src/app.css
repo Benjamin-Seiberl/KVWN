@@ -3432,6 +3432,35 @@ button.widget--card:active {
 .skel-row-avg   { height: 10px; width: 40%; border-radius: var(--radius-full); opacity: 0.6; }
 
 /* ============================================================
+   Spotlight Search Overlay (global — bypasses Svelte scoping)
+   backdrop-filter must be global; scoped styles lose effect when
+   the node is portal'd to <body> via use:portal in some browsers.
+   ============================================================ */
+
+.spot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 32px);
+  /* Dark base — always visible even if backdrop-filter is unsupported */
+  background-color: rgba(4, 4, 12, 0.88);
+}
+
+/* Browsers that support backdrop-filter get the full blur effect */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .spot-overlay {
+    background-color: rgba(4, 4, 12, 0.72);
+    backdrop-filter: blur(60px) saturate(1.8);
+    -webkit-backdrop-filter: blur(60px) saturate(1.8);
+  }
+}
+
+/* ============================================================
    New Pill Navigation
    ============================================================ */
 
