@@ -66,9 +66,12 @@
 				.eq('leagues.name', m.leagues?.name ?? '')
 				.maybeSingle();
 			const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4;
-			return (gp?.game_plan_players ?? [])
+			const starters = (gp?.game_plan_players ?? [])
 				.filter(p => (p.position ?? 99) <= starterCount)
 				.sort((a, b) => a.position - b.position);
+			// Nur noch nicht gespielte Spieler anzeigen
+			const pending = starters.filter(p => p.played !== true);
+			return { starters, pending };
 		}));
 
 		loading = false;
@@ -280,7 +283,8 @@
 			</div>
 		{:else}
 			{#each matches as m, i}
-				{@const kader = kaders[i] ?? []}
+				{@const kader      = kaders[i]?.pending  ?? []}
+				{@const allPlayed  = (kaders[i]?.starters?.length ?? 0) > 0 && kader.length === 0}
 				{@const starterCount = /bundesliga|landesliga/i.test(m.leagues?.name ?? '') ? 6 : 4}
 				<div class="match-slide">
 					<!-- Hero -->
@@ -315,7 +319,7 @@
 						{/if}
 					</div>
 
-					<!-- Kader -->
+					<!-- Kader: nur noch nicht gespielte Spieler -->
 					<div class="widget-kader-panel">
 						{#if kader.length > 0}
 							<div class="kader-avatars" class:kader-avatars--6={starterCount === 6}>
@@ -333,6 +337,11 @@
 									</div>
 								{/each}
 							</div>
+						{:else if allPlayed}
+							<p class="kader-empty-text">
+								<span class="material-symbols-outlined" style="font-size:1.1rem;vertical-align:-3px">check_circle</span>
+								Alle haben gespielt
+							</p>
 						{:else}
 							<p class="kader-empty-text">Noch keine Aufstellung</p>
 						{/if}
