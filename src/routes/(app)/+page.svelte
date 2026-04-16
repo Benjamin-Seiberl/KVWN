@@ -47,11 +47,13 @@
 
 	<!-- Greeting header -->
 	<header class="dash-header" class:dash-header--gone={!greetingVisible} style="--i:0">
-		<p class="dash-date">{todayLabel()}</p>
-		<h1 class="dash-greeting">
-			{greeting()}{firstName ? ', ' + firstName : ''}
-			<span class="dash-wave" aria-hidden="true">👋</span>
-		</h1>
+		<div class="dash-header-inner">
+			<p class="dash-date">{todayLabel()}</p>
+			<h1 class="dash-greeting">
+				{greeting()}{firstName ? ', ' + firstName : ''}
+				<span class="dash-wave" aria-hidden="true">👋</span>
+			</h1>
+		</div>
 	</header>
 
 	{#if $currentSubtab === 'neuigkeiten'}
@@ -109,23 +111,35 @@
 		padding-bottom: calc(var(--nav-height, 72px) + var(--space-5));
 	}
 
-	/* Greeting header */
+	/* Greeting header — outer clip + collapse */
 	.dash-header {
-		padding: var(--space-4) var(--space-5) var(--space-2);
+		overflow: hidden;
+		max-height: 120px;
 		animation: dash-up 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
 		animation-delay: calc(var(--i) * 60ms + 40ms);
-		max-height: 120px;
-		overflow: hidden;
+		/* collapse: wait for inner slide to start, then close space */
 		transition:
-			max-height 0.55s cubic-bezier(0.4, 0, 0.2, 1),
-			opacity    0.4s  ease,
-			padding    0.55s cubic-bezier(0.4, 0, 0.2, 1);
+			max-height 0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
+			padding-top    0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
+			padding-bottom 0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s;
+		padding: var(--space-4) var(--space-5) var(--space-2);
 	}
 	.dash-header--gone {
 		max-height: 0;
-		opacity: 0;
 		padding-top: 0;
 		padding-bottom: 0;
+	}
+
+	/* inner content slides up and fades — runs first, faster */
+	.dash-header-inner {
+		transition:
+			transform 0.34s cubic-bezier(0.4, 0, 1, 1),
+			opacity   0.22s ease;
+		will-change: transform, opacity;
+	}
+	.dash-header--gone .dash-header-inner {
+		transform: translateY(-110%);
+		opacity: 0;
 	}
 	.dash-date {
 		margin: 0 0 2px;
