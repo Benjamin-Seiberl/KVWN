@@ -70,8 +70,6 @@
 		const key = fmt(viewYear, viewMonth, d);
 		if (matches.some(x => x.date === key)) return 'match';
 		if (events.some(x  => x.date === key)) return 'event';
-		const dow = new Date(viewYear, viewMonth, d).getDay();
-		if (templates.some(t => t.day_of_week === dow)) return 'training';
 		return null;
 	}
 
@@ -98,34 +96,6 @@
 		const h = Math.floor(total / 60) % 24;
 		const m = total % 60;
 		return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-	}
-
-	/**
-	 * Does [aStart, aEnd) overlap [bStart, bEnd)?
-	 * All values in minutes.
-	 */
-	function overlaps(aStart, aEnd, bStart, bEnd) {
-		return aStart < bEnd && aEnd > bStart;
-	}
-
-	/**
-	 * Is a training slot at [slotStart, slotStart+60) blocked by any match/event?
-	 * Matches are assumed 2 h; events use duration_minutes (default 60).
-	 */
-	function isSlotBlocked(slotStart, dayMatches, dayEvents) {
-		const slotEnd = slotStart + 60;
-		for (const m of dayMatches) {
-			const mStart = m.time ? toMinutes(m.time) : 0;
-			const mEnd   = mStart + 120; // assume 2 h
-			if (overlaps(slotStart, slotEnd, mStart, mEnd)) return true;
-		}
-		for (const e of dayEvents) {
-			if (!e.time) continue;
-			const eStart = toMinutes(e.time);
-			const eEnd   = eStart + (e.duration_minutes ?? 60);
-			if (overlaps(slotStart, slotEnd, eStart, eEnd)) return true;
-		}
-		return false;
 	}
 
 	// ── Calendar grid ─────────────────────────────────────────────────────────
@@ -165,39 +135,6 @@
 			items.push({ type: 'event', sortTime: toMinutes(startTime || '00:00'), data: { ...ev, startTime } });
 		}
 
-		// Training slots
-		const dow = new Date(viewYear, viewMonth, selectedDay).getDay();
-		const todayTpls = templates.filter(t => t.day_of_week === dow);
-
-		for (const tpl of todayTpls) {
-			const sh = Number(String(tpl.start_time).slice(0,2));
-			const eh = Number(String(tpl.end_time).slice(0,2));
-			for (let h = sh; h < eh; h++) {
-				const startTime = `${String(h).padStart(2,'0')}:00`;
-				const endTime   = `${String(h + 1).padStart(2,'0')}:00`;
-				const slotMins  = h * 60;
-
-				// Check override (closed slot)
-				const ov = overrides.find(o => o.date === selectedKey && String(o.start_time).slice(0,5) === startTime);
-				if (ov?.closed) continue;
-
-				// Remove from timeline if blocked by a match/event time window
-				if (isSlotBlocked(slotMins, selectedMatches, selectedEvents)) continue;
-
-				items.push({
-					type: 'training',
-					sortTime: slotMins,
-					data: {
-						date:       selectedKey,
-						start_time: startTime,
-						end_time:   endTime,
-						lane_count: tpl.lane_count,
-						note:       ov?.note ?? null,
-					},
-				});
-			}
-		}
-
 		// Sort chronologically
 		items.sort((a, b) => a.sortTime - b.sortTime);
 		return items;
@@ -209,32 +146,6 @@
 		const weekdays = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
 		return weekdays[d.getDay()] + ', ' + selectedDay + '. ' + MONTH_NAMES[viewMonth];
 	});
-
-	// ── Lane booking helpers ──────────────────────────────────────────────────
-	function bookingsFor(date, startTime) {
-		return bookings.filter(b => b.date === date && String(b.start_time).slice(0,5) === startTime);
-	}
-	function myBooking(date, startTime) {
-		return bookingsFor(date, startTime).find(b => b.player_id === $playerId);
-	}
-
-	async function bookLane(date, startTime, lane) {
-		if (!$playerId) return;
-		const mine = myBooking(date, startTime);
-		if (mine && mine.lane_number === lane) {
-			// Toggle off: remove my booking
-			await sb.from('training_bookings').delete().eq('id', mine.id);
-		} else if (mine) {
-			// Switch lane
-			await sb.from('training_bookings').update({ lane_number: lane }).eq('id', mine.id);
-		} else {
-			// New booking
-			await sb.from('training_bookings').insert({
-				date, start_time: startTime, lane_number: lane, player_id: $playerId,
-			});
-		}
-		loadMonth();
-	}
 
 	async function loadNext14() {
 		const from = new Date();
@@ -525,86 +436,6 @@
 									</div>
 								</div>
 
-							<!-- ── Training slot ── -->
-							{:else if item.type === 'training'}
-								{@const slot      = item.data}
-								{@const taken     = bookingsFor(slot.date, slot.start_time)}
-								{@const mine      = myBooking(slot.date, slot.start_time)}
-								{@const freeCount = slot.lane_count - taken.length}
-
-								<div class="kal-event-card kal-training-card">
-									<!-- Time column -->
-									<div class="kal-event-time-col kal-event-time-col--training">
-										<span class="kal-event-time-text">
-											{slot.end_time} – {slot.start_time}
-										</span>
-									</div>
-
-									<div class="kal-event-body">
-										<div class="kal-training-header">
-											<div class="kal-event-type-label kal-event-type-label--training">Training</div>
-											{#if slot.note}
-												<span class="kal-training-note">{slot.note}</span>
-											{/if}
-										</div>
-
-										<!-- Lane circles -->
-										<div class="lanes">
-											{#each Array(slot.lane_count) as _, i}
-												{@const laneNum = i + 1}
-												{@const booking = taken.find(x => x.lane_number === laneNum)}
-												{@const isMe    = booking?.player_id === $playerId}
-												{@const pl      = booking ? getPlayer(booking.player_id) : null}
-												{@const isFree  = !booking}
-
-												<button
-													class="lane"
-													class:lane--free={isFree}
-													class:lane--mine={isMe}
-													class:lane--taken={!!booking && !isMe}
-													onclick={() => bookLane(slot.date, slot.start_time, laneNum)}
-													title="Bahn {laneNum}"
-												>
-													{#if pl}
-														<img
-															class="lane-img"
-															src={imgPath(pl.photo, pl.name)}
-															alt={pl.name ?? ''}
-															draggable="false"
-															onerror={(e) => {
-																if (pl.avatar_url) {
-																	e.currentTarget.src = pl.avatar_url;
-																} else {
-																	e.currentTarget.style.display = 'none';
-																	e.currentTarget.nextElementSibling?.classList.remove('lane-initial--hidden');
-																}
-															}}
-														/>
-														<span class="lane-initial lane-initial--hidden">
-															{(pl.name ?? '?').slice(0,1).toUpperCase()}
-														</span>
-													{:else}
-														<span class="material-symbols-outlined lane-add-icon">add</span>
-													{/if}
-												</button>
-											{/each}
-										</div>
-
-										<!-- Availability hint -->
-										<p class="kal-lanes-hint">
-											{#if freeCount === 0}
-												<span class="material-symbols-outlined">block</span>
-												Alle Bahnen belegt
-											{:else if mine}
-												<span class="material-symbols-outlined">check_circle</span>
-												Du bist eingetragen · {freeCount} frei
-											{:else}
-												<span class="material-symbols-outlined">sports_score</span>
-												{freeCount} von {slot.lane_count} frei
-											{/if}
-										</p>
-									</div>
-								</div>
 							{/if}
 						{/each}
 					</div>
@@ -671,14 +502,10 @@
 	.kal-event-card--match { border: 1.5px solid rgba(212, 175, 55, 0.3); }
 	.kal-event-card--event { border: 1.5px solid rgba(42, 120, 180, 0.25); }
 
-	/* Training card gets a red accent border */
-	.kal-training-card { border: 1.5px solid rgba(204, 0, 0, 0.15); }
-
 	/* ── Time column ── */
 	.kal-event-time-col { width: 3.5rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--color-primary); margin: 4px; border-radius: var(--radius-md); padding: var(--space-2) var(--space-1); }
 	.kal-event-time-col--match    { background: var(--color-secondary-container, #f5e6b2); }
 	.kal-event-time-col--event    { background: #bfdaf0; }
-	.kal-event-time-col--training { background: linear-gradient(160deg, #CC0000, #9E0000); }
 	.kal-event-time-text { writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg); font-family: var(--font-display); font-size: 0.60rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #fff; line-height: 1.3; white-space: nowrap; }
 	.kal-event-time-col--match .kal-event-time-text,
 	.kal-event-time-col--event .kal-event-time-text { color: #334; }
@@ -687,16 +514,11 @@
 	.kal-event-body { flex: 1; padding: var(--space-4) var(--space-4) var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
 	.kal-event-type-label { font-size: var(--text-label-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-primary); }
 	.kal-event-type-label--event    { color: #2a78b4; }
-	.kal-event-type-label--training { color: var(--color-primary); }
 	.kal-event-card--match .kal-event-type-label { color: #8a6f1e; }
 	.kal-event-title { font-family: var(--font-display); font-size: var(--text-title-sm); font-weight: 700; line-height: 1.2; margin: 0; }
 	.kal-event-desc { font-size: var(--text-label-md); color: var(--color-on-surface-variant); }
 	.kal-event-btn { margin-top: var(--space-2); align-self: flex-start; padding: var(--space-2) var(--space-4); background: var(--color-primary); color: #fff; border-radius: var(--radius-md); font-size: var(--text-label-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
 	.kal-event-btn--match { background: var(--color-surface-container-lowest, #fff); color: var(--color-primary); border: 2px solid var(--color-primary); }
-
-	/* ── Training header ── */
-	.kal-training-header { display: flex; align-items: center; gap: var(--space-3); }
-	.kal-training-note { font-size: 0.72rem; font-weight: 600; background: rgba(204,0,0,0.08); color: var(--color-primary); border-radius: 999px; padding: 2px 8px; }
 
 	/* ── Lane circles ── */
 	.lanes {
