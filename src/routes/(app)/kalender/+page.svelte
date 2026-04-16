@@ -292,16 +292,41 @@
 		loadNext14();
 	}
 
-	const DAY_FULL = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+	const DAY_SHORT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
 
-	function dayLabel14(dateObj) {
+	// Group next trainings by date
+	const trainingDays = $derived.by(() => {
+		const map = new Map();
+		for (const slot of nextTrainings) {
+			if (!map.has(slot.date)) {
+				map.set(slot.date, { date: slot.date, dateObj: slot.dateObj, slots: [] });
+			}
+			map.get(slot.date).slots.push(slot);
+		}
+		return [...map.values()];
+	});
+
+	let selectedTrainingDate = $state(null);
+
+	// Auto-select first training day once data loads
+	$effect(() => {
+		if (trainingDays.length && !selectedTrainingDate) {
+			selectedTrainingDate = trainingDays[0].date;
+		}
+	});
+
+	const selectedDayData = $derived(
+		trainingDays.find(d => d.date === selectedTrainingDate) ?? null
+	);
+
+	function chipLabel(dateObj) {
 		const today = new Date(); today.setHours(0,0,0,0);
-		const diff = Math.round((dateObj - today) / 86400000);
+		const diff  = Math.round((dateObj - today) / 86400000);
 		if (diff === 0) return 'Heute';
 		if (diff === 1) return 'Morgen';
-		return DAY_FULL[dateObj.getDay()];
+		return DAY_SHORT[dateObj.getDay()];
 	}
-	function dateShort(dateObj) {
+	function chipDate(dateObj) {
 		return dateObj.getDate() + '. ' + MONTH_NAMES[dateObj.getMonth()];
 	}
 
@@ -312,67 +337,85 @@
 <div class="kal-page">
 
 {#if $currentSubtab === 'trainings'}
-	<!-- ── Next 2 weeks training cards ─────────────────────────────────────── -->
+	<!-- ── Next 2 weeks: day picker + training card ────────────────────────── -->
 	<section class="tr-section">
 		<div class="sec-head">
 			<span class="material-symbols-outlined sec-icon">fitness_center</span>
 			<h3 class="sec-title">Nächste 2 Wochen</h3>
 		</div>
 
-		{#if nextTrainings.length === 0}
+		{#if trainingDays.length === 0}
 			<div class="kal-no-events">
 				<span class="material-symbols-outlined kal-no-events-icon">fitness_center</span>
 				<p>Kein Training in den nächsten 14 Tagen</p>
 			</div>
 		{:else}
-			<div class="tr-card-list">
-				{#each nextTrainings as slot}
-					{@const taken     = nextBookingsFor(slot.date, slot.start_time)}
-					{@const mine      = myNextBooking(slot.date, slot.start_time)}
-					{@const freeCount = slot.lane_count - taken.length}
-					<div class="tr-card">
-						<div class="tr-card-date">
-							<span class="tr-card-weekday">{dayLabel14(slot.dateObj)}</span>
-							<span class="tr-card-datestr">{dateShort(slot.dateObj)}</span>
-							<span class="tr-card-time">{slot.start_time} – {slot.end_time}</span>
-							{#if slot.note}<span class="tr-card-note">{slot.note}</span>{/if}
-						</div>
-						<div class="lanes">
-							{#each Array(slot.lane_count) as _, i}
-								{@const laneNum = i + 1}
-								{@const booking = taken.find(x => x.lane_number === laneNum)}
-								{@const isMe    = booking?.player_id === $playerId}
-								{@const pl      = booking ? getPlayer(booking.player_id) : null}
-								<button
-									class="lane"
-									class:lane--free={!booking}
-									class:lane--mine={isMe}
-									class:lane--taken={!!booking && !isMe}
-									onclick={() => bookNextLane(slot.date, slot.start_time, laneNum)}
-									title="Bahn {laneNum}"
-								>
-									{#if pl}
-										<img class="lane-img" src={imgPath(pl.photo, pl.name)} alt={pl.name ?? ''} draggable="false"
-											onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('lane-initial--hidden'); }} />
-										<span class="lane-initial lane-initial--hidden">{(pl.name ?? '?').slice(0,1).toUpperCase()}</span>
-									{:else}
-										<span class="material-symbols-outlined lane-add-icon">add</span>
-									{/if}
-								</button>
-							{/each}
-						</div>
-						<p class="kal-lanes-hint">
-							{#if freeCount === 0}
-								<span class="material-symbols-outlined">block</span>Alle Bahnen belegt
-							{:else if mine}
-								<span class="material-symbols-outlined">check_circle</span>Du bist eingetragen · {freeCount} frei
-							{:else}
-								<span class="material-symbols-outlined">sports_score</span>{freeCount} von {slot.lane_count} frei
-							{/if}
-						</p>
-					</div>
+			<!-- Day chips -->
+			<div class="tr-day-scroller">
+				{#each trainingDays as day}
+					<button
+						class="tr-day-chip"
+						class:tr-day-chip--active={selectedTrainingDate === day.date}
+						onclick={() => selectedTrainingDate = day.date}
+					>
+						<span class="tr-chip-label">{chipLabel(day.dateObj)}</span>
+						<span class="tr-chip-date">{chipDate(day.dateObj)}</span>
+					</button>
 				{/each}
 			</div>
+
+			<!-- Single card for selected day -->
+			{#if selectedDayData}
+				<div class="tr-day-card">
+					{#each selectedDayData.slots as slot, idx}
+						{@const taken     = nextBookingsFor(slot.date, slot.start_time)}
+						{@const mine      = myNextBooking(slot.date, slot.start_time)}
+						{@const freeCount = slot.lane_count - taken.length}
+
+						{#if idx > 0}<div class="tr-slot-divider"></div>{/if}
+
+						<div class="tr-slot">
+							<div class="tr-slot-header">
+								<span class="tr-slot-time">{slot.start_time} – {slot.end_time}</span>
+								{#if slot.note}<span class="tr-card-note">{slot.note}</span>{/if}
+							</div>
+							<div class="lanes">
+								{#each Array(slot.lane_count) as _, i}
+									{@const laneNum = i + 1}
+									{@const booking = taken.find(x => x.lane_number === laneNum)}
+									{@const isMe    = booking?.player_id === $playerId}
+									{@const pl      = booking ? getPlayer(booking.player_id) : null}
+									<button
+										class="lane"
+										class:lane--free={!booking}
+										class:lane--mine={isMe}
+										class:lane--taken={!!booking && !isMe}
+										onclick={() => bookNextLane(slot.date, slot.start_time, laneNum)}
+										title="Bahn {laneNum}"
+									>
+										{#if pl}
+											<img class="lane-img" src={imgPath(pl.photo, pl.name)} alt={pl.name ?? ''} draggable="false"
+												onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('lane-initial--hidden'); }} />
+											<span class="lane-initial lane-initial--hidden">{(pl.name ?? '?').slice(0,1).toUpperCase()}</span>
+										{:else}
+											<span class="material-symbols-outlined lane-add-icon">add</span>
+										{/if}
+									</button>
+								{/each}
+							</div>
+							<p class="kal-lanes-hint">
+								{#if freeCount === 0}
+									<span class="material-symbols-outlined">block</span>Alle Bahnen belegt
+								{:else if mine}
+									<span class="material-symbols-outlined">check_circle</span>Du bist eingetragen · {freeCount} frei
+								{:else}
+									<span class="material-symbols-outlined">sports_score</span>{freeCount} von {slot.lane_count} frei
+								{/if}
+							</p>
+						</div>
+					{/each}
+				</div>
+			{/if}
 		{/if}
 	</section>
 
@@ -779,41 +822,88 @@
 		border-top: 1px solid var(--color-outline-variant);
 	}
 
-	/* ── Training card list ── */
+	/* ── Training section ── */
 	.tr-section { display: flex; flex-direction: column; gap: var(--space-4); }
 
-	.tr-card-list { display: flex; flex-direction: column; gap: var(--space-3); }
+	/* Day chip scroller */
+	.tr-day-scroller {
+		display: flex;
+		gap: var(--space-2);
+		overflow-x: auto;
+		scrollbar-width: none;
+		padding-bottom: 2px;
+	}
+	.tr-day-scroller::-webkit-scrollbar { display: none; }
 
-	.tr-card {
+	.tr-day-chip {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-lg);
+		border: 1.5px solid var(--color-outline-variant);
+		background: var(--color-surface-container-lowest);
+		cursor: pointer;
+		flex-shrink: 0;
+		transition: background 150ms ease, border-color 150ms ease, transform 100ms ease;
+		-webkit-tap-highlight-color: transparent;
+		font: inherit;
+		box-shadow: var(--shadow-card);
+	}
+	.tr-day-chip:active { transform: scale(0.95); }
+	.tr-day-chip--active {
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+		box-shadow: 0 4px 14px rgba(158, 0, 0, 0.28);
+	}
+
+	.tr-chip-label {
+		font-family: var(--font-display);
+		font-size: var(--text-label-sm);
+		font-weight: 800;
+		color: var(--color-on-surface);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+	.tr-chip-date {
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 500;
+		color: var(--color-on-surface-variant);
+		white-space: nowrap;
+	}
+	.tr-day-chip--active .tr-chip-label,
+	.tr-day-chip--active .tr-chip-date {
+		color: #fff;
+	}
+
+	/* Single day card */
+	.tr-day-card {
 		background: var(--color-surface-container-lowest);
 		border-radius: var(--radius-lg);
 		box-shadow: var(--shadow-card);
 		border: 1.5px solid rgba(204, 0, 0, 0.12);
+		overflow: hidden;
+	}
+
+	.tr-slot {
 		padding: var(--space-4);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
 	}
-
-	.tr-card-date {
+	.tr-slot-divider {
+		height: 1px;
+		background: var(--color-outline-variant);
+		margin: 0 var(--space-4);
+	}
+	.tr-slot-header {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		flex-wrap: wrap;
 	}
-	.tr-card-weekday {
-		font-family: var(--font-display);
-		font-size: var(--text-title-sm);
-		font-weight: 800;
-		color: var(--color-on-surface);
-	}
-	.tr-card-datestr {
-		font-family: var(--font-body);
-		font-size: var(--text-body-md);
-		color: var(--color-on-surface-variant);
-	}
-	.tr-card-time {
-		margin-left: auto;
+	.tr-slot-time {
 		font-family: var(--font-display);
 		font-size: var(--text-label-md);
 		font-weight: 700;
