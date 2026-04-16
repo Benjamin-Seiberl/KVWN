@@ -111,18 +111,16 @@
 		padding-bottom: calc(var(--nav-height, 72px) + var(--space-5));
 	}
 
-	/* Greeting header — outer clip + collapse */
+	/* Greeting header — outer: clips inner, controls space */
 	.dash-header {
 		overflow: hidden;
 		max-height: 120px;
-		animation: dash-up 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
-		animation-delay: calc(var(--i) * 60ms + 40ms);
-		/* collapse: wait for inner slide to start, then close space */
-		transition:
-			max-height 0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
-			padding-top    0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
-			padding-bottom 0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s;
 		padding: var(--space-4) var(--space-5) var(--space-2);
+		/* space collapses 0.12s after inner leaves */
+		transition:
+			max-height    0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
+			padding-top   0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
+			padding-bottom 0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s;
 	}
 	.dash-header--gone {
 		max-height: 0;
@@ -130,12 +128,17 @@
 		padding-bottom: 0;
 	}
 
-	/* inner content slides up and fades — runs first, faster */
+	/* inner: slides DOWN from top on enter, slides UP on exit */
 	.dash-header-inner {
+		animation: greeting-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 		transition:
-			transform 0.34s cubic-bezier(0.4, 0, 1, 1),
-			opacity   0.22s ease;
-		will-change: transform, opacity;
+			transform 0.38s cubic-bezier(0.4, 0, 1, 1),
+			opacity   0.24s ease;
+		will-change: transform;
+	}
+	@keyframes greeting-in {
+		from { transform: translateY(-100%); opacity: 0.5; }
+		to   { transform: translateY(0);     opacity: 1;   }
 	}
 	.dash-header--gone .dash-header-inner {
 		transform: translateY(-110%);
