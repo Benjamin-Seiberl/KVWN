@@ -29,7 +29,7 @@
 		</div>
 		<div class="feed-scroll">
 			{#each news as n}
-				<NewsCard news={n} />
+				<NewsCard news={n} onUpdated={load} />
 			{/each}
 			{#each polls as p}
 				<PollCard poll={p} onVoted={load} />
