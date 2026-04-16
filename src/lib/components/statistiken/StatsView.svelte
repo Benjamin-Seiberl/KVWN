@@ -42,21 +42,26 @@
 				.not('score', 'is', null)
 				.order('cal_week', { referencedTable: 'game_plans', ascending: false })
 				.limit(1000),
-			// Runden-Bezeichnungen aller Matches (z.B. F01, H03)
+			// Runden-Bezeichnungen aller Ligaspiele (NÖ-Cup ausgeschlossen)
 			sb.from('matches')
-				.select('cal_week, league_id, round')
+				.select('cal_week, league_id, round, is_tournament')
 				.not('round', 'is', null),
 		]);
 
 		// Lookup: `${cal_week}_${league_id}` → round-Bezeichnung
+		// Nur reguläre Ligaspiele – Turniere (NÖ-Cup) werden übersprungen
 		const roundLookup = {};
 		for (const m of matchRounds ?? []) {
+			if (m.is_tournament) continue;
 			roundLookup[`${m.cal_week}_${m.league_id}`] = m.round;
 		}
 
-		// Scores pro Spieler gruppieren (bereits DESC nach cal_week)
+		// Scores pro Spieler – nur Ligaspiele (via roundLookup-Whitelist)
 		const scoreMap = {};
 		for (const g of allScores ?? []) {
+			const { cal_week, league_id } = g.game_plans ?? {};
+			if (cal_week == null || league_id == null) continue;
+			if (!roundLookup[`${cal_week}_${league_id}`]) continue; // Cup herausfiltern
 			if (!scoreMap[g.player_id]) scoreMap[g.player_id] = [];
 			scoreMap[g.player_id].push(Number(g.score));
 		}
