@@ -118,9 +118,9 @@
 		padding: var(--space-4) var(--space-5) var(--space-2);
 		/* space collapses 0.12s after inner leaves */
 		transition:
-			max-height    0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
-			padding-top   0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s,
-			padding-bottom 0.46s cubic-bezier(0.32, 0.72, 0, 1) 0.12s;
+			max-height     0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.16s,
+			padding-top    0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.16s,
+			padding-bottom 0.6s cubic-bezier(0.32, 0.72, 0, 1) 0.16s;
 	}
 	.dash-header--gone {
 		max-height: 0;
@@ -128,16 +128,16 @@
 		padding-bottom: 0;
 	}
 
-	/* inner: slides DOWN from top on enter, slides UP on exit */
+	/* inner: slides DOWN from top on enter (slow spring hop), slides UP on exit */
 	.dash-header-inner {
-		animation: greeting-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+		animation: greeting-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 		transition:
-			transform 0.38s cubic-bezier(0.4, 0, 1, 1),
-			opacity   0.24s ease;
+			transform 0.5s  cubic-bezier(0.4, 0, 1, 1),
+			opacity   0.31s ease;
 		will-change: transform;
 	}
 	@keyframes greeting-in {
-		from { transform: translateY(-100%); opacity: 0.5; }
+		from { transform: translateY(-100%); opacity: 0.4; }
 		to   { transform: translateY(0);     opacity: 1;   }
 	}
 	.dash-header--gone .dash-header-inner {
