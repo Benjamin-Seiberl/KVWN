@@ -63,7 +63,7 @@
 				fn:    shareNews,
 			},
 		];
-		if ($playerRole === 'admin') {
+		if ($playerRole === 'kapitaen') {
 			base.push({
 				label:       'Löschen',
 				icon:        'delete',

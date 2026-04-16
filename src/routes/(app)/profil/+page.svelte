@@ -13,7 +13,7 @@
 	// Fall back to meine-daten if admin tab is active but user is no longer admin
 	let activeTab = $derived.by(() => {
 		const t = $currentSubtab;
-		if (t === 'admin' && $playerRole !== 'admin') return 'meine-daten';
+		if (t === 'admin' && $playerRole !== 'kapitaen') return 'meine-daten';
 		return t ?? 'meine-daten';
 	});
 
@@ -569,12 +569,12 @@
 	<!-- ════════════════════════════════════════════════════ -->
 	<!-- TAB: ADMIN                                           -->
 	<!-- ════════════════════════════════════════════════════ -->
-	{:else if activeTab === 'admin' && $playerRole === 'admin'}
+	{:else if activeTab === 'admin' && $playerRole === 'kapitaen'}
 
 		<div class="admin-header">
 			<span class="material-symbols-outlined admin-header-icon">shield_person</span>
 			<div>
-				<h2 class="admin-header-title">Admin-Panel</h2>
+				<h2 class="admin-header-title">Kapitäns-Panel</h2>
 				<p class="admin-header-sub">Verwaltung · KV Wiener Neustadt</p>
 			</div>
 		</div>
@@ -618,7 +618,7 @@
 </div>
 
 <!-- Admin Bottom Sheets (außerhalb des Layout-Flows) -->
-{#if $playerRole === 'admin'}
+{#if $playerRole === 'kapitaen'}
 	<AdminRollen bind:open={rollenOpen} />
 	<AdminTraining bind:open={trainingOpen} />
 	<AdminErgebnis bind:open={ergebnisOpen} />

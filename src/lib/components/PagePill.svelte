@@ -50,7 +50,7 @@
 	let visibleTabs = $derived.by(() => {
 		const config = $currentPageConfig;
 		if (!config) return [];
-		return config.tabs.filter(t => !t.adminOnly || $playerRole === 'admin');
+		return config.tabs.filter(t => !t.adminOnly || $playerRole === 'kapitaen');
 	});
 
 	// ── Pill height with drag physics ─────────────────────────

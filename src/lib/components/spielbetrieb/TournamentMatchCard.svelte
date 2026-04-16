@@ -8,7 +8,7 @@
 	let rounds = $state([]);       // tournament_rounds
 	let assignments = $state([]);  // tournament_round_players
 	let players = $state([]);
-	const isAdmin = $derived($playerRole === 'admin' || $playerRole === 'kapitaen');
+	const isAdmin = $derived($playerRole === 'kapitaen');
 
 	// Neuer Durchgang Form
 	let newTime = $state('');

@@ -28,7 +28,7 @@ export const PAGE_CONFIG = {
 		tabs: [
 			{ key: 'meine-daten',    label: 'Meine Daten',    icon: 'person' },
 			{ key: 'einstellungen',  label: 'Einstellungen',  icon: 'settings' },
-			{ key: 'admin',          label: 'Admin',          icon: 'shield_person', adminOnly: true },
+			{ key: 'admin',          label: 'Kapitän',        icon: 'shield_person', adminOnly: true },
 		],
 	},
 };

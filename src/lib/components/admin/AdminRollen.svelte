@@ -16,8 +16,8 @@
 	let inviteRole  = $state('user');
 	let sending     = $state(false);
 
-	const ROLE_LABELS = { user: 'Spieler', kapitaen: 'Kapitän', admin: 'Admin' };
-	const ROLE_COLORS = { user: 'var(--color-outline)', kapitaen: '#D4AF37', admin: 'var(--color-primary)' };
+	const ROLE_LABELS = { user: 'Spieler', kapitaen: 'Kapitän' };
+	const ROLE_COLORS = { user: 'var(--color-outline)', kapitaen: '#D4AF37' };
 
 	async function load() {
 		loading = true;
@@ -142,7 +142,6 @@
 				<select id="ar-inv-role" bind:value={inviteRole} class="ar-role-select">
 					<option value="user">Spieler</option>
 					<option value="kapitaen">Kapitän</option>
-					<option value="admin">Admin</option>
 				</select>
 			</div>
 			<button
@@ -192,7 +191,6 @@
 					>
 						<option value="user">Spieler</option>
 						<option value="kapitaen">Kapitän</option>
-						<option value="admin">Admin</option>
 					</select>
 
 					<!-- Aktiv/Inaktiv-Toggle -->

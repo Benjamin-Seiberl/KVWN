@@ -64,7 +64,7 @@
 		<textarea
 			class="mw-feedback__textarea"
 			bind:value={answer}
-			placeholder="Deine Antwort… (nur du &amp; Kapitän/Admin sehen das)"
+			placeholder="Deine Antwort… (nur du &amp; der Kapitän sehen das)"
 			enterkeyhint="send"
 			autocapitalize="sentences"
 			inputmode="text"
