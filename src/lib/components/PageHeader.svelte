@@ -4,7 +4,7 @@
 	import { currentPageConfig, currentSubtab, activeSubtabs, setSubtab } from '$lib/stores/subtab.js';
 
 	// Transition only after 80px of scroll (was 15 – too eager)
-	let isScrolled = $derived($scrollY > 80);
+	let isScrolled = $derived($scrollY > 120);
 
 	// --- Dynamic Island state ---
 	let pillExpanded = $state(false);
