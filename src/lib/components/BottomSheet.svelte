@@ -2,7 +2,7 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 
-	let { open = $bindable(false), title = '', children } = $props();
+	let { open = $bindable(false), title = '', zIndex = null, children } = $props();
 
 	// ── Portal: rendert direkt in <body> ─────────────────────
 	// Verhindert dass overflow-y:auto / transform-Ancestors den
@@ -95,13 +95,14 @@
 		class:bs-backdrop--visible={open}
 		onclick={close}
 		role="presentation"
+		style={zIndex ? `z-index:${zIndex - 1}` : ''}
 	></div>
 
 	<!-- Sheet -->
 	<div
 		class="bs-sheet"
 		class:bs-sheet--open={open}
-		style={sheetStyle}
+		style="{sheetStyle}{zIndex ? ` z-index:${zIndex};` : ''}"
 		role="dialog"
 		aria-modal="true"
 		aria-label={title || 'Menü'}
