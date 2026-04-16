@@ -464,8 +464,7 @@ body.sheet-open .app-shell {
 }
 
 /* ============================================================
-   KOMBINIERTES MATCH + KADER WIDGET
-   Oben: Hero-Gradient / Unten: weiße Kader-Karte
+   MATCH CAROUSEL WIDGET
    ============================================================ */
 .widget--match-combined {
   border-radius: var(--radius-xl);
@@ -474,20 +473,13 @@ body.sheet-open .app-shell {
   display: flex;
   flex-direction: column;
   position: relative;
-  /* Split-Hintergrund: Rot oben (50%), Weiß unten (50%) – fest hinter den Slides */
-  background: linear-gradient(
-    to bottom,
-    #CC0000 0%,
-    #9E0000 50%,
-    var(--color-surface-container-lowest) 50%
-  );
+  background: linear-gradient(160deg, #CC0000 0%, #7A0000 100%);
 }
 
-/* Hero-Teil – identisch mit widget--hero */
+/* Hero-Teil */
 .widget--match-combined .widget-hero-bg {
   position: absolute;
   inset: 0;
-  height: 60%;          /* Nur oberen Teil überdecken */
   overflow: hidden;
   pointer-events: none;
 }
@@ -544,7 +536,7 @@ body.sheet-open .app-shell {
 
 /* Das Widget selbst ist der Clip-Rahmen */
 .widget--match-combined {
-  height: 35vh;
+  height: auto;
   overflow: hidden;
 }
 
@@ -553,24 +545,20 @@ body.sheet-open .app-shell {
 .match-track {
   display: flex;
   width: 100%;
-  height: 100%;
   gap: 0;
   will-change: transform;
 }
 
-/* Jeder Slide – kein Scale-Effekt, volle Breite */
+/* Jeder Slide – volle Breite */
 .match-slide {
   flex: 0 0 100%;
-  height: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-/* Hero: 50% der Slide-Höhe */
 .match-hero-content {
-  flex: 0 0 50%;
-  overflow: hidden;
+  flex: 1;
   position: relative;
   z-index: 1;
   padding: var(--space-5) var(--space-5) var(--space-4);
@@ -579,7 +567,6 @@ body.sheet-open .app-shell {
   flex-direction: column;
   justify-content: flex-end;
   gap: var(--space-2);
-  will-change: transform;  /* Parallax via JS */
 }
 
 /* Swipe-Hinweis Icon */
