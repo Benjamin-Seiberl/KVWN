@@ -10,10 +10,11 @@
 	];
 
 	const drawerLinks = [
-		{ href: '/spielbetrieb', icon: 'sports_score',  label: 'Aufstellung',     desc: 'Mannschaftsaufstellungen' },
-		{ href: '/kalender',     icon: 'calendar_today',label: 'Kalender',         desc: 'Trainings & Spiele'        },
-		{ href: '/statistiken',  icon: 'leaderboard',   label: 'Statistiken',      desc: 'Rankings & Performance'   },
-		{ href: '/mehr',         icon: 'info',          label: 'Über den Verein',  desc: 'Infos & Kontakt'           },
+		{ href: '/spielbetrieb', icon: 'sports_score',   label: 'Aufstellung',     desc: 'Mannschaftsaufstellungen' },
+		{ href: '/kalender',     icon: 'fitness_center',  label: 'Training',         desc: 'Nächstes Training & Bahnen' },
+		{ href: '/kalender',     icon: 'calendar_today',  label: 'Kalender',         desc: 'Trainings & Spiele'        },
+		{ href: '/statistiken',  icon: 'leaderboard',     label: 'Statistiken',      desc: 'Rankings & Performance'   },
+		{ href: '/mehr',         icon: 'info',            label: 'Über den Verein',  desc: 'Infos & Kontakt'           },
 	];
 
 	let navEl      = $state(null);
