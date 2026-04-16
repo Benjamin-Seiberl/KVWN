@@ -4,6 +4,7 @@
 	import { playerId, signOut, playerRole } from '$lib/stores/auth';
 	import { currentSubtab } from '$lib/stores/subtab.js';
 	import { registerPush, unregisterPush, pushStatus } from '$lib/push/register.js';
+	import AdminRollen from '$lib/components/admin/AdminRollen.svelte';
 
 	// ── Active Tab ──────────────────────────────────────────
 	// Fall back to meine-daten if admin tab is active but user is no longer admin
@@ -198,9 +199,14 @@
 		return `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]}`;
 	}
 
-	// ── Admin: Platzhalter-Aktionen ─────────────────────────
-	function adminPlaceholder(fn) {
-		alert(`⚙️ ${fn}\n\nDiese Funktion wird in einer zukünftigen Version verfügbar sein.`);
+	// ── Admin: Sheet-State ──────────────────────────────────
+	let rollenOpen = $state(false);
+
+	function adminAction(fn) {
+		switch (fn) {
+			case 'Rollen & Berechtigungen': rollenOpen = true; break;
+			default: alert(`⚙️ ${fn}\n\nDiese Funktion wird bald verfügbar sein.`);
+		}
 	}
 
 	const ADMIN_SECTIONS = [
@@ -607,11 +613,13 @@
 				{#each section.actions as action}
 				<button
 					class="admin-action"
-					onclick={() => adminPlaceholder(action.fn)}
+					onclick={() => adminAction(action.fn)}
 				>
 					<span class="material-symbols-outlined admin-action-icon" style="color: {section.color}">{action.icon}</span>
 					<span class="admin-action-label">{action.label}</span>
-					<span class="admin-action-badge">Bald</span>
+					{#if action.fn !== 'Rollen & Berechtigungen'}
+						<span class="admin-action-badge">Bald</span>
+					{/if}
 				</button>
 				{/each}
 			</div>
@@ -620,7 +628,7 @@
 
 		<div class="admin-version">
 			<span class="material-symbols-outlined">info</span>
-			Admin-Panel v0.1 · Alle Funktionen sind Platzhalter
+			Admin-Panel v0.2
 		</div>
 
 	{/if}
@@ -628,6 +636,11 @@
 
 	{/if}<!-- end {#if me} -->
 </div>
+
+<!-- Admin Bottom Sheets (außerhalb des Layout-Flows) -->
+{#if $playerRole === 'admin'}
+	<AdminRollen bind:open={rollenOpen} />
+{/if}
 
 <style>
 /* ── Seiten-Wrapper ─────────────────────────────────── */
