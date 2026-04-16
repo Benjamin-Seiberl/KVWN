@@ -3,10 +3,11 @@
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
 
-	let loading     = $state(true);
-	let players     = $state([]);   // alle Spieler mit Stats, nach Schnitt sortiert
-	let myStats     = $state(null); // eingeloggter Spieler
-	let myScores    = $state([]);   // letzte 6 Ergebnisse (älteste zuerst, für Chart)
+	let loading         = $state(true);
+	let players         = $state([]);   // alle Spieler mit Stats, nach Schnitt sortiert
+	let myStats         = $state(null); // eingeloggter Spieler
+	let myScores        = $state([]);   // letzte 6 Ergebnisse (älteste zuerst, für Chart)
+	let clubAvgSeries   = $state([]);   // [{ week, avg, count }] – Vereinsschnitt pro Runde
 
 	// ── Bild-Pfad ──────────────────────────────────────────
 	function imgPath(photo, name) {
@@ -47,6 +48,28 @@
 			if (!scoreMap[g.player_id]) scoreMap[g.player_id] = [];
 			scoreMap[g.player_id].push(Number(g.score));
 		}
+
+		// Vereinsschnitt pro Runde (cal_week)
+		const weekMap = {};
+		for (const g of allScores ?? []) {
+			const week = g.game_plans?.cal_week;
+			if (week == null) continue;
+			const key = String(week);
+			if (!weekMap[key]) weekMap[key] = [];
+			weekMap[key].push(Number(g.score));
+		}
+		clubAvgSeries = Object.entries(weekMap)
+			.map(([week, scores]) => ({
+				week,
+				avg:   Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
+				count: scores.length,
+			}))
+			.sort((a, b) => {
+				const na = Number(a.week), nb = Number(b.week);
+				if (!isNaN(na) && !isNaN(nb)) return na - nb;
+				return a.week.localeCompare(b.week);
+			})
+			.slice(-14); // maximal 14 Runden anzeigen
 
 		// Spieler mit Stats aufbauen
 		const withStats = playerData
@@ -208,6 +231,68 @@
 			<div class="chart-scores">
 				{#each myScores as s, i}
 					<span class:score-active={i === myScores.length - 1}>{s}</span>
+				{/each}
+			</div>
+		</div>
+		{/if}
+
+		<!-- ── Vereinsschnitt pro Runde ─────────────────────── -->
+		{#if clubAvgSeries.length >= 2}
+		{@const clubScores = clubAvgSeries.map(w => w.avg)}
+		{@const cPts = chartPoints(clubScores)}
+		{@const overallClubAvg = Math.round(clubScores.reduce((a,b)=>a+b,0)/clubScores.length)}
+		<div class="stat-card">
+			<div class="stat-card-header">
+				<div>
+					<h2 class="stat-card-title">Vereinsschnitt</h2>
+					<p class="stat-card-sub">Ø aller Spieler · pro Runde · {clubAvgSeries.length} Runden</p>
+				</div>
+				<div class="club-avg-badge">
+					<span class="club-avg-num">{overallClubAvg}</span>
+					<span class="club-avg-label">Ø Verein</span>
+				</div>
+			</div>
+
+			<!-- SVG Chart -->
+			<div class="chart-wrap">
+				<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="chart-svg">
+					<defs>
+						<linearGradient id="clubGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+							<stop offset="0%"   style="stop-color:#D4AF37;stop-opacity:0.22"/>
+							<stop offset="100%" style="stop-color:#D4AF37;stop-opacity:0"/>
+						</linearGradient>
+					</defs>
+					<path d={areaPath(cPts)} fill="url(#clubGrad)" />
+					<path d={linePath(cPts)} fill="none" stroke="#D4AF37" stroke-width="4"
+						stroke-linecap="round" stroke-linejoin="round"/>
+					{#each cPts as pt, i}
+						<circle
+							cx={pt.x} cy={pt.y} r={i === cPts.length - 1 ? 7 : 4}
+							fill={i === cPts.length - 1 ? '#D4AF37' : 'white'}
+							stroke="#D4AF37" stroke-width="2.5"
+						/>
+					{/each}
+				</svg>
+			</div>
+
+			<!-- X-Achse: Rundenbezeichnungen -->
+			<div class="chart-axis chart-axis--club" class:chart-axis--dense={clubAvgSeries.length > 8}>
+				{#each clubAvgSeries as w, i}
+					<span class:axis-active--club={i === clubAvgSeries.length - 1}>{w.week}</span>
+				{/each}
+			</div>
+
+			<!-- Schnitt-Werte -->
+			<div class="chart-scores chart-scores--club" class:chart-scores--dense={clubAvgSeries.length > 8}>
+				{#each clubAvgSeries as w, i}
+					<span class:score-active--club={i === clubAvgSeries.length - 1}>{w.avg}</span>
+				{/each}
+			</div>
+
+			<!-- Spieleranzahl pro Runde -->
+			<div class="club-round-row">
+				{#each clubAvgSeries as w}
+					<span class="club-round-count" title="Runde {w.week}">{w.count}×</span>
 				{/each}
 			</div>
 		</div>
@@ -408,6 +493,7 @@
 .chart-legend { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .legend-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-surface-container-highest); }
 .legend-dot--primary { background: var(--color-primary); }
+.legend-dot--club    { background: var(--color-secondary); }
 .legend-label { font-size: var(--text-label-sm); font-weight: 700; color: var(--color-on-surface-variant); text-transform: uppercase; letter-spacing: 0.07em; }
 
 /* ── SVG-Chart ── */
@@ -415,8 +501,53 @@
 .chart-svg  { width: 100%; height: 100%; }
 .chart-axis { display: flex; justify-content: space-between; font-size: var(--text-label-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-on-surface-variant); margin-top: var(--space-2); }
 .chart-axis .axis-active { color: var(--color-primary); }
+.chart-axis--dense { font-size: 0.58rem; letter-spacing: 0.04em; }
 .chart-scores { display: flex; justify-content: space-between; font-family: var(--font-display); font-size: var(--text-label-md); font-weight: 600; color: var(--color-on-surface-variant); margin-top: 2px; }
 .chart-scores .score-active { color: var(--color-primary); font-weight: 800; }
+.chart-scores--dense { font-size: 0.6rem; }
+.chart-axis--club .axis-active--club   { color: var(--color-secondary); }
+.chart-scores--club .score-active--club { color: var(--color-secondary); font-weight: 800; }
+
+/* ── Vereinsschnitt-spezifisch ── */
+.club-avg-badge {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: var(--space-2) var(--space-3);
+	background: rgba(212, 175, 55, 0.1);
+	border: 1px solid rgba(212, 175, 55, 0.3);
+	border-radius: 12px;
+	flex-shrink: 0;
+}
+.club-avg-num {
+	font-family: var(--font-display);
+	font-size: 1.3rem;
+	font-weight: 900;
+	color: var(--color-secondary);
+	line-height: 1;
+}
+.club-avg-label {
+	font-size: 0.62rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: rgba(212, 175, 55, 0.7);
+	margin-top: 2px;
+}
+
+.club-round-row {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 2px;
+}
+.club-round-count {
+	font-size: 0.58rem;
+	font-weight: 700;
+	color: var(--color-on-surface-variant);
+	opacity: 0.5;
+	text-align: center;
+	flex: 1;
+}
 
 /* ── Schnell-Stats ── */
 .quick-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
