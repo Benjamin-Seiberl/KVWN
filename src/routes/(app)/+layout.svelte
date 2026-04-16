@@ -1,6 +1,6 @@
 <script>
 	import { isMember } from '$lib/stores/auth';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { page, navigating } from '$app/stores';
 	import { onMount } from 'svelte';
@@ -16,19 +16,16 @@
 	// ── iOS Overscroll / Pull-to-Refresh physics ─────────────────────────────
 
 	/** Resistance-adjusted pull distance (px). + = top pull, − = bottom push. */
-	let pullDistance    = $state(0);
+	let pullDistance     = $state(0);
 	let isGlobalDragging = $state(false);
 	/** 'top' | 'bottom' | null – set once at touchstart */
-	let dragOrigin      = $state(null);
-	let isRefreshing    = $state(false);
+	let dragOrigin       = $state(null);
 
 	let startY = 0;
 	let startX = 0;
 
-	/** Threshold (resistance-adjusted px) that triggers a refresh */
-	const REFRESH_THRESHOLD = 72;
-	/** Pull distance held open while refresh loads */
-	const HOLD_DISTANCE = Math.round(REFRESH_THRESHOLD * 0.55);
+	/** Resistance-adjusted pull threshold that fires the Spotlight overlay */
+	const SPOTLIGHT_THRESHOLD = 58;
 
 	/** Transition applied to all transformed elements */
 	const snapTransition = $derived(
@@ -37,16 +34,9 @@
 			: 'transform 500ms cubic-bezier(0.34, 1.56, 0.64, 1)',
 	);
 
-	/** PTR indicator opacity (0 → invisible, 1 → fully visible) */
+	/** Pull indicator opacity (fades in as user pulls down) */
 	const ptrOpacity = $derived(
-		isRefreshing
-			? 1
-			: Math.min(Math.max(pullDistance - 8, 0) / (REFRESH_THRESHOLD * 0.65), 1),
-	);
-
-	/** Arrow rotation: 0° at rest → 180° at threshold (ready to release) */
-	const ptrRotation = $derived(
-		isRefreshing ? 0 : Math.min(pullDistance / REFRESH_THRESHOLD, 1) * 180,
+		Math.min(Math.max(pullDistance - 8, 0) / (SPOTLIGHT_THRESHOLD * 0.65), 1),
 	);
 
 	// ── Scroll position helpers ───────────────────────────────────────────────
@@ -64,8 +54,8 @@
 	// ── Touch handlers ────────────────────────────────────────────────────────
 
 	function onTouchStart(e) {
-		if (isRefreshing) return;
-		// Don't intercept when a BottomSheet is open
+		// Don't intercept when Spotlight or a BottomSheet is open
+		if ($spotlightOpen) return;
 		if (document.body.classList.contains('sheet-open')) return;
 
 		startY = e.touches[0].clientY;
@@ -115,19 +105,15 @@
 	function onTouchEnd() {
 		if (!isGlobalDragging) return;
 
-		const shouldRefresh = dragOrigin === 'top' && pullDistance >= REFRESH_THRESHOLD;
-		isGlobalDragging    = false;
-		dragOrigin          = null;
+		const origin = dragOrigin;
+		const dist   = pullDistance;
+		isGlobalDragging = false;
+		dragOrigin       = null;
 
-		if (shouldRefresh && !isRefreshing) {
-			// Hold the pull indicator open while data reloads
-			isRefreshing = true;
-			pullDistance = HOLD_DISTANCE;
-
-			invalidateAll().finally(() => {
-				isRefreshing = false;
-				pullDistance = 0;
-			});
+		if (origin === 'top' && dist >= SPOTLIGHT_THRESHOLD) {
+			// Open Spotlight search — snap content back immediately
+			pullDistance = 0;
+			$spotlightOpen = true;
 		} else {
 			// Bouncy snap-back (transition handles the spring)
 			pullDistance = 0;
@@ -158,19 +144,13 @@
 	<!-- Dynamic Island Pill -->
 	<PagePill />
 
-	<!-- ── PTR indicator: sits fixed at top, revealed as content slides down ── -->
+	<!-- ── Spotlight pull indicator: fades in as user pulls down ── -->
 	<div
 		class="ptr-container"
 		style="opacity: {ptrOpacity}; pointer-events: none;"
 	>
-		<div class="ptr-ring" class:ptr-ring--ready={pullDistance >= REFRESH_THRESHOLD || isRefreshing}>
-			<span
-				class="material-symbols-outlined ptr-icon"
-				class:ptr-icon--spin={isRefreshing}
-				style="transform: rotate({ptrRotation}deg)"
-			>
-				{isRefreshing ? 'refresh' : 'arrow_downward'}
-			</span>
+		<div class="ptr-ring" class:ptr-ring--ready={pullDistance >= SPOTLIGHT_THRESHOLD}>
+			<span class="material-symbols-outlined ptr-icon">search</span>
 		</div>
 	</div>
 
@@ -255,20 +235,12 @@
 	.ptr-icon {
 		font-size: 1.1rem;
 		color: var(--color-on-surface-variant, #666);
-		transition: transform 200ms ease, color 250ms ease;
+		transition: color 250ms ease;
 		font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
 	}
 
 	.ptr-ring--ready .ptr-icon {
 		color: #fff;
-	}
-
-	@keyframes ptr-spin {
-		to { transform: rotate(360deg) !important; }
-	}
-
-	.ptr-icon--spin {
-		animation: ptr-spin 0.75s linear infinite;
 	}
 
 	/* ── Layout wrappers ──────────────────────────────────────────────────────── */

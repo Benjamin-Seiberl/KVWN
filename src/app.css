@@ -3565,8 +3565,8 @@ button.widget--card:active {
   font-size: var(--text-headline-md);
   font-weight: 900;
   color: var(--color-primary);
-  text-align: left;
-  margin: 0;
+  text-align: center;
+  margin-bottom: var(--space-5);
 }
 
 .page-header-tabs {
