@@ -1,8 +1,11 @@
 <script>
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
+	import BottomSheet from './BottomSheet.svelte';
+	import { playerId } from '$lib/stores/auth';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+	const DAY_NAMES_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
 	let matches  = $state([]);
 	let loading  = $state(true);
@@ -13,12 +16,24 @@
 	let widgetEl  = $state(null);
 	let trackEl   = $state(null);
 
+	let sheetOpen = $state(false);
+	let sheetIdx  = $state(0);
+	let sheetLineup = $state([]);
+	let lineupLoading = $state(false);
+
 	function formatTime(t) { return t ? t.substring(0, 5) : ''; }
 
 	function dateLabel(m) {
 		const d = new Date(m.date + 'T12:00');
 		return DAY_NAMES[d.getDay()] + ', ' +
 			d.getDate() + '.' + (d.getMonth() + 1) + '. \u2022 ' + formatTime(m.time) + ' Uhr';
+	}
+
+	function dateLabelLong(m) {
+		const d = new Date(m.date + 'T12:00');
+		return DAY_NAMES_LONG[d.getDay()] + ', ' +
+			d.getDate() + '.' + (d.getMonth() + 1) + '.' + d.getFullYear() +
+			(m.time ? ' · ' + formatTime(m.time) + ' Uhr' : '');
 	}
 
 	function getWeekRange() {
@@ -44,7 +59,7 @@
 
 		const { data, error } = await sb
 			.from('matches')
-			.select('id, date, time, home_away, opponent, cal_week, leagues(name)')
+			.select('id, date, time, home_away, opponent, cal_week, league_id, location, leagues(name)')
 			.gte('date', todayStr)
 			.lte('date', range.to)
 			.order('date')
@@ -53,6 +68,28 @@
 		if (error || !data?.length) { loading = false; return; }
 		matches = data;
 		loading = false;
+	}
+
+	async function openMatchDetail(idx) {
+		sheetIdx = idx;
+		sheetOpen = true;
+		sheetLineup = [];
+		lineupLoading = true;
+
+		const m = matches[idx];
+		if (!m?.cal_week || !m?.league_id) { lineupLoading = false; return; }
+
+		const { data: gp } = await sb
+			.from('game_plans')
+			.select('id, game_plan_players(id, position, player_id, player_name, confirmed, players(name, photo))')
+			.eq('cal_week', m.cal_week)
+			.eq('league_id', m.league_id)
+			.maybeSingle();
+
+		if (gp?.game_plan_players) {
+			sheetLineup = gp.game_plan_players.sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
+		}
+		lineupLoading = false;
 	}
 
 	function carousel(widget) {
@@ -122,6 +159,10 @@
 			if      (delta < -(w * 0.18) || velocity < -0.35) next = current + 1;
 			else if (delta >  (w * 0.18) || velocity >  0.35) next = current - 1;
 			snapTo(next);
+			// Tap: <8px movement → open detail
+			if (Math.abs(delta) < 8) {
+				openMatchDetail(current);
+			}
 		}
 
 		widget.addEventListener('pointerdown',   onDown);
@@ -209,3 +250,67 @@
 {/if}
 
 </div>
+
+<!-- Match Detail Sheet -->
+{#if matches.length > 0}
+	{@const sm = matches[sheetIdx]}
+	{#if sm}
+		<BottomSheet bind:open={sheetOpen} title="Match-Details">
+			<div class="mds-hero">
+				<div class="mds-league">{sm.leagues?.name ?? ''}</div>
+				<div class="mds-chips">
+					{#if sm.home_away === 'HEIM'}
+						<span class="chip chip--home">Heim</span>
+					{:else}
+						<span class="chip chip--away">Auswärts</span>
+					{/if}
+				</div>
+				<h2 class="mds-opponent">vs. {sm.opponent}</h2>
+				<p class="mds-date">
+					<span class="material-symbols-outlined" style="font-size:1rem;vertical-align:-3px">calendar_month</span>
+					{dateLabelLong(sm)}
+				</p>
+				{#if sm.location}
+					<p class="mds-date" style="margin-top: var(--space-1);">
+						<span class="material-symbols-outlined" style="font-size:1rem;vertical-align:-3px">location_on</span>
+						{sm.location}
+					</p>
+				{/if}
+			</div>
+
+			<!-- Aufstellung -->
+			<p class="mds-section">Aufstellung</p>
+			{#if lineupLoading}
+				<div class="mds-lineup">
+					{#each [0,1,2,3] as _}
+						<div class="mds-player-skel">
+							<div class="skel-avatar shimmer-box" style="width:36px;height:36px"></div>
+							<div class="skel-bar shimmer-box" style="width:80px;height:14px;border-radius:6px"></div>
+						</div>
+					{/each}
+				</div>
+			{:else if sheetLineup.length > 0}
+				<div class="mds-lineup">
+					{#each sheetLineup as p}
+						{@const name = p.players?.name ?? p.player_name}
+						{@const isMe = p.player_id === $playerId}
+						<div class="mds-player" class:mds-player--me={isMe}>
+							<div class="mds-avatar">
+								<span class="mds-initial">{(name ?? '?').slice(0,1)}</span>
+							</div>
+							<span class="mds-name">{name}</span>
+							<span class="mds-pos">{p.position ?? ''}</span>
+							{#if p.confirmed === true}
+								<span class="material-symbols-outlined mds-check">check_circle</span>
+							{:else if p.confirmed === false}
+								<span class="material-symbols-outlined mds-declined">cancel</span>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="mds-empty">Noch keine Aufstellung eingetragen.</p>
+			{/if}
+		</BottomSheet>
+	{/if}
+{/if}

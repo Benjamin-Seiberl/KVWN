@@ -2,10 +2,16 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { user } from '$lib/stores/auth';
-	import MatchCarousel from '$lib/components/MatchCarousel.svelte';
-	import TrainingWidget from '$lib/components/TrainingWidget.svelte';
+	import { currentSubtab } from '$lib/stores/subtab.js';
+	import MatchCarousel     from '$lib/components/MatchCarousel.svelte';
+	import TrainingWidget    from '$lib/components/TrainingWidget.svelte';
 	import LineupConfirmCard from '$lib/components/LineupConfirmCard.svelte';
-	import NewsFeed from '$lib/components/dashboard/NewsFeed.svelte';
+	import NewsFeed          from '$lib/components/dashboard/NewsFeed.svelte';
+	import MyNextMatchCard   from '$lib/components/dashboard/MyNextMatchCard.svelte';
+	import QuickActions      from '$lib/components/dashboard/QuickActions.svelte';
+	import RankCard          from '$lib/components/dashboard/RankCard.svelte';
+	import TeamStatsCard     from '$lib/components/dashboard/TeamStatsCard.svelte';
+	import UpcomingEvents    from '$lib/components/dashboard/UpcomingEvents.svelte';
 
 	let firstName = $state('');
 
@@ -44,42 +50,51 @@
 		</h1>
 	</header>
 
-	<!-- Lineup confirm (urgent, no delay) -->
-	<div class="dash-section" style="--i:1">
-		<LineupConfirmCard />
-	</div>
+	{#if $currentSubtab === 'neuigkeiten'}
 
-	<!-- Match carousel -->
-	<div class="dash-section" style="--i:2">
-		<MatchCarousel />
-	</div>
+		<!-- Lineup confirm (urgent, no delay) -->
+		<div class="dash-section" style="--i:1">
+			<LineupConfirmCard />
+		</div>
 
-	<!-- News & polls -->
-	<div class="dash-section" style="--i:3">
-		<NewsFeed />
-	</div>
+		<!-- My next match (only if on lineup) -->
+		<div class="dash-section" style="--i:2; padding: 0 var(--space-5);">
+			<MyNextMatchCard />
+		</div>
 
-	<!-- Widgets -->
-	<div class="dash-section dash-widgets" style="--i:4">
-		<TrainingWidget />
+		<!-- Match carousel -->
+		<div class="dash-section" style="--i:3">
+			<MatchCarousel />
+		</div>
 
-		<!-- Vereinsrang -->
-		<button class="widget widget--card widget--half widget--gold-member rank-widget" aria-label="Vereinsrang">
-			<div class="widget-header">
-				<span class="material-symbols-outlined widget-icon">leaderboard</span>
-				<h3 class="widget-title">Rang</h3>
-			</div>
-			<div class="rank-display rank-display--stacked">
-				<div class="rank-number">
-					<span class="rank-value">#12</span>
-					<span class="rank-delta rank-delta--up">
-						<span class="material-symbols-outlined">arrow_upward</span>2
-					</span>
-				</div>
-				<span class="badge-status badge-status--gold">Gold</span>
-			</div>
-		</button>
-	</div>
+		<!-- Quick Actions -->
+		<div class="dash-section" style="--i:4">
+			<QuickActions />
+		</div>
+
+		<!-- News & polls -->
+		<div class="dash-section" style="--i:5">
+			<NewsFeed />
+		</div>
+
+		<!-- Widgets -->
+		<div class="dash-section dash-widgets" style="--i:6">
+			<TrainingWidget />
+			<RankCard />
+		</div>
+
+		<div class="dash-section dash-widgets" style="--i:7">
+			<TeamStatsCard />
+		</div>
+
+	{:else}
+
+		<!-- Events tab -->
+		<div class="dash-section" style="--i:1">
+			<UpcomingEvents />
+		</div>
+
+	{/if}
 
 </div>
 
@@ -144,9 +159,5 @@
 		gap: var(--space-3);
 		padding: 0 var(--space-5);
 		margin-top: var(--space-3);
-	}
-
-	.rank-widget {
-		cursor: default;
 	}
 </style>

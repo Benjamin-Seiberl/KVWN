@@ -4229,5 +4229,20 @@ button.widget--card:active {
   color: var(--color-on-surface-variant);
   margin: 0 0 var(--space-4);
 }
+.mds-player--me {
+  border-color: rgba(204, 0, 0, 0.25);
+  background: rgba(204, 0, 0, 0.04);
+}
+.mds-declined {
+  font-size: 1.2rem;
+  color: var(--color-error);
+  font-variation-settings: 'FILL' 1;
+}
+.mds-player-skel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
 
 
