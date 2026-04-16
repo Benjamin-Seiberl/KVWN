@@ -246,6 +246,9 @@ body.sheet-open .app-shell {
 .page-content {
   flex: 1;
   overflow-y: auto;
+  /* stable: reserves scrollbar gutter always → prevents layout shift when
+     content becomes scrollable (centering stays pixel-perfect) */
+  scrollbar-gutter: stable both-edges;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: calc(var(--nav-height) + var(--nav-safe) + var(--space-6));
   background: var(--color-surface);
@@ -3428,9 +3431,8 @@ button.widget--card:active {
 
 .page-header-static {
   width: 100%;
-  max-width: 480px;
-  margin: 0 auto;
-  /* Safe-area oben + etwas Luft; kein künstlicher Offset mehr (kein fixed) */
+  /* No max-width / margin:auto here — app-shell already constrains to 480px.
+     Removing redundant centering prevents a shift when scrollbar appears. */
   padding-top: calc(var(--space-6) + env(safe-area-inset-top, 0px));
   padding-left: var(--space-4);
   padding-right: var(--space-4);
