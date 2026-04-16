@@ -1,9 +1,12 @@
 <script>
-	import { onMount }        from 'svelte';
-	import { sb }             from '$lib/supabase';
-	import { playerId }       from '$lib/stores/auth';
-	import { currentSubtab }  from '$lib/stores/subtab.js';
-	import StatsView          from '$lib/components/statistiken/StatsView.svelte';
+	import { onMount }           from 'svelte';
+	import { sb }                from '$lib/supabase';
+	import { playerId, playerRole } from '$lib/stores/auth';
+	import { currentSubtab }    from '$lib/stores/subtab.js';
+	import { triggerToast }      from '$lib/stores/toast.js';
+	import StatsView             from '$lib/components/statistiken/StatsView.svelte';
+	import TournamentMatchCard   from '$lib/components/spielbetrieb/TournamentMatchCard.svelte';
+	import BottomSheet           from '$lib/components/BottomSheet.svelte';
 
 	const DAY_NAMES   = ['So','Mo','Di','Mi','Do','Fr','Sa'];
 	const MONTH_NAMES = ['Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
@@ -133,6 +136,74 @@
 		selectedPlan  = null;
 	}
 
+	// ── Tournament tab ─────────────────────────────────────────────
+	const isAdmin = $derived($playerRole === 'kapitaen');
+
+	let tournaments        = $state([]);
+	let loadingTournaments = $state(false);
+	let tourneySearch      = $state('');
+	let selectedTourney    = $state(null);
+	let createOpen         = $state(false);
+
+	// New tournament form
+	let newTitle    = $state('');
+	let newDate     = $state('');
+	let newTime     = $state('');
+	let newLocation = $state('');
+	let saving      = $state(false);
+
+	const filteredTourneys = $derived.by(() => {
+		const q = tourneySearch.toLowerCase().trim();
+		if (!q) return tournaments;
+		return tournaments.filter(t =>
+			t.tournament_title?.toLowerCase().includes(q) ||
+			t.tournament_location?.toLowerCase().includes(q) ||
+			chipDate(t).toLowerCase().includes(q)
+		);
+	});
+
+	async function loadTournaments() {
+		loadingTournaments = true;
+		const today = new Date();
+		const from  = new Date(today); from.setDate(today.getDate() - 365);
+		const to    = new Date(today); to.setDate(today.getDate() + 365);
+		const { data } = await sb
+			.from('matches')
+			.select('id, date, time, tournament_title, tournament_location, home_away, opponent')
+			.eq('is_tournament', true)
+			.gte('date', fmt(from))
+			.lte('date', fmt(to))
+			.order('date', { ascending: false });
+		tournaments = data ?? [];
+		loadingTournaments = false;
+	}
+
+	async function createTournament() {
+		if (!newTitle || !newDate) return;
+		saving = true;
+		const { data, error } = await sb.from('matches').insert({
+			is_tournament:        true,
+			tournament_title:     newTitle,
+			tournament_location:  newLocation || null,
+			date:                 newDate,
+			time:                 newTime || null,
+			opponent:             newTitle,
+			home_away:            'HEIM',
+		}).select().single();
+		saving = false;
+		if (error) { triggerToast('Fehler beim Erstellen'); return; }
+		createOpen = false;
+		newTitle = ''; newDate = ''; newTime = ''; newLocation = '';
+		await loadTournaments();
+		selectedTourney = data;
+	}
+
+	$effect(() => {
+		if ($currentSubtab === 'turnier' && !tournaments.length && !loadingTournaments) {
+			loadTournaments();
+		}
+	});
+
 	onMount(() => loadMatches());
 </script>
 
@@ -140,6 +211,119 @@
 
 {#if $currentSubtab === 'statistiken'}
 	<StatsView />
+{:else if $currentSubtab === 'turnier'}
+<div class="sb-page">
+
+	<!-- ── TURNIER PICKER ────────────────────────────────────────── -->
+	{#if !selectedTourney}
+
+		<div class="mp-search-wrap">
+			<div class="tp-search-row">
+				<div class="mp-input-wrap" style="flex:1">
+					<span class="material-symbols-outlined mp-search-icon">search</span>
+					<input
+						class="mp-input"
+						type="search"
+						placeholder="Turnier suchen…"
+						autocomplete="off"
+						bind:value={tourneySearch}
+					/>
+					{#if tourneySearch}
+						<button class="mp-clear" onclick={() => tourneySearch = ''} aria-label="Löschen">
+							<span class="material-symbols-outlined">cancel</span>
+						</button>
+					{/if}
+				</div>
+				{#if isAdmin}
+					<button class="tp-add-btn" onclick={() => createOpen = true} aria-label="Turnier erstellen">
+						<span class="material-symbols-outlined">add</span>
+					</button>
+				{/if}
+			</div>
+		</div>
+
+		{#if loadingTournaments}
+			<div class="sb-loading">
+				<span class="material-symbols-outlined sb-loading-icon">military_tech</span>
+				<p>Lade Turniere…</p>
+			</div>
+		{:else if filteredTourneys.length === 0}
+			<div class="sb-empty">
+				<span class="material-symbols-outlined sb-loading-icon">military_tech</span>
+				<p>{tourneySearch ? 'Keine Treffer' : 'Noch keine Turniere'}</p>
+				{#if isAdmin && !tourneySearch}
+					<button class="tp-create-cta" onclick={() => createOpen = true}>
+						<span class="material-symbols-outlined">add_circle</span>
+						Turnier erstellen
+					</button>
+				{/if}
+			</div>
+		{:else}
+			<div class="mp-list">
+				{#each filteredTourneys as t}
+					<button class="mp-card" class:mp-card--past={isPast(t)} onclick={() => selectedTourney = t}>
+						<div class="mp-card-left">
+							<div class="tp-trophy-badge">
+								<span class="material-symbols-outlined">military_tech</span>
+							</div>
+							<h3 class="mp-opponent">{t.tournament_title ?? 'Turnier'}</h3>
+							{#if t.tournament_location}
+								<p class="mp-league">
+									<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-2px">location_on</span>
+									{t.tournament_location}
+								</p>
+							{/if}
+						</div>
+						<div class="mp-card-right">
+							<span class="mp-date">{chipDate(t)}</span>
+							{#if chipTime(t)}<span class="mp-time">{chipTime(t)}</span>{/if}
+							<span class="material-symbols-outlined mp-chevron">chevron_right</span>
+						</div>
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+	<!-- ── TURNIER DETAIL ─────────────────────────────────────────── -->
+	{:else}
+		<button class="md-back" onclick={() => { selectedTourney = null; }}>
+			<span class="material-symbols-outlined">arrow_back_ios</span>
+			Alle Turniere
+		</button>
+
+		<TournamentMatchCard match={selectedTourney} />
+	{/if}
+
+	<!-- Create tournament sheet -->
+	<BottomSheet bind:open={createOpen} title="Turnier erstellen">
+		<div class="tp-form">
+			<label class="tp-field">
+				<span class="tp-label">Titel *</span>
+				<input class="tp-input" type="text" placeholder="z.B. NÖ-Cup 2025" bind:value={newTitle} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Datum *</span>
+				<input class="tp-input" type="date" bind:value={newDate} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Uhrzeit</span>
+				<input class="tp-input" type="time" bind:value={newTime} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Ort</span>
+				<input class="tp-input" type="text" placeholder="z.B. Sportanlage Wiener Neustadt" bind:value={newLocation} />
+			</label>
+			<button
+				class="tp-save-btn"
+				onclick={createTournament}
+				disabled={!newTitle || !newDate || saving}
+			>
+				{saving ? 'Speichern…' : 'Turnier anlegen'}
+			</button>
+		</div>
+	</BottomSheet>
+
+</div>
 {:else}
 <div class="sb-page">
 
@@ -352,6 +536,115 @@
 </div>
 
 <style>
+	/* ── Tournament tab ── */
+	.tp-search-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+	.tp-add-btn {
+		width: 2.6rem;
+		height: 2.6rem;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--color-primary);
+		color: #fff;
+		border: none;
+		border-radius: var(--radius-lg);
+		cursor: pointer;
+		transition: transform 120ms ease;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.tp-add-btn:active { transform: scale(0.92); }
+	.tp-add-btn .material-symbols-outlined { font-size: 1.3rem; }
+
+	.tp-trophy-badge {
+		width: 2rem;
+		height: 2rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(212,175,55,0.12);
+		border-radius: var(--radius-md);
+		margin-bottom: 2px;
+	}
+	.tp-trophy-badge .material-symbols-outlined {
+		font-size: 1.1rem;
+		color: var(--color-secondary, #D4AF37);
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+
+	.tp-create-cta {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-4);
+		background: var(--color-primary);
+		color: #fff;
+		border: none;
+		border-radius: var(--radius-lg);
+		font: inherit;
+		font-size: var(--text-label-md);
+		font-weight: 700;
+		cursor: pointer;
+		margin-top: var(--space-2);
+	}
+	.tp-create-cta .material-symbols-outlined { font-size: 1.1rem; }
+
+	/* Create form inside BottomSheet */
+	.tp-form {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		padding: var(--space-4) var(--space-5) var(--space-6);
+	}
+	.tp-field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.tp-label {
+		font-size: var(--text-label-sm);
+		font-weight: 700;
+		color: var(--color-on-surface-variant);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+	.tp-input {
+		width: 100%;
+		padding: var(--space-3) var(--space-3);
+		background: var(--color-surface-container);
+		border: 1.5px solid var(--color-outline-variant);
+		border-radius: var(--radius-md);
+		font: inherit;
+		font-size: var(--text-body-md);
+		color: var(--color-on-surface);
+		box-sizing: border-box;
+		transition: border-color 150ms ease, box-shadow 150ms ease;
+	}
+	.tp-input:focus {
+		outline: none;
+		border-color: rgba(204,0,0,0.5);
+		box-shadow: 0 0 0 3px rgba(204,0,0,0.1);
+	}
+	.tp-save-btn {
+		width: 100%;
+		padding: var(--space-3);
+		background: var(--color-primary);
+		color: #fff;
+		border: none;
+		border-radius: var(--radius-lg);
+		font: inherit;
+		font-size: var(--text-body-md);
+		font-weight: 700;
+		cursor: pointer;
+		transition: opacity 150ms ease;
+		margin-top: var(--space-2);
+	}
+	.tp-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 	.sb-page {
 		display: flex;
 		flex-direction: column;

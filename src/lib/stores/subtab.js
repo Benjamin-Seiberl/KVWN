@@ -20,6 +20,7 @@ export const PAGE_CONFIG = {
 		title: 'Spielbetrieb',
 		tabs: [
 			{ key: 'spiele',      label: 'Spiele',      icon: 'emoji_events' },
+			{ key: 'turnier',     label: 'Turnier',     icon: 'military_tech' },
 			{ key: 'statistiken', label: 'Statistiken', icon: 'bar_chart' },
 		],
 	},
