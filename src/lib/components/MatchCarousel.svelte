@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { goto } from '$app/navigation';
+	import BottomSheet from '$lib/components/BottomSheet.svelte';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
@@ -12,9 +13,20 @@
 	let dotProgress = $state(0);   // float, z.B. 1.47 während des Swipens
 	let hasSwiped   = $state(false);
 
-	let wrapperEl = $state(null);
-	let widgetEl  = $state(null);
-	let trackEl   = $state(null);
+	let wrapperEl    = $state(null);
+	let widgetEl     = $state(null);
+	let trackEl      = $state(null);
+	let sheetOpen    = $state(false);
+	let sheetIdx     = $state(0);
+
+	const DAY_NAMES_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+	function dateLabelLong(m) {
+		const d = new Date(m.date + 'T12:00');
+		return DAY_NAMES_LONG[d.getDay()] + ', ' +
+			d.getDate() + '.' + (d.getMonth() + 1) + '.' + d.getFullYear() +
+			(m.time ? ' · ' + formatTime(m.time) + ' Uhr' : '');
+	}
 
 	// ── Datum-Hilfsfunktionen ─────────────────────────────────
 	function getWeekRange() {
@@ -239,6 +251,10 @@
 			if      (delta < -(w * 0.18) || velocity < -0.35) next = current + 1;
 			else if (delta >  (w * 0.18) || velocity >  0.35) next = current - 1;
 			snapTo(next);
+			// Tap detection: moved less than 8px → open detail sheet
+			if (Math.abs(delta) < 8) {
+				widget._onTap?.(current);
+			}
 		}
 
 		widget.addEventListener('pointerdown',   onDown);
@@ -262,6 +278,11 @@
 		await loadData();
 		// Swipe-Hint auslösen sobald Widget bereit ist
 		wrapperEl?._playSwipeHint?.();
+		// Tap → Detail-Sheet öffnen
+		wrapperEl._onTap = (idx) => {
+			sheetIdx = idx;
+			sheetOpen = true;
+		};
 	});
 </script>
 
@@ -373,3 +394,60 @@
 {/if}
 
 </div><!-- /carousel-container -->
+
+{#if matches.length > 0}
+	{@const sm = matches[sheetIdx]}
+	{@const sk = kaders[sheetIdx]}
+	{#if sm}
+		<BottomSheet bind:open={sheetOpen} title="Match-Details">
+			<!-- Hero -->
+			<div class="mds-hero">
+				<div class="mds-league">{sm.leagues?.name ?? ''}</div>
+				<div class="mds-chips">
+					{#if sm.home_away === 'HEIM'}
+						<span class="chip chip--home">Heim</span>
+					{:else}
+						<span class="chip chip--away">Auswärts</span>
+					{/if}
+				</div>
+				<h2 class="mds-opponent">vs. {sm.opponent}</h2>
+				<p class="mds-date">
+					<span class="material-symbols-outlined" style="font-size:1rem;vertical-align:-3px">calendar_month</span>
+					{dateLabelLong(sm)}
+				</p>
+			</div>
+
+			<!-- Aufstellung -->
+			<p class="mds-section">Aufstellung</p>
+			{#if (sk?.starters?.length ?? 0) > 0}
+				<div class="mds-lineup">
+					{#each sk.starters as p}
+						{@const name  = p.players?.name ?? p.player_name}
+						{@const photo = p.players?.photo ?? null}
+						{@const played = p.played === true}
+						<div class="mds-player" class:mds-player--played={played}>
+							<div class="mds-avatar">
+								<img
+									src={imgPath(photo, name)}
+									alt={name ?? ''}
+									onerror={(e) => { e.currentTarget.style.display='none'; }}
+								/>
+								<span class="mds-initial">{(name ?? '?').slice(0,1)}</span>
+							</div>
+							<span class="mds-name">{name}</span>
+							{#if played && p.score != null}
+								<span class="mds-score">{p.score}</span>
+							{:else if played}
+								<span class="material-symbols-outlined mds-check">check_circle</span>
+							{:else}
+								<span class="mds-pos">{p.position}</span>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="mds-empty">Noch keine Aufstellung eingetragen.</p>
+			{/if}
+		</BottomSheet>
+	{/if}
+{/if}

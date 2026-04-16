@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
+	import ContextMenu from '$lib/components/ContextMenu.svelte';
 
 	let { poll, onVoted } = $props();
 	let votes = $state([]);
@@ -29,6 +31,7 @@
 		if (myVotes.includes(opt.id)) {
 			await sb.from('poll_votes').delete()
 				.eq('poll_id', poll.id).eq('option_id', opt.id).eq('player_id', $playerId);
+			triggerToast('Stimme zurückgezogen');
 		} else {
 			if (!poll.multi_select) {
 				await sb.from('poll_votes').delete().eq('poll_id', poll.id).eq('player_id', $playerId);
@@ -36,43 +39,61 @@
 			await sb.from('poll_votes').insert({
 				poll_id: poll.id, option_id: opt.id, player_id: $playerId,
 			});
+			triggerToast(`Abgestimmt: ${opt.label}`);
 		}
 		await loadVotes();
 		onVoted?.();
 	}
 
+	async function shareResults() {
+		const lines = options.map(o => `${o.label}: ${pctFor(o.id)}%`).join('\n');
+		const text = `${poll.question}\n\n${lines}\n(${totalVoters} Stimmen)`;
+		if (navigator.share) {
+			try { await navigator.share({ title: poll.question, text }); } catch {}
+		} else {
+			await navigator.clipboard.writeText(text);
+			triggerToast('Ergebnis kopiert');
+		}
+	}
+
+	const contextActions = [
+		{ label: 'Ergebnisse teilen', icon: 'share', fn: shareResults },
+	];
+
 	onMount(loadVotes);
 </script>
 
-<div class="pcard">
-	<div class="pcard-meta">
-		<span class="material-symbols-outlined">ballot</span>
-		<span>Umfrage{poll.multi_select ? ' · Multi' : ''}{closed ? ' · beendet' : ''}</span>
+<ContextMenu actions={contextActions}>
+	<div class="pcard">
+		<div class="pcard-meta">
+			<span class="material-symbols-outlined">ballot</span>
+			<span>Umfrage{poll.multi_select ? ' · Multi' : ''}{closed ? ' · beendet' : ''}</span>
+		</div>
+		<h4 class="pcard-q">{poll.question}</h4>
+		<ul class="popts">
+			{#each options as o}
+				{@const pct = pctFor(o.id)}
+				{@const mine = myVotes.includes(o.id)}
+				<li>
+					<button
+						class="popt"
+						class:popt--mine={mine}
+						disabled={closed}
+						onclick={() => vote(o)}
+					>
+						<span class="popt-bar" style="width: {pct}%"></span>
+						<span class="popt-label">
+							{#if mine}<span class="material-symbols-outlined popt-check">check_circle</span>{/if}
+							{o.label}
+						</span>
+						<span class="popt-pct">{pct}%</span>
+					</button>
+				</li>
+			{/each}
+		</ul>
+		<p class="pcard-foot">{totalVoters} Stimme{totalVoters === 1 ? '' : 'n'}{poll.deadline ? ' · bis ' + new Date(poll.deadline).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' }) : ''}</p>
 	</div>
-	<h4 class="pcard-q">{poll.question}</h4>
-	<ul class="popts">
-		{#each options as o}
-			{@const pct = pctFor(o.id)}
-			{@const mine = myVotes.includes(o.id)}
-			<li>
-				<button
-					class="popt"
-					class:popt--mine={mine}
-					disabled={closed}
-					onclick={() => vote(o)}
-				>
-					<span class="popt-bar" style="width: {pct}%"></span>
-					<span class="popt-label">
-						{#if mine}<span class="material-symbols-outlined popt-check">check_circle</span>{/if}
-						{o.label}
-					</span>
-					<span class="popt-pct">{pct}%</span>
-				</button>
-			</li>
-		{/each}
-	</ul>
-	<p class="pcard-foot">{totalVoters} Stimme{totalVoters === 1 ? '' : 'n'}{poll.deadline ? ' · bis ' + new Date(poll.deadline).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' }) : ''}</p>
-</div>
+</ContextMenu>
 
 <style>
 	.pcard {
@@ -82,6 +103,7 @@
 		padding: var(--space-3);
 		display: flex; flex-direction: column; gap: 6px;
 		box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+		width: 100%;
 	}
 	.pcard-meta { display: flex; gap: 4px; align-items: center; font-size: 0.72rem; color: var(--color-secondary, #D4AF37); font-weight: 600; }
 	.pcard-meta :global(.material-symbols-outlined) { font-size: 0.95rem; }

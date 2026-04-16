@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { user } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
 
 	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
@@ -79,7 +80,10 @@
 		busy = true;
 		await sb.from('game_plan_players').update({ confirmed }).eq('id', pendingEntry.id);
 		exiting = true;
-		setTimeout(() => { dismissed = true; }, 320);
+		setTimeout(() => {
+			dismissed = true;
+			triggerToast(confirmed ? 'Aufstellung bestätigt!' : 'Absage registriert');
+		}, 320);
 	}
 
 	let loaded = false;

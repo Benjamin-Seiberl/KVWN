@@ -1,6 +1,7 @@
 <script>
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
 
 	let { match, supporters = [], onChanged } = $props();
 
@@ -16,10 +17,12 @@
 				.delete()
 				.eq('match_id', match.id)
 				.eq('player_id', $playerId);
+			triggerToast('Abgemeldet');
 		} else {
 			await sb
 				.from('match_supporters')
 				.insert({ match_id: match.id, player_id: $playerId });
+			triggerToast('Du bist dabei!');
 		}
 		await onChanged?.();
 		busy = false;

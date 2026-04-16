@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { playerRole } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
 
 	let { match } = $props();
 
@@ -44,8 +45,8 @@
 	}
 
 	async function removeRound(r) {
-		if (!confirm(`Durchgang ${r.round_number} löschen?`)) return;
 		await sb.from('tournament_rounds').delete().eq('id', r.id);
+		triggerToast(`Durchgang ${r.round_number} gelöscht`);
 		load();
 	}
 
@@ -75,6 +76,8 @@
 		if (!Number.isFinite(n)) return;
 		await sb.from('tournament_round_players').update({ score: n })
 			.eq('round_id', assign.round_id).eq('lane_number', assign.lane_number);
+		const pl = getPlayer(assign.player_id);
+		if (pl) triggerToast(`${pl.name}: ${n} Holz`);
 		load();
 	}
 

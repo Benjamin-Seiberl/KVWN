@@ -2,6 +2,9 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
+	import ContextMenu from '$lib/components/ContextMenu.svelte';
+	import BottomSheet from '$lib/components/BottomSheet.svelte';
 
 	let loading         = $state(true);
 	let players         = $state([]);   // alle Spieler mit Stats, nach Schnitt sortiert
@@ -163,6 +166,38 @@
 		if (i === 1) return 'rank-silver';
 		if (i === 2) return 'rank-bronze';
 		return '';
+	}
+
+	// ── Player detail sheet ──────────────────────────────────
+	let detailOpen   = $state(false);
+	let detailPlayer = $state(null);
+
+	function openDetail(p) {
+		detailPlayer = p;
+		detailOpen = true;
+	}
+
+	function playerActions(p, rank) {
+		return [
+			{
+				label: 'Details anzeigen',
+				icon:  'person',
+				fn:    () => openDetail({ ...p, rank: rank + 1 }),
+			},
+			{
+				label: 'Stats teilen',
+				icon:  'share',
+				fn:    async () => {
+					const text = `${p.name} – Schnitt: ${p.avg} Holz | Bestleistung: ${p.best ?? '–'} | Rang #${rank + 1}`;
+					if (navigator.share) {
+						try { await navigator.share({ title: p.name, text }); } catch {}
+					} else {
+						await navigator.clipboard.writeText(text);
+						triggerToast(`Stats von ${p.name} kopiert`);
+					}
+				},
+			},
+		];
 	}
 </script>
 
@@ -359,32 +394,34 @@
 			<div class="ranking-list">
 				{#each players as p, i}
 					{@const isMe = myStats?.id === p.id}
-					<div class="ranking-row" class:ranking-row--me={isMe}>
-						<span class="rank-num {rankColor(i)}">{i + 1}</span>
+					<ContextMenu actions={playerActions(p, i)}>
+						<div class="ranking-row" class:ranking-row--me={isMe} onclick={() => openDetail({ ...p, rank: i + 1 })} role="button" tabindex="0">
+							<span class="rank-num {rankColor(i)}">{i + 1}</span>
 
-						<div class="ranking-avatar">
-							{#if imgPath(p.photo, p.name)}
-								<img src={imgPath(p.photo, p.name)} alt={p.name}
-									onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling.style.display='flex'; }}/>
-								<span class="avatar-fallback" style="display:none">{initials(p.name)}</span>
-							{:else}
-								<span class="avatar-fallback">{initials(p.name)}</span>
+							<div class="ranking-avatar">
+								{#if imgPath(p.photo, p.name)}
+									<img src={imgPath(p.photo, p.name)} alt={p.name}
+										onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling.style.display='flex'; }}/>
+									<span class="avatar-fallback" style="display:none">{initials(p.name)}</span>
+								{:else}
+									<span class="avatar-fallback">{initials(p.name)}</span>
+								{/if}
+							</div>
+
+							<div class="ranking-info">
+								<span class="ranking-name">{p.name}{isMe ? ' (Ich)' : ''}</span>
+								<span class="ranking-avg">Ø {p.avg} Holz</span>
+							</div>
+
+							{#if trend(p) > 5}
+								<span class="material-symbols-outlined trend-icon trend-icon--up">trending_up</span>
+							{:else if trend(p) < -5}
+								<span class="material-symbols-outlined trend-icon trend-icon--down">trending_down</span>
+							{:else if p.gamesPlayed > 0}
+								<span class="material-symbols-outlined trend-icon trend-icon--flat">trending_flat</span>
 							{/if}
 						</div>
-
-						<div class="ranking-info">
-							<span class="ranking-name">{p.name}{isMe ? ' (Ich)' : ''}</span>
-							<span class="ranking-avg">Ø {p.avg} Holz</span>
-						</div>
-
-						{#if trend(p) > 5}
-							<span class="material-symbols-outlined trend-icon trend-icon--up">trending_up</span>
-						{:else if trend(p) < -5}
-							<span class="material-symbols-outlined trend-icon trend-icon--down">trending_down</span>
-						{:else if p.gamesPlayed > 0}
-							<span class="material-symbols-outlined trend-icon trend-icon--flat">trending_flat</span>
-						{/if}
-					</div>
+					</ContextMenu>
 				{/each}
 
 				{#if !players.length}
@@ -410,6 +447,55 @@
 
 	{/if}
 </div>
+
+<!-- Player detail sheet -->
+{#if detailPlayer}
+	<BottomSheet bind:open={detailOpen} title={detailPlayer.name}>
+		<div class="pds-hero">
+			<div class="pds-avatar">
+				{#if imgPath(detailPlayer.photo, detailPlayer.name)}
+					<img src={imgPath(detailPlayer.photo, detailPlayer.name)} alt={detailPlayer.name}
+						onerror={(e) => { e.currentTarget.style.display='none'; }}/>
+				{/if}
+				<span class="pds-initial">{initials(detailPlayer.name)}</span>
+			</div>
+			<div>
+				<h3 class="pds-name">{detailPlayer.name}</h3>
+				<p class="pds-rank">Rang #{detailPlayer.rank} im Vereinsranking</p>
+			</div>
+		</div>
+
+		<div class="pds-stats">
+			<div class="pds-stat">
+				<span class="pds-stat-value">{detailPlayer.avg ?? '–'}</span>
+				<span class="pds-stat-label">Ø Gesamt</span>
+			</div>
+			<div class="pds-stat">
+				<span class="pds-stat-value">{detailPlayer.avg5 ?? '–'}</span>
+				<span class="pds-stat-label">Ø letzte 5</span>
+			</div>
+			<div class="pds-stat">
+				<span class="pds-stat-value">{detailPlayer.best ?? '–'}</span>
+				<span class="pds-stat-label">Bestleistung</span>
+			</div>
+			<div class="pds-stat">
+				<span class="pds-stat-value">{detailPlayer.gamesPlayed}</span>
+				<span class="pds-stat-label">Spiele</span>
+			</div>
+		</div>
+
+		{#if detailPlayer.scores?.length >= 2}
+			<p class="pds-section">Letzte Ergebnisse</p>
+			<div class="pds-scores">
+				{#each [...detailPlayer.scores].slice(0, 8).reverse() as s, i}
+					<div class="pds-score-chip" class:pds-score-chip--latest={i === 0}>
+						{s}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</BottomSheet>
+{/if}
 
 <style>
 .stats-wrap {
@@ -607,4 +693,66 @@
 .achievement-row { display: flex; align-items: center; gap: var(--space-3); }
 .achievement-icon { font-size: 1.25rem; color: var(--color-secondary); flex-shrink: 0; font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
 .achievement-text { font-size: var(--text-body-md); font-weight: 600; color: var(--color-on-surface); }
+
+/* ── Player detail sheet ── */
+.ranking-row { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+.pds-hero {
+	display: flex; align-items: center; gap: var(--space-3);
+	margin-bottom: var(--space-4);
+	padding-bottom: var(--space-3);
+	border-bottom: 1px solid var(--color-outline-variant);
+}
+.pds-avatar {
+	width: 56px; height: 56px; border-radius: 50%;
+	overflow: hidden; background: var(--color-surface-container-highest);
+	display: grid; place-items: center; flex-shrink: 0; position: relative;
+}
+.pds-avatar img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+.pds-initial { font-weight: 800; font-size: 1.2rem; color: var(--color-outline); }
+.pds-name { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--text-title-sm); color: var(--color-on-surface); }
+.pds-rank { margin: 2px 0 0; font-size: var(--text-body-sm); color: var(--color-on-surface-variant); }
+
+.pds-stats {
+	display: grid; grid-template-columns: repeat(4, 1fr);
+	gap: var(--space-2); margin-bottom: var(--space-4);
+}
+.pds-stat {
+	display: flex; flex-direction: column; align-items: center;
+	padding: var(--space-3) var(--space-2);
+	background: var(--color-surface-container-low);
+	border-radius: var(--radius-md);
+}
+.pds-stat-value {
+	font-family: var(--font-display); font-weight: 800;
+	font-size: var(--text-title-sm); color: var(--color-primary);
+}
+.pds-stat-label {
+	font-size: 0.65rem; font-weight: 700;
+	text-transform: uppercase; letter-spacing: 0.05em;
+	color: var(--color-outline); margin-top: 2px; text-align: center;
+}
+
+.pds-section {
+	font-size: var(--text-label-sm); font-weight: 700;
+	letter-spacing: 0.07em; text-transform: uppercase;
+	color: var(--color-outline); margin: 0 0 var(--space-2);
+}
+.pds-scores {
+	display: flex; flex-wrap: wrap; gap: var(--space-2);
+	margin-bottom: var(--space-4);
+}
+.pds-score-chip {
+	padding: 6px 14px;
+	background: var(--color-surface-container-low);
+	border: 1.5px solid var(--color-outline-variant);
+	border-radius: var(--radius-full);
+	font-weight: 700; font-size: var(--text-body-sm);
+	color: var(--color-on-surface);
+}
+.pds-score-chip--latest {
+	background: rgba(204, 0, 0, 0.08);
+	border-color: var(--color-primary);
+	color: var(--color-primary);
+}
 </style>

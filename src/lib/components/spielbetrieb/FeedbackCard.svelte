@@ -1,6 +1,7 @@
 <script>
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
 	import { pickQuestion } from '$lib/utils/feedbackRotation.js';
 
 	let { match, questions = [], existingFeedback = null, onSaved } = $props();
@@ -30,6 +31,7 @@
 		saving = false;
 		if (!error) {
 			justSaved = true;
+			triggerToast('Feedback gespeichert');
 			onSaved?.(data);
 		}
 	}
