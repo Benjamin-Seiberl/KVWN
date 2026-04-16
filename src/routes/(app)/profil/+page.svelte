@@ -208,21 +208,9 @@
 	let ergebnisOpen    = $state(false);
 	let aufstellungOpen = $state(false);
 
-	const LIVE_ACTIONS = [
-		'Rollen & Berechtigungen',
-		'Training anlegen',
-		'Spielergebnis eintragen',
-		'Aufstellung erstellen',
-	];
-
-	function adminAction(fn) {
-		switch (fn) {
-			case 'Rollen & Berechtigungen': rollenOpen = true; break;
-			case 'Training anlegen':        trainingOpen = true; break;
-			case 'Spielergebnis eintragen': ergebnisOpen = true; break;
-			case 'Aufstellung erstellen':   aufstellungOpen = true; break;
-			default: alert(`⚙️ ${fn}\n\nDiese Funktion wird bald verfügbar sein.`);
-		}
+	function adminAction(action) {
+		if (!action.live) return;
+		action.open?.();
 	}
 
 	const ADMIN_SECTIONS = [
@@ -231,10 +219,9 @@
 			icon: 'group',
 			color: '#3b82f6',
 			actions: [
-				{ icon: 'person_add',    label: 'Spieler hinzufügen',    fn: 'Spieler hinzufügen' },
-				{ icon: 'edit',          label: 'Spieler bearbeiten',    fn: 'Spieler bearbeiten' },
-				{ icon: 'shield_person', label: 'Rollen verwalten',      fn: 'Rollen & Berechtigungen' },
-				{ icon: 'person_remove', label: 'Spieler deaktivieren',  fn: 'Spieler deaktivieren' },
+				{ icon: 'shield_person', label: 'Rollen verwalten',      live: true, open: () => rollenOpen = true },
+				{ icon: 'person_add',    label: 'Spieler hinzufügen' },
+				{ icon: 'person_remove', label: 'Spieler deaktivieren' },
 			],
 		},
 		{
@@ -242,32 +229,9 @@
 			icon: 'emoji_events',
 			color: '#CC0000',
 			actions: [
-				{ icon: 'edit_calendar', label: 'Aufstellung erstellen', fn: 'Aufstellung erstellen' },
-				{ icon: 'sports_score',  label: 'Ergebnis eintragen',    fn: 'Spielergebnis eintragen' },
-				{ icon: 'leaderboard',   label: 'Tabelle pflegen',       fn: 'Ligatabelle aktualisieren' },
-				{ icon: 'swap_horiz',    label: 'Spieler tauschen',      fn: 'Aufstellung: Spieler tauschen' },
-			],
-		},
-		{
-			title: 'Saison & Ligen',
-			icon: 'upload_file',
-			color: '#D4AF37',
-			actions: [
-				{ icon: 'add_circle',    label: 'Neue Saison anlegen',   fn: 'Neue Saison anlegen' },
-				{ icon: 'table_chart',   label: 'Liga importieren',      fn: 'Ligaplan importieren' },
-				{ icon: 'sync',          label: 'Spielplan aktualisieren', fn: 'Spielplan synchronisieren' },
-				{ icon: 'archive',       label: 'Saison abschließen',    fn: 'Saison archivieren' },
-			],
-		},
-		{
-			title: 'Turniere',
-			icon: 'social_leaderboard',
-			color: '#7c3aed',
-			actions: [
-				{ icon: 'add_circle',    label: 'Turnier anlegen',       fn: 'Turnier anlegen' },
-				{ icon: 'group_add',     label: 'Teilnehmer verwalten',  fn: 'Turnier-Teilnehmer' },
-				{ icon: 'bracket',       label: 'Bracket bearbeiten',    fn: 'Turnier-Bracket' },
-				{ icon: 'emoji_events',  label: 'Sieger eintragen',      fn: 'Turnier-Ergebnis' },
+				{ icon: 'edit_calendar', label: 'Aufstellung erstellen', live: true, open: () => aufstellungOpen = true },
+				{ icon: 'sports_score',  label: 'Ergebnis eintragen',    live: true, open: () => ergebnisOpen = true },
+				{ icon: 'leaderboard',   label: 'Tabelle pflegen' },
 			],
 		},
 		{
@@ -275,9 +239,8 @@
 			icon: 'fitness_center',
 			color: '#059669',
 			actions: [
-				{ icon: 'event',         label: 'Training anlegen',      fn: 'Training anlegen' },
-				{ icon: 'how_to_reg',    label: 'Anwesenheit erfassen',  fn: 'Trainingsanwesenheit' },
-				{ icon: 'notes',         label: 'Trainingsprotokoll',    fn: 'Trainingsprotokoll' },
+				{ icon: 'event',         label: 'Training verwalten',    live: true, open: () => trainingOpen = true },
+				{ icon: 'how_to_reg',    label: 'Anwesenheit erfassen' },
 			],
 		},
 		{
@@ -285,10 +248,10 @@
 			icon: 'campaign',
 			color: '#ea580c',
 			actions: [
-				{ icon: 'newspaper',     label: 'News verfassen',        fn: 'Vereinsnews verfassen' },
-				{ icon: 'notifications', label: 'Push an alle senden',   fn: 'Push-Benachrichtigung senden' },
-				{ icon: 'poll',          label: 'Umfrage erstellen',     fn: 'Vereinsumfrage erstellen' },
-				{ icon: 'celebration',   label: 'Event anlegen',         fn: 'Vereinsevent anlegen' },
+				{ icon: 'newspaper',     label: 'News verfassen' },
+				{ icon: 'notifications', label: 'Push an alle senden' },
+				{ icon: 'poll',          label: 'Umfrage erstellen' },
+				{ icon: 'celebration',   label: 'Event anlegen' },
 			],
 		},
 		{
@@ -296,9 +259,8 @@
 			icon: 'analytics',
 			color: '#0891b2',
 			actions: [
-				{ icon: 'bar_chart',     label: 'Saisonstatistik',       fn: 'Saisonstatistik anzeigen' },
-				{ icon: 'download',      label: 'Export (CSV)',           fn: 'Statistiken exportieren' },
-				{ icon: 'restart_alt',   label: 'Saison-Reset',          fn: 'Saisonstatistik zurücksetzen' },
+				{ icon: 'bar_chart',     label: 'Saisonstatistik' },
+				{ icon: 'download',      label: 'Export (CSV)' },
 			],
 		},
 		{
@@ -306,9 +268,9 @@
 			icon: 'settings',
 			color: '#64748b',
 			actions: [
-				{ icon: 'manage_accounts', label: 'Admin-Zugänge',       fn: 'Admin-Zugänge verwalten' },
-				{ icon: 'backup',          label: 'Datensicherung',      fn: 'Datensicherung erstellen' },
-				{ icon: 'bug_report',      label: 'Debug-Log',           fn: 'Debug-Protokoll anzeigen' },
+				{ icon: 'manage_accounts', label: 'Admin-Zugänge' },
+				{ icon: 'backup',          label: 'Datensicherung' },
+				{ icon: 'bug_report',      label: 'Debug-Log' },
 			],
 		},
 	];
@@ -629,11 +591,13 @@
 				{#each section.actions as action}
 				<button
 					class="admin-action"
-					onclick={() => adminAction(action.fn)}
+					class:admin-action--live={action.live}
+					class:admin-action--disabled={!action.live}
+					onclick={() => adminAction(action)}
 				>
-					<span class="material-symbols-outlined admin-action-icon" style="color: {section.color}">{action.icon}</span>
+					<span class="material-symbols-outlined admin-action-icon" style="color: {action.live ? section.color : ''}">{action.icon}</span>
 					<span class="admin-action-label">{action.label}</span>
-					{#if !LIVE_ACTIONS.includes(action.fn)}
+					{#if !action.live}
 						<span class="admin-action-badge">Bald</span>
 					{/if}
 				</button>
@@ -1439,8 +1403,12 @@
 	width: 100%;
 }
 
-.admin-action:active {
+.admin-action--live:active {
 	background: var(--color-surface-container-low);
+}
+.admin-action--disabled {
+	opacity: 0.45;
+	cursor: default;
 }
 
 .admin-action-icon {
