@@ -2,6 +2,7 @@
 	import { sb } from '$lib/supabase';
 	import { onMount } from 'svelte';
 	import BottomSheet from '../BottomSheet.svelte';
+	import { triggerToast } from '$lib/stores/toast.js';
 
 	let { open = $bindable(false) } = $props();
 
@@ -14,7 +15,6 @@
 	let inviteName  = $state('');
 	let inviteRole  = $state('user');
 	let sending     = $state(false);
-	let toastMsg    = $state('');
 
 	const ROLE_LABELS = { user: 'Spieler', kapitaen: 'Kapitän', admin: 'Admin' };
 	const ROLE_COLORS = { user: 'var(--color-outline)', kapitaen: '#D4AF37', admin: 'var(--color-primary)' };
@@ -86,8 +86,8 @@
 	}
 
 	function toast(msg) {
-		toastMsg = msg;
-		setTimeout(() => { toastMsg = ''; }, 2500);
+		open = false;  // Sheet schließen
+		setTimeout(() => triggerToast(msg), 300);  // Delay für Sheet-Animation
 	}
 
 	// Filtered players list
@@ -110,11 +110,6 @@
 </script>
 
 <BottomSheet bind:open title="Spieler & Rollen">
-
-	<!-- Toast -->
-	{#if toastMsg}
-		<div class="ar-toast">{toastMsg}</div>
-	{/if}
 
 	<!-- Header mit Suche + Einladen-Button -->
 	<div class="ar-toolbar">
@@ -217,26 +212,6 @@
 </BottomSheet>
 
 <style>
-	/* Toast */
-	.ar-toast {
-		position: sticky;
-		top: 0;
-		z-index: 5;
-		padding: var(--space-2) var(--space-4);
-		background: var(--color-surface-container-highest);
-		border-radius: var(--radius-md);
-		font-size: var(--text-body-sm);
-		font-weight: 600;
-		color: var(--color-on-surface);
-		text-align: center;
-		margin-bottom: var(--space-3);
-		animation: ar-toast-in 0.25s ease-out;
-	}
-	@keyframes ar-toast-in {
-		from { opacity: 0; transform: translateY(-8px); }
-		to   { opacity: 1; transform: translateY(0); }
-	}
-
 	/* Toolbar */
 	.ar-toolbar {
 		display: flex;

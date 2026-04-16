@@ -3606,6 +3606,79 @@ body.sheet-open .app-shell {
   white-space: nowrap;
 }
 
+/* ── Dynamic Island Toast ──────────────────────────────── */
+
+/* Toast-Modus: Pille morpht sich in Toast-Form */
+.di-pill.di-pill--toast {
+  /* Breite passt sich dem Text an */
+  min-width: 160px;
+  width: max-content;
+  /* Stärkerer roter Glow */
+  box-shadow: 0 8px 32px rgba(204, 0, 0, 0.5);
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ── Crossfade-Schichten ──────────────────────────────── */
+
+/* Toast-Layer: absolute über dem normalen Inhalt */
+.di-pill-toast-layer {
+  position: absolute;
+  inset: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  opacity: 0;
+  transform: scale(0.75);
+  filter: blur(4px);
+  pointer-events: none;
+  transition:
+    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 600ms cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+}
+.di-pill-toast-layer--active {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+}
+
+.di-pill-toast-icon {
+  font-size: 1.2rem;
+  color: var(--color-primary);
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20;
+  flex-shrink: 0;
+}
+
+.di-pill-toast-text {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-primary);
+  white-space: nowrap;
+  padding: 0 var(--space-4);
+}
+
+/* Normal-Layer: weicht unscharf nach hinten aus */
+.di-pill-normal-layer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  transition:
+    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.di-pill-normal-layer--hidden {
+  opacity: 0;
+  transform: scale(1.1);
+  filter: blur(4px);
+  pointer-events: none;
+}
+
 /* ============================================================
    Profil – Admin-Section
    ============================================================ */

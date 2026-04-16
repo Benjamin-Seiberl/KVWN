@@ -3,6 +3,7 @@
 	import { scrollY, scrollDirection } from '$lib/stores/scroll.js';
 	import { currentPageConfig, currentSubtab, setSubtab } from '$lib/stores/subtab.js';
 	import { playerRole } from '$lib/stores/auth';
+	import { toastMessage, isToastActive } from '$lib/stores/toast.js';
 
 	// ── Portal-Action: rendert die Pille direkt in <body> ─────
 	// Verhindert dass overflow-y:auto / position:relative-Ancestors
@@ -30,6 +31,13 @@
 		}
 	});
 
+	// Wenn Toast aktiv → Pill-Menü schließen
+	$effect(() => {
+		if ($isToastActive && pillExpanded) {
+			pillExpanded = false;
+		}
+	});
+
 	// Current subtab label shown in pill head
 	let currentLabel = $derived.by(() => {
 		const config = $currentPageConfig;
@@ -50,6 +58,9 @@
 	const PILL_EXPANDED  = 130;
 
 	let pillHeight = $derived.by(() => {
+		// Toast-Modus: feste Höhe
+		if ($isToastActive) return PILL_COLLAPSED;
+
 		const base = pillExpanded ? PILL_EXPANDED : PILL_COLLAPSED;
 		if (!isDragging) return base;
 
@@ -64,6 +75,7 @@
 
 	// ── Pointer handlers ──────────────────────────────────────
 	function onPointerDown(e) {
+		if ($isToastActive) return;  // Kein Drag während Toast
 		isDragging  = true;
 		dragStartY  = e.clientY;
 		dragDeltaY  = 0;
@@ -115,36 +127,46 @@
 <div
 	use:portal
 	class="di-pill"
-	class:di-pill--hidden={!isScrolled}
-	class:di-pill--expanded={pillExpanded}
+	class:di-pill--hidden={!isScrolled && !$isToastActive}
+	class:di-pill--expanded={pillExpanded && !$isToastActive}
 	class:di-pill--dragging={isDragging}
+	class:di-pill--toast={$isToastActive}
 	style="height: {pillHeight}px; {isDragging ? 'transition: none;' : ''}"
 	onpointerdown={onPointerDown}
 	onpointermove={onPointerMove}
 	onpointerup={onPointerUp}
 	onpointercancel={onPointerUp}
 >
-	<!-- Pill head: current subtab label -->
-	<div class="di-pill-head">
-		<span class="di-pill-label">{currentLabel}</span>
-		<div class="di-pill-drag-bar"></div>
+	<!-- ═══ TOAST LAYER (absolute, fadet ein) ═══ -->
+	<div class="di-pill-toast-layer" class:di-pill-toast-layer--active={$isToastActive}>
+		<span class="material-symbols-outlined di-pill-toast-icon">check_circle</span>
+		<span class="di-pill-toast-text">{$toastMessage}</span>
 	</div>
 
-	<!-- Pill body: subtab options (fades in as pill expands) -->
-	<div
-		class="di-pill-body"
-		class:di-pill-body--hidden={!pillExpanded && dragDeltaY < 30}
-	>
-		{#each visibleTabs as tab (tab.key)}
-			{@const active = tab.key === $currentSubtab}
-			<button
-				class="di-pill-option"
-				class:active
-				onclick={(e) => { e.stopPropagation(); selectSubtab(tab.key); }}
-			>
-				<span class="material-symbols-outlined">{tab.icon}</span>
-				<span class="di-pill-option-label">{tab.label}</span>
-			</button>
-		{/each}
+	<!-- ═══ NORMAL LAYER (weicht unscharf nach hinten) ═══ -->
+	<div class="di-pill-normal-layer" class:di-pill-normal-layer--hidden={$isToastActive}>
+		<!-- Pill head: current subtab label -->
+		<div class="di-pill-head">
+			<span class="di-pill-label">{currentLabel}</span>
+			<div class="di-pill-drag-bar"></div>
+		</div>
+
+		<!-- Pill body: subtab options (fades in as pill expands) -->
+		<div
+			class="di-pill-body"
+			class:di-pill-body--hidden={!pillExpanded && dragDeltaY < 30}
+		>
+			{#each visibleTabs as tab (tab.key)}
+				{@const active = tab.key === $currentSubtab}
+				<button
+					class="di-pill-option"
+					class:active
+					onclick={(e) => { e.stopPropagation(); selectSubtab(tab.key); }}
+				>
+					<span class="material-symbols-outlined">{tab.icon}</span>
+					<span class="di-pill-option-label">{tab.label}</span>
+				</button>
+			{/each}
+		</div>
 	</div>
 </div>
