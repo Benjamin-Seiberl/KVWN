@@ -9,6 +9,7 @@
 	import MyNextMatchCard from '$lib/components/dashboard/MyNextMatchCard.svelte';
 	import QuickActions    from '$lib/components/dashboard/QuickActions.svelte';
 	import UpcomingEvents  from '$lib/components/dashboard/UpcomingEvents.svelte';
+	import OpenRegistrationsCard from '$lib/components/dashboard/OpenRegistrationsCard.svelte';
 
 	let firstName        = $state('');
 	let greetingVisible  = $state(true);
@@ -99,6 +100,10 @@
 
 		<!-- Events tab -->
 		<div class="dash-section" style="--i:1">
+			<OpenRegistrationsCard />
+		</div>
+
+		<div class="dash-section" style="--i:2">
 			<UpcomingEvents />
 		</div>
 
