@@ -1,6 +1,6 @@
 <script>
 	import { page } from '$app/stores';
-	import { scrollY } from '$lib/stores/scroll.js';
+	import { scrollY, scrollDirection, isScrolling } from '$lib/stores/scroll.js';
 	import { currentPageConfig, currentSubtab, setSubtab } from '$lib/stores/subtab.js';
 	import { playerRole } from '$lib/stores/auth';
 	import { toastMessage, isToastActive } from '$lib/stores/toast.js';
@@ -23,6 +23,13 @@
 	let isDragging   = $state(false);
 	let dragDeltaY   = $state(0);
 	let dragStartY   = 0;
+
+	// Auto-close nur während aktivem Abwärts-Scrollen (nicht nach iOS-Momentum-Stillstand)
+	$effect(() => {
+		if ($isScrolling && $scrollDirection === 'down' && pillExpanded) {
+			pillExpanded = false;
+		}
+	});
 
 	// Wenn Toast aktiv → Pill-Menü schließen
 	$effect(() => {
