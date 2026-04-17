@@ -4306,4 +4306,227 @@ button.widget--card:active {
 }
 .tp-add-date-btn:hover { opacity: .8; }
 
+/* ══════════════════════════════════════════════════════════ */
+/* ── Landesbewerb Detail-Card ─────────────────────────────── */
+/* ══════════════════════════════════════════════════════════ */
+.lbw {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+.lbw-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: linear-gradient(135deg, rgba(212,175,55,0.12), rgba(204,0,0,0.04));
+  border-radius: 18px;
+  border: 1px solid rgba(212,175,55,0.3);
+}
+.lbw-hero-trophy {
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f4d87a, #c99a2b);
+  color: #5a3e00;
+  box-shadow: 0 4px 16px rgba(212,175,55,0.3);
+}
+.lbw-hero-trophy .material-symbols-outlined {
+  font-size: 2rem;
+  font-variation-settings: 'FILL' 1;
+}
+.lbw-hero-info { flex: 1; min-width: 0; }
+.lbw-title {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: var(--color-on-surface);
+  line-height: 1.2;
+}
+.lbw-loc, .lbw-date {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: var(--color-on-surface-variant);
+}
+
+/* Deadline-Banner */
+.lbw-deadline-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.lbw-deadline-banner .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1;
+}
+.lbw-deadline-banner--urgent {
+  background: linear-gradient(135deg, rgba(204,0,0,0.15), rgba(204,0,0,0.05));
+  color: var(--color-error, #CC0000);
+  border: 1.5px solid rgba(204,0,0,0.35);
+  animation: lbw-pulse 2s ease-in-out infinite;
+}
+@keyframes lbw-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(204,0,0,0.15); }
+  50%     { box-shadow: 0 0 0 8px rgba(204,0,0,0); }
+}
+
+/* Sections */
+.lbw-section {
+  background: var(--color-surface-container-lowest, #fff);
+  border-radius: 16px;
+  padding: var(--space-4);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+}
+.lbw-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-3);
+}
+.lbw-sec-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-on-surface);
+  flex: 1;
+}
+.lbw-sec-head .material-symbols-outlined {
+  font-size: 1.15rem;
+  color: var(--color-primary, #CC0000);
+}
+
+.lbw-badge {
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+.lbw-badge--open   { background: rgba(30,150,80,0.15);  color: #1e9650; }
+.lbw-badge--closed { background: rgba(0,0,0,0.08);       color: var(--color-on-surface-variant); }
+
+.lbw-deadline-text {
+  margin: 0 0 var(--space-3);
+  font-size: 0.85rem;
+  color: var(--color-on-surface-variant);
+}
+
+/* Register Button */
+.lbw-register-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--color-primary, #CC0000);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.lbw-register-btn:not(:disabled):active { transform: scale(0.98); }
+.lbw-register-btn:disabled { opacity: 0.55; cursor: default; }
+.lbw-register-btn .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1;
+}
+.lbw-register-btn--active {
+  background: linear-gradient(135deg, #1e9650, #0f7d3e);
+}
+.lbw-register-btn--locked {
+  background: rgba(30,150,80,0.12);
+  color: #1e9650;
+  cursor: default;
+}
+
+/* Player chips */
+.lbw-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-on-surface-variant);
+  text-align: center;
+  padding: var(--space-3) 0;
+}
+.lbw-players-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lbw-player-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  background: var(--color-surface-container-low, #f5f5f5);
+  border-radius: 100px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-on-surface);
+  border: 1.5px solid transparent;
+}
+.lbw-player-chip--me {
+  border-color: var(--color-secondary, #D4AF37);
+  background: rgba(212,175,55,0.08);
+}
+.lbw-player-photo {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--color-surface-container, #e5e5e5);
+}
+.lbw-player-photo--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--color-on-surface-variant);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+.lbw-player-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+/* Admin */
+.lbw-admin {
+  display: flex;
+  justify-content: center;
+}
+.lbw-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--color-surface-container, #eee);
+  color: var(--color-on-surface);
+  border: 0;
+  border-radius: 100px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lbw-admin-btn:active { opacity: 0.7; }
+.lbw-admin-btn .material-symbols-outlined { font-size: 1.05rem; }
+
+.lbw-edit-form { display: flex; flex-direction: column; gap: var(--space-3); }
+
 

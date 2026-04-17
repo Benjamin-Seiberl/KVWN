@@ -6,6 +6,7 @@
 	import { triggerToast }      from '$lib/stores/toast.js';
 	import StatsView             from '$lib/components/statistiken/StatsView.svelte';
 	import TournamentMatchCard   from '$lib/components/spielbetrieb/TournamentMatchCard.svelte';
+	import LandesbewerbCard      from '$lib/components/spielbetrieb/LandesbewerbCard.svelte';
 	import BottomSheet           from '$lib/components/BottomSheet.svelte';
 
 	const DAY_NAMES   = ['So','Mo','Di','Mi','Do','Fr','Sa'];
@@ -221,6 +222,7 @@
 	let landesDate     = $state('');
 	let landesTime     = $state('');
 	let landesLocation = $state('');
+	let landesDeadline = $state('');
 	let landesSaving   = $state(false);
 
 	const filteredLandes = $derived.by(() => {
@@ -240,34 +242,39 @@
 		const to    = new Date(today); to.setDate(today.getDate() + 365);
 		const { data } = await sb
 			.from('matches')
-			.select('id, date, time, tournament_title, tournament_location, home_away, opponent')
+			.select('id, date, time, tournament_title, tournament_location, home_away, opponent, registration_deadline, tournament_votes(player_id, wants_to_play)')
 			.eq('is_landesbewerb', true)
 			.gte('date', fmt(from))
 			.lte('date', fmt(to))
 			.order('date', { ascending: false });
 		landesbewerbe = data ?? [];
+		// Keep selectedLandes in sync with refreshed data
+		if (selectedLandes) {
+			selectedLandes = landesbewerbe.find(l => l.id === selectedLandes.id) ?? selectedLandes;
+		}
 		loadingLandes = false;
 	}
 
 	async function createLandesbewerb() {
-		if (!landesTitle || !landesDate) return;
+		if (!landesTitle || !landesDate || !landesDeadline) return;
 		landesSaving = true;
 		const { data, error } = await sb.from('matches').insert({
-			is_landesbewerb:     true,
-			is_tournament:       true,
-			tournament_title:    landesTitle,
-			tournament_location: landesLocation || null,
-			date:                landesDate,
-			time:                landesTime || null,
-			opponent:            landesTitle,
-			home_away:           'HEIM',
+			is_landesbewerb:       true,
+			is_tournament:         true,
+			tournament_title:      landesTitle,
+			tournament_location:   landesLocation || null,
+			date:                  landesDate,
+			time:                  landesTime || null,
+			registration_deadline: new Date(landesDeadline).toISOString(),
+			opponent:              landesTitle,
+			home_away:             'HEIM',
 		}).select().single();
 		landesSaving = false;
 		if (error) { triggerToast('Fehler beim Erstellen'); return; }
 		landesCreateOpen = false;
-		landesTitle = ''; landesDate = ''; landesTime = ''; landesLocation = '';
+		landesTitle = ''; landesDate = ''; landesTime = ''; landesLocation = ''; landesDeadline = '';
 		await loadLandesbewerbe();
-		selectedLandes = data;
+		selectedLandes = landesbewerbe.find(l => l.id === data.id) ?? data;
 	}
 
 	$effect(() => {
@@ -469,6 +476,9 @@
 		{:else}
 			<div class="mp-list">
 				{#each filteredLandes as t}
+					{@const regCount = (t.tournament_votes ?? []).filter(v => v.wants_to_play).length}
+					{@const dl = t.registration_deadline ? new Date(t.registration_deadline) : null}
+					{@const regOpen = dl && dl > new Date()}
 					<button class="mp-card" class:mp-card--past={isPast(t)} onclick={() => selectedLandes = t}>
 						<div class="mp-card-left">
 							<div class="tp-trophy-badge tp-trophy-badge--landes">
@@ -480,6 +490,21 @@
 									<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-2px">location_on</span>
 									{t.tournament_location}
 								</p>
+							{/if}
+							{#if dl}
+								<div class="tp-card-meta">
+									{#if regOpen}
+										<span class="tp-status-badge tp-status-badge--voting">Anmeldung offen</span>
+									{:else}
+										<span class="tp-status-badge tp-status-badge--voting_closed">Geschlossen</span>
+									{/if}
+									{#if regCount > 0}
+										<span class="tp-yes-count">
+											<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-1px">how_to_reg</span>
+											{regCount} Anmeldung{regCount !== 1 ? 'en' : ''}
+										</span>
+									{/if}
+								</div>
 							{/if}
 						</div>
 						<div class="mp-card-right">
@@ -499,7 +524,7 @@
 			Alle Landesbewerbe
 		</button>
 
-		<TournamentMatchCard match={selectedLandes} />
+		<LandesbewerbCard match={selectedLandes} onReload={loadLandesbewerbe} />
 	{/if}
 
 	<BottomSheet bind:open={landesCreateOpen} title="Landesbewerb erstellen">
@@ -517,13 +542,17 @@
 				<input class="tp-input" type="time" bind:value={landesTime} />
 			</label>
 			<label class="tp-field">
+				<span class="tp-label">Anmelde-Deadline *</span>
+				<input class="tp-input" type="datetime-local" bind:value={landesDeadline} />
+			</label>
+			<label class="tp-field">
 				<span class="tp-label">Ort</span>
 				<input class="tp-input" type="text" placeholder="z.B. Sportzentrum Wiener Neustadt" bind:value={landesLocation} />
 			</label>
 			<button
 				class="tp-save-btn"
 				onclick={createLandesbewerb}
-				disabled={!landesTitle || !landesDate || landesSaving}
+				disabled={!landesTitle || !landesDate || !landesDeadline || landesSaving}
 			>
 				{landesSaving ? 'Speichern…' : 'Landesbewerb anlegen'}
 			</button>
