@@ -2794,6 +2794,238 @@ button.widget--card:active {
 }
 
 /* ============================================================
+   Match Detail – Dramatische Squad-Karten
+   ============================================================ */
+
+@keyframes md-roster-in {
+  from { opacity: 0; transform: translateY(30px) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+
+.md-squad-section {
+  background: linear-gradient(155deg, #150404 0%, #1e0808 45%, #0e0e0e 100%);
+  margin: var(--space-2) var(--space-3) var(--space-3);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  padding-bottom: var(--space-4);
+  box-shadow:
+    0 0 0 1px rgba(204, 0, 0, 0.2),
+    0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* Header – Trennlinie + Label */
+.md-squad-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.md-squad-header-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(204, 0, 0, 0.55));
+}
+.md-squad-header-rule:last-child {
+  background: linear-gradient(to left, transparent, rgba(204, 0, 0, 0.55));
+}
+
+.md-squad-header-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: var(--text-label-lg);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.md-squad-header-icon {
+  font-size: 1rem;
+  font-variation-settings: 'FILL' 1, 'wght' 700;
+}
+
+/* 2-Spalten-Grid */
+.md-squad-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 var(--space-3);
+}
+
+/* Spielerkarte – Hochformat wie eine Sammelkarte */
+.md-squad-card {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  aspect-ratio: 9 / 13;
+  background: #1a1a1a;
+  animation: md-roster-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.md-squad-card--me {
+  box-shadow:
+    0 4px 28px rgba(204, 0, 0, 0.45),
+    0 0 0 2.5px var(--color-primary);
+}
+
+/* Foto – füllt die gesamte Karte */
+.md-squad-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+/* Vignette: transparent oben → fast-schwarz unten */
+.md-squad-vignette {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.08) 0%,
+    transparent          30%,
+    rgba(6, 0, 0, 0.55)  62%,
+    rgba(4, 0, 0, 0.93)  100%
+  );
+  pointer-events: none;
+}
+
+/* Trikotnummer – oben rechts */
+.md-squad-pos {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--text-label-md);
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+  z-index: 2;
+}
+
+.md-squad-card--me .md-squad-pos {
+  background: #fff;
+  color: var(--color-primary);
+}
+
+/* "DU"-Badge – oben links, nur für eigenen Spieler */
+.md-squad-me-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+/* Ergebnis-Badge – oben Mitte, wenn Spiel gespielt */
+.md-squad-score {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--text-title-sm);
+  font-weight: 900;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 2;
+}
+
+/* Info-Overlay – unten */
+.md-squad-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-2) var(--space-2) 10px;
+  z-index: 2;
+}
+
+.md-squad-name {
+  font-family: var(--font-display);
+  font-size: var(--text-body-sm);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+  line-height: 1.15;
+  word-break: break-word;
+  margin-bottom: 3px;
+}
+
+.md-squad-avg {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+}
+
+.md-squad-avg-val {
+  font-family: var(--font-display);
+  font-size: var(--text-label-lg);
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.md-squad-avg-unit {
+  font-family: var(--font-body);
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  margin-right: 2px;
+}
+
+.md-squad-trend {
+  display: flex;
+  align-items: center;
+}
+
+.md-squad-trend .material-symbols-outlined {
+  font-size: 0.85rem;
+  font-variation-settings: 'FILL' 0, 'wght' 600;
+}
+
+.md-squad-trend--up   { color: #66bb6a; }
+.md-squad-trend--down { color: #ef5350; }
+
+/* Leerzustand im dunklen Block */
+.md-squad-empty {
+  color: rgba(255, 255, 255, 0.45);
+  padding: var(--space-8) var(--space-4);
+}
+
+/* ============================================================
    MATCH-WORKFLOW  – Timeline, Treffpunkt, Fahrten, Lokal, Feedback
    (siehe src/lib/components/spielbetrieb/*.svelte)
    ============================================================ */

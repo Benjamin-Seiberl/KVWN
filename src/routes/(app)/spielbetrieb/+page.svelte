@@ -44,6 +44,13 @@
 		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
 	}
 
+	function shortName(name) {
+		if (!name) return '–';
+		const parts = name.trim().split(' ');
+		if (parts.length < 2) return name;
+		return parts[0] + ' ' + parts[parts.length - 1].charAt(0) + '.';
+	}
+
 	function formTrend(avg5, overallAvg) {
 		if (!avg5 || !overallAvg) return null;
 		return +(avg5 - overallAvg).toFixed(1);
@@ -600,67 +607,76 @@
 			{@const played  = players.filter(p => p.played && p.score != null)}
 
 			<!-- Aufstellung -->
-			<div class="md-section">
-				<div class="md-sec-head">
-					<span class="material-symbols-outlined md-sec-icon">group</span>
-					<h3 class="md-sec-title">Aufstellung</h3>
+			<div class="md-squad-section">
+				<div class="md-squad-header">
+					<div class="md-squad-header-rule"></div>
+					<div class="md-squad-header-label">
+						<span class="material-symbols-outlined md-squad-header-icon">shield</span>
+						Aufstellung
+					</div>
+					<div class="md-squad-header-rule"></div>
 				</div>
 
 				{#if players.length === 0}
-					<div class="sb-empty">
+					<div class="sb-empty md-squad-empty">
 						<span class="material-symbols-outlined sb-loading-icon">group_off</span>
 						<p>Noch keine Aufstellung</p>
 					</div>
 				{:else}
-					<div class="sb-lineup-list">
-						{#each players as p}
-							{@const name  = p.players?.name ?? p.player_name ?? '–'}
-							{@const photo = p.players?.photo ?? null}
-							{@const isMe  = p.player_id === $playerId}
-							{@const pStat = stats[p.player_id] ?? null}
-							{@const trend = formTrend(pStat?.avg5, pStat?.overallAvg)}
+					<div class="md-squad-grid">
+						{#each players as p, i}
+							{@const name     = p.players?.name ?? p.player_name ?? '–'}
+							{@const photo    = p.players?.photo ?? null}
+							{@const isMe     = p.player_id === $playerId}
+							{@const pStat    = stats[p.player_id] ?? null}
+							{@const trend    = formTrend(pStat?.avg5, pStat?.overallAvg)}
+							{@const hasScore = p.played && p.score != null}
 
-							<div class="picker-scout-card" class:picker-scout-card--me={isMe}>
-								<div class="picker-scout-photo-wrap">
-									<img
-										class="picker-scout-photo"
-										src={imgPath(photo, name)}
-										alt={name}
-										draggable="false"
-										onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
-									/>
-								</div>
-								<div class="picker-scout-info">
-									<div class="picker-scout-header">
-										<span class="picker-scout-name">{name}</span>
-										<div class="sb-pos-badge">{p.position ?? '–'}</div>
-									</div>
-									<div class="picker-scout-stats">
-										<div class="picker-scout-stat">
-											<span class="picker-scout-stat-label">Schnitt</span>
-											<span class="picker-scout-stat-value">
-												{pStat?.overallAvg ?? '–'}&thinsp;<span class="picker-scout-stat-unit">Holz</span>
-											</span>
-										</div>
-										<div class="picker-scout-stat">
-											<span class="picker-scout-stat-label">Form (5)</span>
-											<div class="picker-scout-form-row">
-												<span class="picker-scout-form-value">{pStat?.avg5 ?? '–'}</span>
-												{#if trend !== null}
-													<span
-														class="picker-scout-trend"
-														class:picker-scout-trend--up={trend >= 0}
-														class:picker-scout-trend--down={trend < 0}
-													>
-														<span class="material-symbols-outlined">
-															{trend >= 0 ? 'trending_up' : 'trending_down'}
-														</span>
-														{trend >= 0 ? '+' : ''}{trend}
+							<div
+								class="md-squad-card"
+								class:md-squad-card--me={isMe}
+								style="animation-delay:{i * 65}ms"
+							>
+								<img
+									class="md-squad-photo"
+									src={imgPath(photo, name)}
+									alt={name}
+									draggable="false"
+									onerror={(e) => { e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; }}
+								/>
+
+								<div class="md-squad-vignette"></div>
+
+								<!-- Trikotnummer -->
+								<div class="md-squad-pos">{p.position ?? '–'}</div>
+
+								{#if isMe}
+									<div class="md-squad-me-tag">DU</div>
+								{/if}
+
+								{#if hasScore}
+									<div class="md-squad-score">{p.score}</div>
+								{/if}
+
+								<div class="md-squad-info">
+									<div class="md-squad-name">{shortName(name)}</div>
+									{#if pStat}
+										<div class="md-squad-avg">
+											<span class="md-squad-avg-val">{pStat.overallAvg}</span>
+											<span class="md-squad-avg-unit"> Holz</span>
+											{#if trend !== null}
+												<span
+													class="md-squad-trend"
+													class:md-squad-trend--up={trend >= 0}
+													class:md-squad-trend--down={trend < 0}
+												>
+													<span class="material-symbols-outlined">
+														{trend >= 0 ? 'trending_up' : 'trending_down'}
 													</span>
-												{/if}
-											</div>
+												</span>
+											{/if}
 										</div>
-									</div>
+									{/if}
 								</div>
 							</div>
 						{/each}
