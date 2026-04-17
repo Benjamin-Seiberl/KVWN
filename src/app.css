@@ -4245,4 +4245,65 @@ button.widget--card:active {
   padding: var(--space-2) var(--space-3);
 }
 
+/* ── Tournament list card extras ─────────────────────────── */
+.tp-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+.tp-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: var(--text-body-xs);
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.tp-status-badge--voting        { background: rgba(var(--color-primary-rgb), .12); color: var(--color-primary); }
+.tp-status-badge--voting_closed { background: rgba(180,120,0,.12);  color: #b47800; }
+.tp-status-badge--scheduling    { background: rgba(0,120,180,.12);   color: #0078b4; }
+.tp-status-badge--confirmed     { background: rgba(30,150,80,.12);   color: #1e9650; }
+.tp-yes-count {
+  font-size: var(--text-body-xs);
+  color: var(--color-on-surface-variant);
+}
+
+/* Tournament creation form extras */
+.tp-date-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.tp-date-input {
+  flex: 1;
+}
+.tp-date-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-error);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+.tp-date-remove:hover { background: rgba(var(--color-error-rgb), .08); }
+.tp-add-date-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-body-sm);
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  font-weight: 600;
+}
+.tp-add-date-btn:hover { opacity: .8; }
+
 

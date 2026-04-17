@@ -147,55 +147,61 @@
 
 	// New tournament form
 	let newTitle    = $state('');
-	let newDate     = $state('');
-	let newTime     = $state('');
+	let newDates    = $state(['']);   // bis zu 5 mögliche Tage
 	let newLocation = $state('');
 	let saving      = $state(false);
+
+	function addDateField() {
+		if (newDates.length < 5) newDates = [...newDates, ''];
+	}
+	function removeDateField(i) {
+		newDates = newDates.filter((_, idx) => idx !== i);
+	}
 
 	const filteredTourneys = $derived.by(() => {
 		const q = tourneySearch.toLowerCase().trim();
 		if (!q) return tournaments;
 		return tournaments.filter(t =>
 			t.tournament_title?.toLowerCase().includes(q) ||
-			t.tournament_location?.toLowerCase().includes(q) ||
-			chipDate(t).toLowerCase().includes(q)
+			t.tournament_location?.toLowerCase().includes(q)
 		);
 	});
 
 	async function loadTournaments() {
 		loadingTournaments = true;
-		const today = new Date();
-		const from  = new Date(today); from.setDate(today.getDate() - 365);
-		const to    = new Date(today); to.setDate(today.getDate() + 365);
 		const { data } = await sb
 			.from('matches')
-			.select('id, date, time, tournament_title, tournament_location, home_away, opponent')
+			.select(`id, tournament_title, tournament_location, tournament_status,
+			         tournament_date_options(id, date),
+			         tournament_votes(player_id, wants_to_play)`)
 			.eq('is_tournament', true)
-			.gte('date', fmt(from))
-			.lte('date', fmt(to))
-			.order('date', { ascending: false });
+			.eq('is_landesbewerb', false)
+			.order('created_at', { ascending: false });
 		tournaments = data ?? [];
 		loadingTournaments = false;
 	}
 
 	async function createTournament() {
-		if (!newTitle || !newDate) return;
+		const dates = newDates.filter(d => d);
+		if (!newTitle || dates.length === 0) return;
 		saving = true;
-		const { data, error } = await sb.from('matches').insert({
+		const { data: match, error } = await sb.from('matches').insert({
 			is_tournament:        true,
 			tournament_title:     newTitle,
 			tournament_location:  newLocation || null,
-			date:                 newDate,
-			time:                 newTime || null,
+			tournament_status:    'voting',
 			opponent:             newTitle,
 			home_away:            'HEIM',
 		}).select().single();
+		if (error) { triggerToast('Fehler beim Erstellen'); saving = false; return; }
+		await sb.from('tournament_date_options').insert(
+			dates.map(d => ({ tournament_id: match.id, date: d }))
+		);
 		saving = false;
-		if (error) { triggerToast('Fehler beim Erstellen'); return; }
 		createOpen = false;
-		newTitle = ''; newDate = ''; newTime = ''; newLocation = '';
+		newTitle = ''; newDates = ['']; newLocation = '';
 		await loadTournaments();
-		selectedTourney = data;
+		selectedTourney = tournaments.find(t => t.id === match.id) ?? match;
 	}
 
 	$effect(() => {
@@ -327,7 +333,10 @@
 		{:else}
 			<div class="mp-list">
 				{#each filteredTourneys as t}
-					<button class="mp-card" class:mp-card--past={isPast(t)} onclick={() => selectedTourney = t}>
+					{@const yesCount  = (t.tournament_votes ?? []).filter(v => v.wants_to_play).length}
+					{@const statusMap = { voting: 'Abstimmung läuft', voting_closed: 'Geschlossen', scheduling: 'Spielplan', confirmed: 'Bestätigt' }}
+					{@const statusKey = t.tournament_status ?? 'voting'}
+					<button class="mp-card tp-card" onclick={() => selectedTourney = t}>
 						<div class="mp-card-left">
 							<div class="tp-trophy-badge">
 								<span class="material-symbols-outlined">military_tech</span>
@@ -339,10 +348,17 @@
 									{t.tournament_location}
 								</p>
 							{/if}
+							<div class="tp-card-meta">
+								<span class="tp-status-badge tp-status-badge--{statusKey}">{statusMap[statusKey]}</span>
+								{#if yesCount > 0}
+									<span class="tp-yes-count">
+										<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-1px">check_circle</span>
+										{yesCount} Zusage{yesCount !== 1 ? 'n' : ''}
+									</span>
+								{/if}
+							</div>
 						</div>
 						<div class="mp-card-right">
-							<span class="mp-date">{chipDate(t)}</span>
-							{#if chipTime(t)}<span class="mp-time">{chipTime(t)}</span>{/if}
 							<span class="material-symbols-outlined mp-chevron">chevron_right</span>
 						</div>
 					</button>
@@ -357,24 +373,37 @@
 			Alle Turniere
 		</button>
 
-		<TournamentMatchCard match={selectedTourney} />
+		<TournamentMatchCard match={selectedTourney} onReload={loadTournaments} />
 	{/if}
 
 	<!-- Create tournament sheet -->
 	<BottomSheet bind:open={createOpen} title="Turnier erstellen">
 		<div class="tp-form">
 			<label class="tp-field">
-				<span class="tp-label">Titel *</span>
-				<input class="tp-input" type="text" placeholder="z.B. NÖ-Cup 2025" bind:value={newTitle} />
+				<span class="tp-label">Turniername *</span>
+				<input class="tp-input" type="text" placeholder="z.B. NÖ-Cup 2026" bind:value={newTitle} />
 			</label>
-			<label class="tp-field">
-				<span class="tp-label">Datum *</span>
-				<input class="tp-input" type="date" bind:value={newDate} />
-			</label>
-			<label class="tp-field">
-				<span class="tp-label">Uhrzeit</span>
-				<input class="tp-input" type="time" bind:value={newTime} />
-			</label>
+
+			<div class="tp-field">
+				<span class="tp-label">Mögliche Tage *</span>
+				{#each newDates as d, i}
+					<div class="tp-date-row">
+						<input class="tp-input tp-date-input" type="date" bind:value={newDates[i]} />
+						{#if newDates.length > 1}
+							<button class="tp-date-remove" onclick={() => removeDateField(i)} aria-label="Datum entfernen">
+								<span class="material-symbols-outlined">close</span>
+							</button>
+						{/if}
+					</div>
+				{/each}
+				{#if newDates.length < 5}
+					<button class="tp-add-date-btn" onclick={addDateField}>
+						<span class="material-symbols-outlined">add</span>
+						Datum hinzufügen
+					</button>
+				{/if}
+			</div>
+
 			<label class="tp-field">
 				<span class="tp-label">Ort</span>
 				<input class="tp-input" type="text" placeholder="z.B. Sportanlage Wiener Neustadt" bind:value={newLocation} />
@@ -382,7 +411,7 @@
 			<button
 				class="tp-save-btn"
 				onclick={createTournament}
-				disabled={!newTitle || !newDate || saving}
+				disabled={!newTitle || !newDates.some(d => d) || saving}
 			>
 				{saving ? 'Speichern…' : 'Turnier anlegen'}
 			</button>
