@@ -75,7 +75,8 @@
 
 	// ── Pointer handlers ──────────────────────────────────────
 	function onPointerDown(e) {
-		if ($isToastActive) return;  // Kein Drag während Toast
+		if ($isToastActive) return;
+		if (e.target.closest('.di-pill-option')) return; // Button-Click nativ durchlassen
 		isDragging  = true;
 		dragStartY  = e.clientY;
 		dragDeltaY  = 0;
