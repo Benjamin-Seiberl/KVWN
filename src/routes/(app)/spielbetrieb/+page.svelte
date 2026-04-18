@@ -223,7 +223,28 @@
 	let selectedLandes       = $state(null);
 	let landesCreateOpen     = $state(false);
 
+	const BEWERB_TYPEN = [
+		{ value: 'einzel_ak_herren',        label: 'Einzel AK Herren' },
+		{ value: 'einzel_ak_damen',         label: 'Einzel AK Damen' },
+		{ value: 'nachwuchs_u10_maennlich', label: 'Nachwuchs U10 männlich' },
+		{ value: 'nachwuchs_u10_weiblich',  label: 'Nachwuchs U10 weiblich' },
+		{ value: 'nachwuchs_u15_maennlich', label: 'Nachwuchs U15 männlich' },
+		{ value: 'nachwuchs_u15_weiblich',  label: 'Nachwuchs U15 weiblich' },
+		{ value: 'nachwuchs_u19_maennlich', label: 'Nachwuchs U19 männlich' },
+		{ value: 'nachwuchs_u19_weiblich',  label: 'Nachwuchs U19 weiblich' },
+		{ value: 'nachwuchs_u23_maennlich', label: 'Nachwuchs U23 männlich' },
+		{ value: 'nachwuchs_u23_weiblich',  label: 'Nachwuchs U23 weiblich' },
+		{ value: 'ue50_herren',             label: 'Ü50 Herren' },
+		{ value: 'ue50_damen',             label: 'Ü50 Damen' },
+		{ value: 'ue60_herren',             label: 'Ü60 Herren' },
+		{ value: 'ue60_damen',             label: 'Ü60 Damen' },
+		{ value: 'lm_sprint_herren',        label: 'LM Sprint Herren' },
+		{ value: 'lm_sprint_damen',         label: 'LM Sprint Damen' },
+		{ value: 'tandem_mixed',            label: 'Tandem Mixed' },
+	];
+
 	let landesTitle    = $state('');
+	let landesTyp      = $state('einzel_ak_herren');
 	let landesDate     = $state('');
 	let landesTime     = $state('');
 	let landesLocation = $state('');
@@ -234,26 +255,20 @@
 		const q = landesSearch.toLowerCase().trim();
 		if (!q) return landesbewerbe;
 		return landesbewerbe.filter(t =>
-			t.tournament_title?.toLowerCase().includes(q) ||
-			t.tournament_location?.toLowerCase().includes(q) ||
-			chipDate(t).toLowerCase().includes(q)
+			t.title?.toLowerCase().includes(q) ||
+			t.location?.toLowerCase().includes(q) ||
+			(t.date && t.date.includes(q))
 		);
 	});
 
 	async function loadLandesbewerbe() {
 		loadingLandes = true;
-		const today = new Date();
-		const from  = new Date(today); from.setDate(today.getDate() - 365);
-		const to    = new Date(today); to.setDate(today.getDate() + 365);
-		const { data } = await sb
-			.from('matches')
-			.select('id, date, time, tournament_title, tournament_location, home_away, opponent, registration_deadline, tournament_votes(player_id, wants_to_play)')
-			.eq('is_landesbewerb', true)
-			.gte('date', fmt(from))
-			.lte('date', fmt(to))
+		const { data, error } = await sb
+			.from('landesbewerbe')
+			.select('id, title, typ, location, date, time, registration_deadline, landesbewerb_registrations!landesbewerb_id(player_id)')
 			.order('date', { ascending: false });
+		if (error) triggerToast('Ladefehler: ' + (error.message ?? error.code ?? 'Unbekannt'));
 		landesbewerbe = data ?? [];
-		// Keep selectedLandes in sync with refreshed data
 		if (selectedLandes) {
 			selectedLandes = landesbewerbe.find(l => l.id === selectedLandes.id) ?? selectedLandes;
 		}
@@ -261,23 +276,20 @@
 	}
 
 	async function createLandesbewerb() {
-		if (!landesTitle || !landesDate || !landesDeadline) return;
+		if (!landesTitle || !landesDeadline) return;
 		landesSaving = true;
-		const { data, error } = await sb.from('matches').insert({
-			is_landesbewerb:       true,
-			is_tournament:         true,
-			tournament_title:      landesTitle,
-			tournament_location:   landesLocation || null,
-			date:                  landesDate,
+		const { data, error } = await sb.from('landesbewerbe').insert({
+			title:                 landesTitle,
+			typ:                   landesTyp,
+			location:              landesLocation || null,
+			date:                  landesDate || null,
 			time:                  landesTime || null,
 			registration_deadline: new Date(landesDeadline).toISOString(),
-			opponent:              landesTitle,
-			home_away:             'HEIM',
 		}).select().single();
 		landesSaving = false;
-		if (error) { triggerToast('Fehler beim Erstellen'); return; }
+		if (error) { triggerToast('Fehler: ' + (error.message ?? 'Unbekannt')); return; }
 		landesCreateOpen = false;
-		landesTitle = ''; landesDate = ''; landesTime = ''; landesLocation = ''; landesDeadline = '';
+		landesTitle = ''; landesTyp = 'einzel_ak_herren'; landesDate = ''; landesTime = ''; landesLocation = ''; landesDeadline = '';
 		await loadLandesbewerbe();
 		selectedLandes = landesbewerbe.find(l => l.id === data.id) ?? data;
 	}
@@ -486,19 +498,19 @@
 		{:else}
 			<div class="mp-list">
 				{#each filteredLandes as t}
-					{@const regCount = (t.tournament_votes ?? []).filter(v => v.wants_to_play).length}
+					{@const regCount = (t.landesbewerb_registrations ?? []).length}
 					{@const dl = t.registration_deadline ? new Date(t.registration_deadline) : null}
 					{@const regOpen = dl && dl > new Date()}
-					<button class="mp-card" class:mp-card--past={isPast(t)} onclick={() => selectedLandes = t}>
+					<button class="mp-card" class:mp-card--past={t.date && isPast(t)} onclick={() => selectedLandes = t}>
 						<div class="mp-card-left">
 							<div class="tp-trophy-badge tp-trophy-badge--landes">
 								<span class="material-symbols-outlined">workspace_premium</span>
 							</div>
-							<h3 class="mp-opponent">{t.tournament_title ?? 'Landesbewerb'}</h3>
-							{#if t.tournament_location}
+							<h3 class="mp-opponent">{t.title ?? 'Landesbewerb'}</h3>
+							{#if t.location}
 								<p class="mp-league">
 									<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-2px">location_on</span>
-									{t.tournament_location}
+									{t.location}
 								</p>
 							{/if}
 							{#if dl}
@@ -518,8 +530,8 @@
 							{/if}
 						</div>
 						<div class="mp-card-right">
-							<span class="mp-date">{chipDate(t)}</span>
-							{#if chipTime(t)}<span class="mp-time">{chipTime(t)}</span>{/if}
+							{#if t.date}<span class="mp-date">{chipDate(t)}</span>{/if}
+							{#if t.time}<span class="mp-time">{chipTime(t)}</span>{/if}
 							<span class="material-symbols-outlined mp-chevron">chevron_right</span>
 						</div>
 					</button>
@@ -534,26 +546,34 @@
 			Alle Landesbewerbe
 		</button>
 
-		<LandesbewerbCard match={selectedLandes} onReload={loadLandesbewerbe} />
+		<LandesbewerbCard lb={selectedLandes} onReload={loadLandesbewerbe} />
 	{/if}
 
 	<BottomSheet bind:open={landesCreateOpen} title="Landesbewerb erstellen">
 		<div class="tp-form">
 			<label class="tp-field">
 				<span class="tp-label">Titel *</span>
-				<input class="tp-input" type="text" placeholder="z.B. NÖ Landesmeisterschaft 2025" bind:value={landesTitle} />
+				<input class="tp-input" type="text" placeholder="z.B. NÖ Landesmeisterschaft 2026" bind:value={landesTitle} />
 			</label>
 			<label class="tp-field">
-				<span class="tp-label">Datum *</span>
+				<span class="tp-label">Bewerbstyp *</span>
+				<select class="tp-input" bind:value={landesTyp}>
+					{#each BEWERB_TYPEN as bt}
+						<option value={bt.value}>{bt.label}</option>
+					{/each}
+				</select>
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Anmelde-Deadline *</span>
+				<input class="tp-input" type="datetime-local" bind:value={landesDeadline} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Datum</span>
 				<input class="tp-input" type="date" bind:value={landesDate} />
 			</label>
 			<label class="tp-field">
 				<span class="tp-label">Uhrzeit</span>
 				<input class="tp-input" type="time" bind:value={landesTime} />
-			</label>
-			<label class="tp-field">
-				<span class="tp-label">Anmelde-Deadline *</span>
-				<input class="tp-input" type="datetime-local" bind:value={landesDeadline} />
 			</label>
 			<label class="tp-field">
 				<span class="tp-label">Ort</span>
@@ -562,7 +582,7 @@
 			<button
 				class="tp-save-btn"
 				onclick={createLandesbewerb}
-				disabled={!landesTitle || !landesDate || !landesDeadline || landesSaving}
+				disabled={!landesTitle || !landesDeadline || landesSaving}
 			>
 				{landesSaving ? 'Speichern…' : 'Landesbewerb anlegen'}
 			</button>
