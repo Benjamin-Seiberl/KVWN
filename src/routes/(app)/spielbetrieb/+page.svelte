@@ -157,6 +157,7 @@
 	let newTitle    = $state('');
 	let newDates    = $state(['']);   // bis zu 5 mögliche Tage
 	let newLocation = $state('');
+	let newDeadline = $state('');
 	let saving      = $state(false);
 
 	function addDateField() {
@@ -179,7 +180,7 @@
 		loadingTournaments = true;
 		const { data } = await sb
 			.from('matches')
-			.select(`id, tournament_title, tournament_location, tournament_status,
+			.select(`id, tournament_title, tournament_location, tournament_status, voting_deadline,
 			         tournament_date_options(id, date),
 			         tournament_votes(player_id, wants_to_play)`)
 			.eq('is_tournament', true)
@@ -195,19 +196,21 @@
 		saving = true;
 		const { data: match, error } = await sb.from('matches').insert({
 			is_tournament:        true,
+			is_landesbewerb:      false,
 			tournament_title:     newTitle,
 			tournament_location:  newLocation || null,
 			tournament_status:    'voting',
+			voting_deadline:      newDeadline ? new Date(newDeadline).toISOString() : null,
 			opponent:             newTitle,
 			home_away:            'HEIM',
 		}).select().single();
-		if (error) { triggerToast('Fehler beim Erstellen'); saving = false; return; }
+		if (error) { triggerToast('Fehler: ' + (error.message ?? 'Unbekannt')); saving = false; return; }
 		await sb.from('tournament_date_options').insert(
 			dates.map(d => ({ tournament_id: match.id, date: d }))
 		);
 		saving = false;
 		createOpen = false;
-		newTitle = ''; newDates = ['']; newLocation = '';
+		newTitle = ''; newDates = ['']; newLocation = ''; newDeadline = '';
 		await loadTournaments();
 		selectedTourney = tournaments.find(t => t.id === match.id) ?? match;
 	}
@@ -417,6 +420,11 @@
 					</button>
 				{/if}
 			</div>
+
+			<label class="tp-field">
+				<span class="tp-label">Abstimmungs-Deadline</span>
+				<input class="tp-input" type="datetime-local" bind:value={newDeadline} />
+			</label>
 
 			<label class="tp-field">
 				<span class="tp-label">Ort</span>

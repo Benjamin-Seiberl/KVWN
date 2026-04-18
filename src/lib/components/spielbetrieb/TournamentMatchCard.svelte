@@ -15,14 +15,16 @@
 	let allPlayers    = $state([]);
 	let savingStatus  = $state(false);
 
-	const statusLabels  = { voting:'Abstimmung läuft', voting_closed:'Geschlossen', scheduling:'Spielplan', confirmed:'Bestätigt ✓' };
-	const isAdmin       = $derived($playerRole === 'kapitaen');
-	const status        = $derived(match.tournament_status ?? 'voting');
-	const votingOpen    = $derived(status === 'voting');
-	const myVote        = $derived(votes.find(v => v.player_id === $playerId));
-	const myDateVoteIds = $derived(dateVotes.filter(v => v.player_id === $playerId).map(v => v.date_option_id));
-	const yesPlayers    = $derived(votes.filter(v => v.wants_to_play));
-	const maxDateVotes  = $derived(Math.max(1, ...dateOptions.map(o => dateVoteCount(o.id))));
+	const statusLabels     = { voting:'Abstimmung läuft', voting_closed:'Geschlossen', scheduling:'Spielplan', confirmed:'Bestätigt ✓' };
+	const isAdmin          = $derived($playerRole === 'kapitaen');
+	const status           = $derived(match.tournament_status ?? 'voting');
+	const votingDeadline   = $derived(match.voting_deadline ? new Date(match.voting_deadline) : null);
+	const deadlinePassed   = $derived(votingDeadline ? votingDeadline < new Date() : false);
+	const votingOpen       = $derived(status === 'voting' && !deadlinePassed);
+	const myVote           = $derived(votes.find(v => v.player_id === $playerId));
+	const myDateVoteIds    = $derived(dateVotes.filter(v => v.player_id === $playerId).map(v => v.date_option_id));
+	const yesPlayers       = $derived(votes.filter(v => v.wants_to_play));
+	const maxDateVotes     = $derived(Math.max(1, ...dateOptions.map(o => dateVoteCount(o.id))));
 
 	let newTeamName  = $state('');
 	let newStartTime = $state('');
@@ -192,6 +194,18 @@
 	<!-- ═══ PHASE: VOTING / VOTING_CLOSED ═══ -->
 	{#if status === 'voting' || status === 'voting_closed'}
 
+		<!-- Deadline-Info -->
+		{#if votingDeadline}
+			<div class="twd-deadline-banner" class:twd-deadline-banner--closed={deadlinePassed}>
+				<span class="material-symbols-outlined">alarm</span>
+				{#if deadlinePassed}
+					Abstimmung beendet am {votingDeadline.toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' })}
+				{:else}
+					Abstimmung bis {votingDeadline.toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' })}
+				{/if}
+			</div>
+		{/if}
+
 		<!-- Teilnahme -->
 		<div class="twd-section">
 			<h3 class="twd-sec-title">
@@ -218,7 +232,9 @@
 					</button>
 				</div>
 			{:else}
-				<p class="twd-muted">Abstimmung ist geschlossen.</p>
+				<p class="twd-muted">
+					{deadlinePassed ? 'Abstimmungsfrist ist abgelaufen.' : 'Abstimmung ist geschlossen.'}
+				</p>
 			{/if}
 		</div>
 
@@ -458,6 +474,11 @@
 	.twd-status-badge--voting_closed { background:rgba(0,0,0,0.08);    color:var(--color-on-surface-variant); }
 	.twd-status-badge--scheduling    { background:rgba(25,118,210,0.1); color:#1976d2; }
 	.twd-status-badge--confirmed     { background:rgba(46,125,50,0.12); color:#2e7d32; }
+
+	/* Deadline-Banner */
+	.twd-deadline-banner { display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:12px; font-size:0.85rem; font-weight:600; background:rgba(212,175,55,0.12); color:#7a5a00; border:1px solid rgba(212,175,55,0.3); }
+	.twd-deadline-banner .material-symbols-outlined { font-size:1.1rem; font-variation-settings:'FILL' 1; }
+	.twd-deadline-banner--closed { background:rgba(0,0,0,0.06); color:var(--color-on-surface-variant); border-color:rgba(0,0,0,0.1); }
 
 	/* Sections */
 	.twd-section { background:var(--color-surface-container-lowest); border:1px solid var(--color-outline-variant); border-radius:var(--radius-xl); padding:var(--space-4); }
