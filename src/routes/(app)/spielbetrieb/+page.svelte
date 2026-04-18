@@ -178,12 +178,13 @@
 
 	async function loadTournaments() {
 		loadingTournaments = true;
-		const { data } = await sb
+		const { data, error } = await sb
 			.from('tournaments')
 			.select(`id, title, location, status, voting_deadline,
 			         tournament_date_options(id, date),
 			         tournament_votes(player_id, wants_to_play)`)
 			.order('created_at', { ascending: false });
+		if (error) triggerToast('Ladefehler: ' + (error.message ?? error.code ?? 'Unbekannt'));
 		tournaments = data ?? [];
 		loadingTournaments = false;
 	}
