@@ -171,20 +171,18 @@
 		const q = tourneySearch.toLowerCase().trim();
 		if (!q) return tournaments;
 		return tournaments.filter(t =>
-			t.tournament_title?.toLowerCase().includes(q) ||
-			t.tournament_location?.toLowerCase().includes(q)
+			t.title?.toLowerCase().includes(q) ||
+			t.location?.toLowerCase().includes(q)
 		);
 	});
 
 	async function loadTournaments() {
 		loadingTournaments = true;
 		const { data } = await sb
-			.from('matches')
-			.select(`id, tournament_title, tournament_location, tournament_status, voting_deadline,
+			.from('tournaments')
+			.select(`id, title, location, status, voting_deadline,
 			         tournament_date_options(id, date),
 			         tournament_votes(player_id, wants_to_play)`)
-			.eq('is_tournament', true)
-			.eq('is_landesbewerb', false)
 			.order('created_at', { ascending: false });
 		tournaments = data ?? [];
 		loadingTournaments = false;
@@ -194,25 +192,21 @@
 		const dates = newDates.filter(d => d);
 		if (!newTitle || dates.length === 0) return;
 		saving = true;
-		const { data: match, error } = await sb.from('matches').insert({
-			is_tournament:        true,
-			is_landesbewerb:      false,
-			tournament_title:     newTitle,
-			tournament_location:  newLocation || null,
-			tournament_status:    'voting',
-			voting_deadline:      newDeadline ? new Date(newDeadline).toISOString() : null,
-			opponent:             newTitle,
-			home_away:            'HEIM',
+		const { data: t, error } = await sb.from('tournaments').insert({
+			title:           newTitle,
+			location:        newLocation || null,
+			status:          'voting',
+			voting_deadline: newDeadline ? new Date(newDeadline).toISOString() : null,
 		}).select().single();
 		if (error) { triggerToast('Fehler: ' + (error.message ?? 'Unbekannt')); saving = false; return; }
 		await sb.from('tournament_date_options').insert(
-			dates.map(d => ({ tournament_id: match.id, date: d }))
+			dates.map(d => ({ tournament_id: t.id, date: d }))
 		);
 		saving = false;
 		createOpen = false;
 		newTitle = ''; newDates = ['']; newLocation = ''; newDeadline = '';
 		await loadTournaments();
-		selectedTourney = tournaments.find(t => t.id === match.id) ?? match;
+		selectedTourney = tournaments.find(x => x.id === t.id) ?? t;
 	}
 
 	$effect(() => {
@@ -352,17 +346,17 @@
 				{#each filteredTourneys as t}
 					{@const yesCount  = (t.tournament_votes ?? []).filter(v => v.wants_to_play).length}
 					{@const statusMap = { voting: 'Abstimmung läuft', voting_closed: 'Geschlossen', scheduling: 'Spielplan', confirmed: 'Bestätigt' }}
-					{@const statusKey = t.tournament_status ?? 'voting'}
+					{@const statusKey = t.status ?? 'voting'}
 					<button class="mp-card tp-card" onclick={() => selectedTourney = t}>
 						<div class="mp-card-left">
 							<div class="tp-trophy-badge">
 								<span class="material-symbols-outlined">military_tech</span>
 							</div>
-							<h3 class="mp-opponent">{t.tournament_title ?? 'Turnier'}</h3>
-							{#if t.tournament_location}
+							<h3 class="mp-opponent">{t.title ?? 'Turnier'}</h3>
+							{#if t.location}
 								<p class="mp-league">
 									<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-2px">location_on</span>
-									{t.tournament_location}
+									{t.location}
 								</p>
 							{/if}
 							<div class="tp-card-meta">
@@ -390,7 +384,7 @@
 			Alle Turniere
 		</button>
 
-		<TournamentMatchCard match={selectedTourney} onReload={loadTournaments} />
+		<TournamentMatchCard tournament={selectedTourney} onReload={loadTournaments} />
 	{/if}
 
 	<!-- Create tournament sheet -->

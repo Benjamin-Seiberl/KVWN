@@ -4,7 +4,7 @@
 	import { playerId, playerRole } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
 
-	let { match, onReload = () => {} } = $props();
+	let { tournament, onReload = () => {} } = $props();
 
 	// ── State ──────────────────────────────────────────────────────
 	let dateOptions   = $state([]);
@@ -14,11 +14,12 @@
 	let assignments   = $state([]);
 	let allPlayers    = $state([]);
 	let savingStatus  = $state(false);
+	let scoreInputs   = $state({});
 
 	const statusLabels     = { voting:'Abstimmung läuft', voting_closed:'Geschlossen', scheduling:'Spielplan', confirmed:'Bestätigt ✓' };
 	const isAdmin          = $derived($playerRole === 'kapitaen');
-	const status           = $derived(match.tournament_status ?? 'voting');
-	const votingDeadline   = $derived(match.voting_deadline ? new Date(match.voting_deadline) : null);
+	const status           = $derived(tournament.status ?? 'voting');
+	const votingDeadline   = $derived(tournament.voting_deadline ? new Date(tournament.voting_deadline) : null);
 	const deadlinePassed   = $derived(votingDeadline ? votingDeadline < new Date() : false);
 	const votingOpen       = $derived(status === 'voting' && !deadlinePassed);
 	const myVote           = $derived(votes.find(v => v.player_id === $playerId));
@@ -46,6 +47,7 @@
 	function dateVoteCount(optionId) {
 		return dateVotes.filter(v => v.date_option_id === optionId).length;
 	}
+	function scoreKey(a) { return a.round_id + '_' + a.lane_number; }
 
 	// ── Load ───────────────────────────────────────────────────────
 	async function load() {
@@ -56,10 +58,10 @@
 			{ data: r },
 			{ data: p },
 		] = await Promise.all([
-			sb.from('tournament_date_options').select('*').eq('tournament_id', match.id).order('date'),
-			sb.from('tournament_votes').select('*, players(name, photo)').eq('tournament_id', match.id),
-			sb.from('tournament_date_votes').select('*').eq('tournament_id', match.id),
-			sb.from('tournament_rounds').select('*').eq('match_id', match.id).order('round_number'),
+			sb.from('tournament_date_options').select('*').eq('tournament_id', tournament.id).order('date'),
+			sb.from('tournament_votes').select('*, players(name, photo)').eq('tournament_id', tournament.id),
+			sb.from('tournament_date_votes').select('*').eq('tournament_id', tournament.id),
+			sb.from('tournament_rounds').select('*').eq('tournament_id', tournament.id).order('round_number'),
 			sb.from('players').select('id, name, photo').eq('active', true).order('name'),
 		]);
 		dateOptions = opts ?? [];
@@ -72,8 +74,15 @@
 				.from('tournament_round_players').select('*')
 				.in('round_id', rounds.map(x => x.id));
 			assignments = a ?? [];
+			// Seed score inputs from loaded data
+			const next = {};
+			for (const asg of (a ?? [])) {
+				next[scoreKey(asg)] = asg.score ?? '';
+			}
+			scoreInputs = next;
 		} else {
 			assignments = [];
+			scoreInputs = {};
 		}
 	}
 
@@ -81,7 +90,7 @@
 	async function voteParticipation(wants) {
 		if (!votingOpen) return;
 		await sb.from('tournament_votes').upsert(
-			{ tournament_id: match.id, player_id: $playerId, wants_to_play: wants },
+			{ tournament_id: tournament.id, player_id: $playerId, wants_to_play: wants },
 			{ onConflict: 'tournament_id,player_id' }
 		);
 		await load();
@@ -91,10 +100,10 @@
 		if (!votingOpen) return;
 		if (myDateVoteIds.includes(optionId)) {
 			await sb.from('tournament_date_votes').delete()
-				.eq('tournament_id', match.id).eq('player_id', $playerId).eq('date_option_id', optionId);
+				.eq('tournament_id', tournament.id).eq('player_id', $playerId).eq('date_option_id', optionId);
 		} else {
 			await sb.from('tournament_date_votes')
-				.insert({ tournament_id: match.id, player_id: $playerId, date_option_id: optionId });
+				.insert({ tournament_id: tournament.id, player_id: $playerId, date_option_id: optionId });
 		}
 		await load();
 	}
@@ -102,8 +111,8 @@
 	// ── Status-Übergänge (Kapitän) ─────────────────────────────────
 	async function setStatus(s) {
 		savingStatus = true;
-		await sb.from('matches').update({ tournament_status: s }).eq('id', match.id);
-		match = { ...match, tournament_status: s };
+		await sb.from('tournaments').update({ status: s }).eq('id', tournament.id);
+		tournament = { ...tournament, status: s };
 		savingStatus = false;
 		triggerToast(s === 'voting_closed' ? 'Abstimmung geschlossen' :
 		             s === 'scheduling'    ? 'Spielplan-Phase' :
@@ -118,7 +127,7 @@
 		addingTeam = true;
 		const nextNum = (rounds.at(-1)?.round_number ?? 0) + 1;
 		await sb.from('tournament_rounds').insert({
-			match_id: match.id, round_number: nextNum,
+			tournament_id: tournament.id, round_number: nextNum,
 			start_time: newStartTime, lane_count: 4, team_name: newTeamName,
 		});
 		newTeamName = ''; newStartTime = '';
@@ -158,8 +167,9 @@
 		triggerToast('Du bist eingetragen!');
 	}
 
-	async function updateScore(a, scoreVal) {
-		const n = Number(scoreVal);
+	async function saveScore(a) {
+		const val = scoreInputs[scoreKey(a)];
+		const n = Number(val);
 		if (!Number.isFinite(n)) return;
 		await sb.from('tournament_round_players')
 			.update({ score: n }).eq('round_id', a.round_id).eq('lane_number', a.lane_number);
@@ -180,11 +190,11 @@
 			<span class="material-symbols-outlined">military_tech</span>
 		</div>
 		<div class="twd-header-info">
-			<h2 class="twd-title">{match.tournament_title ?? 'Turnier'}</h2>
-			{#if match.tournament_location}
+			<h2 class="twd-title">{tournament.title ?? 'Turnier'}</h2>
+			{#if tournament.location}
 				<p class="twd-location">
 					<span class="material-symbols-outlined twd-location-icon">location_on</span>
-					{match.tournament_location}
+					{tournament.location}
 				</p>
 			{/if}
 		</div>
@@ -345,6 +355,15 @@
 	{:else if status === 'scheduling' || status === 'confirmed'}
 		{@const locked = status === 'confirmed'}
 
+		<!-- Bestätigter Termin -->
+		{#if tournament.confirmed_date}
+			<div class="twd-deadline-banner">
+				<span class="material-symbols-outlined">event</span>
+				{fmtDate(tournament.confirmed_date)}
+				{#if tournament.confirmed_time} · {fmtTime(tournament.confirmed_time)}{/if}
+			</div>
+		{/if}
+
 		<div class="twd-section">
 			<h3 class="twd-sec-title">
 				<span class="material-symbols-outlined">schedule</span>
@@ -393,11 +412,16 @@
 												<option value="">— frei —</option>
 												{#each allPlayers as p}<option value={p.id}>{p.name}</option>{/each}
 											</select>
-											<input class="twd-lane-score" type="number" min="0" max="999"
-												inputmode="numeric" placeholder="Holz"
-												value={a.score ?? ''}
-												onblur={(e) => updateScore(a, e.target.value)}
-											/>
+											<div class="twd-score-wrap">
+												<input class="twd-lane-score" type="number" min="0" max="999"
+													inputmode="numeric" placeholder="Holz"
+													bind:value={scoreInputs[scoreKey(a)]}
+												/>
+												<button class="twd-score-save-btn" onclick={() => saveScore(a)}
+													disabled={scoreInputs[scoreKey(a)] === '' || scoreInputs[scoreKey(a)] == null}>
+													<span class="material-symbols-outlined">check</span>
+												</button>
+											</div>
 										{:else if isMe}
 											<button class="twd-icon-btn" onclick={() => setLane(r, lane, null)}>
 												<span class="material-symbols-outlined">close</span>
@@ -546,7 +570,11 @@
 	.twd-lane-photo { width:28px; height:28px; border-radius:var(--radius-full); object-fit:cover; object-position:top center; background:var(--color-surface-container); flex-shrink:0; }
 	.twd-lane-name { font-family:var(--font-display); font-weight:700; font-size:var(--text-body-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 	.twd-lane-sel { flex:1; max-width:130px; padding:4px 6px; font-size:13px; border:1px solid var(--color-outline-variant); border-radius:var(--radius-md); background:var(--color-surface); }
-	.twd-lane-score { width:64px; text-align:right; padding:4px 6px; font-size:14px; border:1px solid var(--color-outline-variant); border-radius:var(--radius-md); background:var(--color-surface); }
+	.twd-score-wrap { display:flex; align-items:center; gap:4px; }
+	.twd-lane-score { width:60px; text-align:right; padding:4px 6px; font-size:14px; border:1px solid var(--color-outline-variant); border-radius:var(--radius-md); background:var(--color-surface); }
+	.twd-score-save-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:var(--radius-full); border:none; background:var(--color-primary); color:#fff; cursor:pointer; flex-shrink:0; }
+	.twd-score-save-btn:disabled { opacity:0.4; cursor:default; }
+	.twd-score-save-btn .material-symbols-outlined { font-size:0.95rem; font-variation-settings:'FILL' 1; }
 	.twd-score-display { font-family:var(--font-display); font-weight:700; font-size:var(--text-body-sm); color:var(--color-on-surface); margin-left:auto; }
 	.twd-self-assign { display:flex; align-items:center; gap:4px; padding:4px 10px; border-radius:var(--radius-full); border:1.5px dashed var(--color-primary); background:rgba(204,0,0,0.05); color:var(--color-primary); font-family:var(--font-display); font-size:var(--text-label-md); font-weight:700; cursor:pointer; -webkit-tap-highlight-color:transparent; }
 	.twd-self-assign .material-symbols-outlined { font-size:0.95rem; font-variation-settings:'FILL' 1; }
