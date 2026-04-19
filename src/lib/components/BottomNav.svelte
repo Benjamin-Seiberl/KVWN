@@ -15,6 +15,11 @@
 	let subtabMenuOpen = $state(false);
 	let navVisible     = $derived($scrollY <= 50 || $scrollDirection === 'up');
 
+	// Position of the active tab element — used to anchor the subtab strip
+	let stripLeft  = $state(0);
+	let stripWidth = $state(0);
+	let tabEls     = [];
+
 	$effect(() => {
 		$page.url.pathname;
 		subtabMenuOpen = false;
@@ -30,10 +35,18 @@
 		return $page.url.pathname.startsWith(href);
 	}
 
-	function handleTabClick(tab, e) {
+	function handleTabClick(tab, e, idx) {
 		if (isActive(tab.href)) {
 			if (hasSubtabs) {
 				e.preventDefault();
+				if (!subtabMenuOpen) {
+					const el = tabEls[idx];
+					if (el) {
+						const rect = el.getBoundingClientRect();
+						stripLeft  = rect.left;
+						stripWidth = rect.width;
+					}
+				}
 				subtabMenuOpen = !subtabMenuOpen;
 			}
 		} else {
@@ -45,8 +58,6 @@
 		setSubtab($page.url.pathname, key);
 		subtabMenuOpen = false;
 	}
-
-	const stripBottom = $derived(`calc(4.375rem + env(safe-area-inset-bottom, 0px))`);
 </script>
 
 <!-- Backdrop -->
@@ -59,11 +70,12 @@
 	></button>
 {/if}
 
-<!-- Subtab Strip -->
+<!-- Subtab Strip — anchored to active tab -->
 {#if subtabMenuOpen && navVisible}
 	<div
 		class="pill-subtab-strip"
-		transition:fly={{ y: 12, duration: 200, opacity: 0 }}
+		style="left: {stripLeft}px; width: {stripWidth}px;"
+		transition:fly={{ y: 10, duration: 200, opacity: 0 }}
 	>
 		{#each visibleSubtabs as st}
 			<button
@@ -81,7 +93,7 @@
 <!-- Bottom Nav -->
 <div class="pill-nav-outer" class:nav-hidden={!navVisible} aria-label="Hauptnavigation">
 	<nav class="pill-nav">
-		{#each tabs as tab}
+		{#each tabs as tab, i}
 			{@const active = isActive(tab.href)}
 			<a
 				class="pill-tab"
@@ -89,7 +101,8 @@
 				href={tab.href}
 				aria-label={tab.label}
 				aria-current={active ? 'page' : undefined}
-				onclick={(e) => handleTabClick(tab, e)}
+				onclick={(e) => handleTabClick(tab, e, i)}
+				bind:this={tabEls[i]}
 			>
 				<span class="material-symbols-outlined pill-tab-icon">{tab.icon}</span>
 				<div class="pill-tab-label-wrap">
