@@ -3779,6 +3779,89 @@ button.widget--card:active {
   transition: opacity 250ms ease-out 160ms;
 }
 
+/* ── Bottom-Nav Subtab Strip ───────────────────────────────── */
+
+.pill-subtab-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  z-index: 98;
+  border: none;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pill-subtab-strip {
+  position: fixed;
+  bottom: calc(4.375rem + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%) translateY(16px);
+  opacity: 0;
+  pointer-events: none;
+  max-width: 460px;
+  width: calc(100% - 32px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--color-surface-container-lowest);
+  border-radius: 20px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06);
+  z-index: 99;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+.pill-subtab-strip--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.pill-subtab-strip--nav-hidden {
+  transform: translateX(-50%) translateY(40px);
+}
+
+.pill-subtab-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 150ms, color 150ms;
+}
+.pill-subtab-opt .material-symbols-outlined {
+  font-size: 1rem;
+  font-variation-settings: 'FILL' 0, 'wght' 400;
+}
+.pill-subtab-opt.active {
+  background: rgba(204, 0, 0, 0.1);
+  color: var(--color-primary);
+}
+.pill-subtab-opt.active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 600;
+}
+
+.pill-tab-chevron {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  opacity: 0.7;
+  transition: transform 220ms ease;
+}
+.pill-tab-chevron .material-symbols-outlined {
+  font-size: 0.9rem;
+  font-variation-settings: 'FILL' 0, 'wght' 500;
+}
+.pill-tab-chevron--open {
+  transform: rotate(180deg);
+}
+
 /* ============================================================
    Page Header – Static Title + Sub-Tab Bar
    ============================================================ */
