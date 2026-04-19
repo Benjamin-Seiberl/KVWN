@@ -6,7 +6,6 @@
 	import { onMount } from 'svelte';
 	import { initScrollListener } from '$lib/stores/scroll.js';
 	import BottomNav       from '$lib/components/BottomNav.svelte';
-	import PageHeader      from '$lib/components/PageHeader.svelte';
 	import PagePill        from '$lib/components/PagePill.svelte';
 	import SpotlightSearch from '$lib/components/SpotlightSearch.svelte';
 	import { spotlightOpen } from '$lib/stores/spotlight.js';
@@ -156,19 +155,6 @@
 
 	<main class="page-content">
 
-		<!-- ── PageHeader: parallax at 40% speed, zooms slightly ── -->
-		<div
-			class="layout-header-wrap"
-			style="
-				transform: translateY({Math.max(pullDistance, 0) * 0.4}px)
-				           scale({1 + Math.max(pullDistance, 0) * 0.002});
-				transform-origin: top center;
-				transition: {snapTransition};
-			"
-		>
-			<PageHeader />
-		</div>
-
 		<!-- ── Feed: full pull distance (top + bottom bounce) ── -->
 		<div
 			class="layout-feed-wrap"
@@ -244,11 +230,6 @@
 	}
 
 	/* ── Layout wrappers ──────────────────────────────────────────────────────── */
-	.layout-header-wrap {
-		/* will-change keeps compositor layer, avoids layout thrash during drag */
-		will-change: transform;
-	}
-
 	.layout-feed-wrap {
 		will-change: transform;
 	}
