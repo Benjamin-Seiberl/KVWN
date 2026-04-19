@@ -1,6 +1,7 @@
 <script>
 	import { currentSubtab } from '$lib/stores/subtab.js';
 	import UebersichtTab     from '$lib/components/spielbetrieb/UebersichtTab.svelte';
+	import AufstellungenTab  from '$lib/components/spielbetrieb/AufstellungenTab.svelte';
 	import StatsView         from '$lib/components/statistiken/StatsView.svelte';
 	import SpielbetriebeTab  from '$lib/components/spielbetrieb/SpielbetriebeTab.svelte';
 	import TurniereTab       from '$lib/components/spielbetrieb/TurniereTab.svelte';
@@ -10,6 +11,8 @@
 <div class="page active">
 	{#if $currentSubtab === 'uebersicht' || !$currentSubtab}
 		<UebersichtTab />
+	{:else if $currentSubtab === 'aufstellungen'}
+		<AufstellungenTab />
 	{:else if $currentSubtab === 'statistiken'}
 		<StatsView />
 	{:else if $currentSubtab === 'turnier'}
