@@ -2,44 +2,44 @@
 	import { sb } from '$lib/supabase';
 	import BottomSheet from '../BottomSheet.svelte';
 	import { triggerToast } from '$lib/stores/toast.js';
+	import { toDateStr, fmtDate } from '$lib/utils/dates.js';
+	import { imgPath } from '$lib/utils/players.js';
+	import { classifyPlayer } from '$lib/utils/eligibility.js';
 
 	let { open = $bindable(false) } = $props();
 
-	let matches         = $state([]);
-	let loading         = $state(true);
-	let selectedMatch   = $state(null);
-	let loadingLineup   = $state(false);
-	let gamePlanId      = $state(null);
-	let lineup          = $state([]);       // [{position, player_id, player_name, id}]
-	let allPlayers      = $state([]);       // alle aktiven Spieler
-	let saving          = $state(false);
-	let starterCount    = $state(4);
+	let matches        = $state([]);
+	let loading        = $state(true);
+	let selectedMatch  = $state(null);
+	let loadingLineup  = $state(false);
+	let gamePlan       = $state(null);   // full row incl. lineup_published_at
+	let lineup         = $state([]);     // [{id, position, player_id, player_name, players}]
+	let allPlayers     = $state([]);
+	let rosters        = $state([]);     // [{player_id, position, team_id, league_tier, league_name}]
+	let lineupsByRound = $state({});     // { [round_code]: [{team_id, league_tier, league_name, player_ids}] }
+	let saving         = $state(false);
+	let publishing     = $state(false);
+	let starterCount   = $state(4);
 
 	const DAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
-	// Nächste 3 Wochen Matches laden
 	async function loadMatches() {
 		loading = true;
 		const now = new Date();
-		const threeWeeks = new Date(now);
-		threeWeeks.setDate(now.getDate() + 21);
+		const until = new Date(now);
+		until.setDate(now.getDate() + 21);
 
-		const { data } = await sb
+		const { data, error } = await sb
 			.from('matches')
-			.select('id, date, time, opponent, home_away, cal_week, league_id, leagues(name)')
-			.gte('date', fmt(now))
-			.lte('date', fmt(threeWeeks))
+			.select('id, date, time, opponent, home_away, cal_week, round_code, league_id, leagues(name, tier)')
+			.gte('date', toDateStr(now))
+			.lte('date', toDateStr(until))
 			.order('date')
 			.order('time');
 
+		if (error) triggerToast('Fehler: ' + error.message);
 		matches = data ?? [];
 		loading = false;
-	}
-
-	function fmt(d) {
-		return d.getFullYear() + '-' +
-			String(d.getMonth() + 1).padStart(2, '0') + '-' +
-			String(d.getDate()).padStart(2, '0');
 	}
 
 	function matchLabel(m) {
@@ -51,7 +51,6 @@
 		return `${m.leagues?.name ?? ''} · ${m.home_away === 'HEIM' ? 'Heim' : 'Auswärts'}`;
 	}
 
-	// Match auswählen → bestehende Aufstellung laden oder leer anlegen
 	async function selectMatch(m) {
 		selectedMatch = m;
 		loadingLineup = true;
@@ -60,116 +59,186 @@
 		// Alle aktiven Spieler laden
 		const { data: pl } = await sb
 			.from('players')
-			.select('id, name, photo, avatar_url')
+			.select('id, name, photo')
 			.eq('active', true)
 			.order('name');
 		allPlayers = pl ?? [];
 
-		// Bestehende Aufstellung suchen
+		// Nennlisten laden (für Positions-Sperrung)
+		const { data: rData } = await sb
+			.from('team_rosters')
+			.select('player_id, position, league_id, leagues(name, tier)');
+		rosters = (rData ?? []).map(r => ({
+			player_id:   r.player_id,
+			position:    r.position,
+			team_id:     r.league_id,
+			league_tier: r.leagues?.tier ?? 99,
+			league_name: r.leagues?.name ?? '',
+		}));
+
+		// Rundencode-Konflikte laden (alle Aufstellungen derselben Runde, rundenbasiert!)
+		lineupsByRound = {};
+		if (m.round_code) {
+			const { data: rdData } = await sb
+				.from('game_plans')
+				.select('league_id, round_code, leagues(name, tier), game_plan_players(player_id)')
+				.eq('round_code', m.round_code);
+
+			const byTeam = {};
+			for (const gp of rdData ?? []) {
+				const tid = gp.league_id;
+				if (!byTeam[tid]) {
+					byTeam[tid] = {
+						team_id:     tid,
+						league_tier: gp.leagues?.tier ?? 99,
+						league_name: gp.leagues?.name ?? '',
+						player_ids:  [],
+					};
+				}
+				for (const gpp of gp.game_plan_players ?? []) {
+					byTeam[tid].player_ids.push(gpp.player_id);
+				}
+			}
+			lineupsByRound[m.round_code] = Object.values(byTeam);
+		}
+
+		// Bestehende Aufstellung laden
 		const { data: gp } = await sb
 			.from('game_plans')
-			.select('id, game_plan_players(id, position, player_id, player_name, players(name, photo))')
+			.select('id, cal_week, league_id, round_code, lineup_published_at, confirmation_deadline, game_plan_players(id, position, player_id, player_name, players(name, photo))')
 			.eq('cal_week', m.cal_week)
 			.eq('league_id', m.league_id)
 			.maybeSingle();
 
-		gamePlanId = gp?.id ?? null;
-		lineup = (gp?.game_plan_players ?? [])
-			.sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
-
+		gamePlan = gp ?? null;
+		lineup = (gp?.game_plan_players ?? []).sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
 		loadingLineup = false;
 	}
 
-	// Spieler zum nächsten freien Slot hinzufügen
-	async function addPlayer(player) {
-		if (lineup.length >= starterCount) return;
-		if (lineup.some(l => l.player_id === player.id)) return;
+	// Pool-Spieler mit Eligibility-Klassifikation
+	let classifiedPool = $derived.by(() => {
+		if (!selectedMatch) return [];
+		const usedIds = new Set(lineup.map(l => l.player_id));
+		const matchCtx = {
+			team_id:     selectedMatch.league_id,
+			league_tier: selectedMatch.leagues?.tier ?? 99,
+			round_code:  selectedMatch.round_code ?? null,
+		};
+		return allPlayers
+			.filter(p => !usedIds.has(p.id))
+			.map(p => ({ player: p, ...classifyPlayer({ player: p, match: matchCtx, rosters, lineupsByRound }) }));
+	});
 
+	let eligiblePool   = $derived(classifiedPool.filter(c => c.eligible));
+	let ineligiblePool = $derived(classifiedPool.filter(c => !c.eligible));
+
+	async function addPlayer(player) {
+		if (lineup.length >= starterCount || saving) return;
 		saving = true;
 
-		// Game-Plan erstellen falls noch keiner existiert
-		if (!gamePlanId) {
+		if (!gamePlan) {
 			const { data: newGp, error } = await sb
 				.from('game_plans')
-				.insert({ cal_week: selectedMatch.cal_week, league_id: selectedMatch.league_id })
-				.select('id')
+				.insert({
+					cal_week:   selectedMatch.cal_week,
+					league_id:  selectedMatch.league_id,
+					round_code: selectedMatch.round_code ?? null,
+				})
+				.select('id, cal_week, league_id, round_code, lineup_published_at, confirmation_deadline')
 				.single();
-			if (error) { saving = false; return; }
-			gamePlanId = newGp.id;
+			if (error) { triggerToast('Fehler: ' + error.message); saving = false; return; }
+			gamePlan = { ...newGp, game_plan_players: [] };
 		}
 
 		const pos = lineup.length + 1;
 		const { data: row, error } = await sb
 			.from('game_plan_players')
-			.insert({
-				game_plan_id: gamePlanId,
-				position: pos,
-				player_id: player.id,
-				player_name: player.name,
-			})
+			.insert({ game_plan_id: gamePlan.id, position: pos, player_id: player.id, player_name: player.name })
 			.select('id, position, player_id, player_name')
 			.single();
 
-		if (!error && row) {
-			lineup = [...lineup, { ...row, players: player }];
-		}
+		if (error) { triggerToast('Fehler: ' + error.message); saving = false; return; }
+		lineup = [...lineup, { ...row, players: player }];
 		saving = false;
 	}
 
-	// Spieler aus Aufstellung entfernen
 	async function removePlayer(entry) {
+		if (saving) return;
 		saving = true;
 		const { error } = await sb.from('game_plan_players').delete().eq('id', entry.id);
-		if (!error) {
-			lineup = lineup.filter(l => l.id !== entry.id);
-			// Positionen neu nummerieren
-			for (let i = 0; i < lineup.length; i++) {
-				if (lineup[i].position !== i + 1) {
-					lineup[i].position = i + 1;
-					await sb.from('game_plan_players')
-						.update({ position: i + 1 })
-						.eq('id', lineup[i].id);
-				}
+		if (error) { triggerToast('Fehler: ' + error.message); saving = false; return; }
+		lineup = lineup.filter(l => l.id !== entry.id);
+		for (let i = 0; i < lineup.length; i++) {
+			if (lineup[i].position !== i + 1) {
+				lineup[i] = { ...lineup[i], position: i + 1 };
+				await sb.from('game_plan_players').update({ position: i + 1 }).eq('id', lineup[i].id);
 			}
 		}
 		saving = false;
 	}
 
-	// Spieler im Pool, die noch nicht aufgestellt sind
-	let availablePlayers = $derived.by(() => {
-		const usedIds = new Set(lineup.map(l => l.player_id));
-		return allPlayers.filter(p => !usedIds.has(p.id));
-	});
-
-	function imgPath(player) {
-		const photo = player.photo || player.players?.photo;
-		const name = player.name || player.players?.name || player.player_name;
-		const key = photo || name;
-		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
+	function nextSundayDate() {
+		const d = new Date();
+		const daysToSun = (7 - d.getDay()) % 7 || 7;
+		d.setDate(d.getDate() + daysToSun);
+		return toDateStr(d);
 	}
 
-	function done() {
-		open = false;
-		setTimeout(() => triggerToast(`Aufstellung: ${lineup.length}/${starterCount} Spieler`), 300);
+	async function publishLineup() {
+		if (!gamePlan || lineup.length < starterCount || publishing) return;
+		publishing = true;
+
+		const deadline = nextSundayDate();
+		const publishedAt = new Date().toISOString();
+		const { error } = await sb
+			.from('game_plans')
+			.update({ lineup_published_at: publishedAt, confirmation_deadline: deadline })
+			.eq('id', gamePlan.id);
+
+		if (error) { triggerToast('Fehler: ' + error.message); publishing = false; return; }
+		gamePlan = { ...gamePlan, lineup_published_at: publishedAt, confirmation_deadline: deadline };
+
+		const m = selectedMatch;
+		const playerIds = lineup.map(l => l.player_id);
+		try {
+			const res = await fetch('/api/push/notify', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					player_ids: playerIds,
+					title: 'Aufstellung veröffentlicht',
+					body: `${m.leagues?.name} vs. ${m.opponent} – bitte bestätigen`,
+					url: '/spielbetrieb',
+				}),
+			});
+			const { sent = 0 } = await res.json();
+			triggerToast(`Aufstellung veröffentlicht – ${sent} Spieler benachrichtigt`);
+		} catch {
+			triggerToast('Aufstellung veröffentlicht');
+		}
+		publishing = false;
 	}
+
+	let isPublished = $derived(!!gamePlan?.lineup_published_at);
+	let canPublish  = $derived(!isPublished && lineup.length >= starterCount && !!gamePlan);
 
 	function back() {
-		selectedMatch = null;
-		lineup = [];
-		gamePlanId = null;
+		selectedMatch  = null;
+		lineup         = [];
+		gamePlan       = null;
+		lineupsByRound = {};
+		rosters        = [];
 	}
 
 	$effect(() => {
 		if (open) {
 			loadMatches();
-			selectedMatch = null;
-			lineup = [];
-			gamePlanId = null;
+			back();
 		}
 	});
 </script>
 
-<BottomSheet bind:open title={selectedMatch ? 'Aufstellung' : 'Match wählen'}>
+<BottomSheet bind:open title={selectedMatch ? 'Aufstellung bearbeiten' : 'Match wählen'}>
 
 	{#if loading}
 		<div class="aa-loading">
@@ -190,6 +259,9 @@
 							<span class="aa-match-label">{matchLabel(m)}</span>
 							<span class="aa-match-sub">{matchSub(m)}</span>
 						</div>
+						{#if !m.round_code}
+							<span class="aa-no-round" title="Rundencode fehlt">!</span>
+						{/if}
 						<span class="material-symbols-outlined aa-chevron">chevron_right</span>
 					</button>
 				{/each}
@@ -206,7 +278,12 @@
 		<!-- Match-Info -->
 		<div class="aa-match-hero">
 			<span class="aa-match-hero-label">{matchLabel(selectedMatch)}</span>
-			<span class="aa-match-hero-sub">{matchSub(selectedMatch)} · {starterCount} Starter</span>
+			<span class="aa-match-hero-sub">
+				{matchSub(selectedMatch)} · {starterCount} Starter
+				{#if selectedMatch.round_code}
+					· <span class="aa-round-pill">{selectedMatch.round_code}</span>
+				{/if}
+			</span>
 		</div>
 
 		{#if loadingLineup}
@@ -214,25 +291,24 @@
 				<div class="skeleton-card skeleton-card--short animate-pulse-skeleton"></div>
 			</div>
 		{:else}
-			<!-- Aktuelle Aufstellung -->
+			<!-- Aufstellung -->
 			<p class="aa-section-title">Aufstellung ({lineup.length}/{starterCount})</p>
 			<div class="aa-lineup">
 				{#each Array(starterCount) as _, i}
 					{@const entry = lineup[i]}
 					{#if entry}
-						{@const name = entry.players?.name ?? entry.player_name ?? '–'}
-						<button class="aa-slot aa-slot--filled" onclick={() => removePlayer(entry)} disabled={saving}>
+						{@const name  = entry.players?.name ?? entry.player_name ?? '–'}
+						{@const photo = entry.players?.photo ?? null}
+						<button class="aa-slot aa-slot--filled" onclick={() => removePlayer(entry)} disabled={saving || isPublished}>
 							<span class="aa-slot-pos">{i + 1}</span>
 							<div class="aa-slot-avatar">
-								<img
-									src={imgPath(entry)}
-									alt={name}
-									onerror={(e) => { e.currentTarget.style.display = 'none'; }}
-								/>
+								<img src={imgPath(photo, name)} alt={name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
 								<span class="aa-slot-initial">{name.slice(0, 1)}</span>
 							</div>
 							<span class="aa-slot-name">{name}</span>
-							<span class="material-symbols-outlined aa-slot-remove">close</span>
+							{#if !isPublished}
+								<span class="material-symbols-outlined aa-slot-remove">close</span>
+							{/if}
 						</button>
 					{:else}
 						<div class="aa-slot aa-slot--empty">
@@ -246,40 +322,78 @@
 				{/each}
 			</div>
 
-			<!-- Spieler-Pool -->
-			<p class="aa-section-title" style="margin-top: var(--space-4);">Verfügbare Spieler ({availablePlayers.length})</p>
-			<div class="aa-pool">
-				{#each availablePlayers as p (p.id)}
-					<button
-						class="aa-pool-player"
-						onclick={() => addPlayer(p)}
-						disabled={saving || lineup.length >= starterCount}
-					>
-						<div class="aa-pool-avatar">
-							<img
-								src={imgPath(p)}
-								alt={p.name}
-								onerror={(e) => { e.currentTarget.style.display = 'none'; }}
-							/>
-							<span class="aa-pool-initial">{(p.name || '?').slice(0, 1)}</span>
-						</div>
-						<span class="aa-pool-name">{p.name}</span>
-					</button>
-				{/each}
-			</div>
+			<!-- Publish-Status / Button -->
+			{#if isPublished}
+				<div class="aa-published-badge">
+					<span class="material-symbols-outlined">check_circle</span>
+					Veröffentlicht · Frist: {fmtDate(gamePlan.confirmation_deadline)}
+				</div>
+			{:else if gamePlan}
+				<button
+					class="mw-btn mw-btn--primary mw-btn--wide aa-publish-btn"
+					onclick={publishLineup}
+					disabled={!canPublish || publishing}
+				>
+					{#if publishing}
+						<span class="material-symbols-outlined aa-spin">sync</span>
+						Wird veröffentlicht…
+					{:else}
+						<span class="material-symbols-outlined">send</span>
+						{lineup.length < starterCount ? `Noch ${starterCount - lineup.length} Slot(s) offen` : 'Aufstellung veröffentlichen'}
+					{/if}
+				</button>
+			{/if}
 
-			<!-- Fertig -->
-			<button class="mw-btn mw-btn--primary mw-btn--wide aa-done" onclick={done}>
-				<span class="material-symbols-outlined">check</span>
-				Fertig
-			</button>
+			<!-- Verfügbare Spieler -->
+			{#if !isPublished}
+				<p class="aa-section-title" style="margin-top: var(--space-5);">
+					Verfügbare Spieler ({eligiblePool.length})
+				</p>
+				<div class="aa-pool">
+					{#each eligiblePool as { player } (player.id)}
+						<button
+							class="aa-pool-player"
+							onclick={() => addPlayer(player)}
+							disabled={saving || lineup.length >= starterCount}
+						>
+							<div class="aa-pool-avatar">
+								<img src={imgPath(player.photo, player.name)} alt={player.name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
+								<span class="aa-pool-initial">{(player.name || '?').slice(0, 1)}</span>
+							</div>
+							<span class="aa-pool-name">{player.name}</span>
+						</button>
+					{/each}
+				</div>
+
+				{#if ineligiblePool.length > 0}
+					<details class="aa-ineligible-section">
+						<summary class="aa-section-title aa-section-title--warn">
+							Nicht aufstellbar ({ineligiblePool.length})
+						</summary>
+						<div class="aa-pool aa-pool--ineligible">
+							{#each ineligiblePool as { player, reason } (player.id)}
+								<div class="aa-pool-player aa-pool-player--blocked" title={reason}>
+									<div class="aa-pool-avatar">
+										<img src={imgPath(player.photo, player.name)} alt={player.name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
+										<span class="aa-pool-initial">{(player.name || '?').slice(0, 1)}</span>
+									</div>
+									<div class="aa-pool-name-wrap">
+										<span class="aa-pool-name">{player.name}</span>
+										<span class="aa-pool-reason">{reason}</span>
+									</div>
+									<span class="material-symbols-outlined aa-blocked-icon">block</span>
+								</div>
+							{/each}
+						</div>
+					</details>
+				{/if}
+			{/if}
 		{/if}
 	{/if}
 
 </BottomSheet>
 
 <style>
-	/* Shared */
 	.aa-loading { display: flex; flex-direction: column; gap: var(--space-2); }
 	.aa-empty, .aa-hint {
 		font-size: var(--text-body-sm);
@@ -299,8 +413,16 @@
 	}
 	.aa-match-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 	.aa-match-label { font-weight: 600; font-size: var(--text-body-md); color: var(--color-on-surface); }
-	.aa-match-sub { font-size: var(--text-body-sm); color: var(--color-on-surface-variant); }
-	.aa-chevron { font-size: 1.2rem; color: var(--color-outline); }
+	.aa-match-sub   { font-size: var(--text-body-sm); color: var(--color-on-surface-variant); }
+	.aa-chevron     { font-size: 1.2rem; color: var(--color-outline); }
+	.aa-no-round {
+		width: 1.25rem; height: 1.25rem;
+		background: #b45309; color: #fff;
+		border-radius: 50%;
+		font-size: 0.65rem; font-weight: 800;
+		display: flex; align-items: center; justify-content: center;
+		flex-shrink: 0;
+	}
 
 	/* Back */
 	.aa-back {
@@ -325,16 +447,26 @@
 		font-size: var(--text-title-sm); color: var(--color-on-surface);
 	}
 	.aa-match-hero-sub { font-size: var(--text-body-sm); color: var(--color-on-surface-variant); }
+	.aa-round-pill {
+		display: inline-block;
+		background: var(--color-primary-container, rgba(158,0,0,.12));
+		color: var(--color-primary);
+		border-radius: var(--radius-full);
+		padding: 0 6px;
+		font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em;
+	}
 
 	/* Section title */
 	.aa-section-title {
 		font-size: var(--text-label-sm); font-weight: 700;
 		letter-spacing: 0.07em; text-transform: uppercase;
 		color: var(--color-outline); margin: 0 0 var(--space-2);
+		cursor: default;
 	}
+	.aa-section-title--warn { color: #b45309; cursor: pointer; }
 
 	/* Lineup slots */
-	.aa-lineup { display: flex; flex-direction: column; gap: var(--space-2); }
+	.aa-lineup { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
 	.aa-slot {
 		display: grid;
 		grid-template-columns: 28px 36px 1fr 24px;
@@ -349,54 +481,55 @@
 		cursor: pointer; width: 100%; text-align: left;
 		-webkit-tap-highlight-color: transparent;
 	}
+	.aa-slot--filled:disabled { cursor: default; }
 	.aa-slot--empty {
 		background: var(--color-surface-container-low);
 		border: 1.5px dashed var(--color-outline-variant);
 		opacity: 0.55;
 	}
-
-	.aa-slot-pos {
-		font-weight: 800; color: var(--color-primary);
-		text-align: center; font-size: var(--text-body-sm);
-	}
+	.aa-slot-pos { font-weight: 800; color: var(--color-primary); text-align: center; font-size: var(--text-body-sm); }
 	.aa-slot-avatar {
 		width: 36px; height: 36px; border-radius: 50%;
 		overflow: hidden; background: var(--color-surface-container-highest);
 		display: grid; place-items: center; position: relative;
 	}
-	.aa-slot-avatar img {
-		width: 100%; height: 100%; object-fit: cover;
-		position: absolute; inset: 0;
-	}
-	.aa-slot-initial {
-		font-weight: 700; font-size: var(--text-body-sm);
-		color: var(--color-outline);
-	}
-	.aa-slot-avatar--empty {
-		background: none;
-	}
-	.aa-slot-avatar--empty .material-symbols-outlined {
-		font-size: 1.3rem; color: var(--color-outline);
-	}
-	.aa-slot-name {
-		font-weight: 600; font-size: var(--text-body-md);
-		color: var(--color-on-surface);
-		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-	}
+	.aa-slot-avatar img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+	.aa-slot-initial { font-weight: 700; font-size: var(--text-body-sm); color: var(--color-outline); }
+	.aa-slot-avatar--empty { background: none; }
+	.aa-slot-avatar--empty .material-symbols-outlined { font-size: 1.3rem; color: var(--color-outline); }
+	.aa-slot-name { font-weight: 600; font-size: var(--text-body-md); color: var(--color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.aa-slot-name--empty { color: var(--color-outline); font-weight: 500; }
-	.aa-slot-remove {
-		font-size: 1rem; color: var(--color-outline);
-		transition: color 0.15s;
-	}
+	.aa-slot-remove { font-size: 1rem; color: var(--color-outline); transition: color 0.15s; }
 	.aa-slot--filled:active .aa-slot-remove { color: var(--color-primary); }
+
+	/* Publish */
+	.aa-publish-btn { margin-bottom: var(--space-4); }
+	.aa-spin { animation: aa-spin 1s linear infinite; }
+	@keyframes aa-spin { to { transform: rotate(360deg); } }
+
+	.aa-published-badge {
+		display: flex; align-items: center; gap: var(--space-2);
+		padding: var(--space-3) var(--space-4);
+		background: rgba(45, 122, 58, 0.12);
+		border: 1px solid rgba(45, 122, 58, 0.3);
+		border-radius: var(--radius-md);
+		color: #2D7A3A;
+		font-size: var(--text-body-sm); font-weight: 600;
+		margin-bottom: var(--space-4);
+	}
+	.aa-published-badge .material-symbols-outlined {
+		font-size: 1.1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
 
 	/* Player pool */
 	.aa-pool {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 		gap: var(--space-2);
 		margin-bottom: var(--space-4);
 	}
+	.aa-pool--ineligible { opacity: 0.75; margin-top: var(--space-2); }
 	.aa-pool-player {
 		display: flex; align-items: center; gap: var(--space-2);
 		padding: var(--space-2) var(--space-3);
@@ -409,26 +542,25 @@
 	}
 	.aa-pool-player:active { background: var(--color-surface-container); }
 	.aa-pool-player:disabled { opacity: 0.4; pointer-events: none; }
-
+	.aa-pool-player--blocked {
+		cursor: default; pointer-events: none;
+		border-color: rgba(180, 83, 9, 0.3);
+		background: rgba(180, 83, 9, 0.06);
+		grid-template-columns: 28px 1fr 20px;
+		display: grid;
+	}
 	.aa-pool-avatar {
 		width: 28px; height: 28px; border-radius: 50%;
 		overflow: hidden; background: var(--color-surface-container-highest);
-		display: grid; place-items: center; flex-shrink: 0;
-		position: relative;
+		display: grid; place-items: center; flex-shrink: 0; position: relative;
 	}
-	.aa-pool-avatar img {
-		width: 100%; height: 100%; object-fit: cover;
-		position: absolute; inset: 0;
-	}
-	.aa-pool-initial {
-		font-weight: 700; font-size: 0.7rem; color: var(--color-outline);
-	}
-	.aa-pool-name {
-		font-size: var(--text-body-sm); font-weight: 600;
-		color: var(--color-on-surface);
-		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-	}
+	.aa-pool-avatar img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+	.aa-pool-initial { font-weight: 700; font-size: 0.7rem; color: var(--color-outline); }
+	.aa-pool-name-wrap { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+	.aa-pool-name { font-size: var(--text-body-sm); font-weight: 600; color: var(--color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.aa-pool-reason { font-size: 0.65rem; color: #b45309; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.aa-blocked-icon { font-size: 0.9rem; color: #b45309; align-self: center; }
 
-	/* Done */
-	.aa-done { margin-top: var(--space-2); }
+	.aa-ineligible-section { margin-bottom: var(--space-2); }
+	.aa-ineligible-section summary { margin-bottom: var(--space-2); }
 </style>
