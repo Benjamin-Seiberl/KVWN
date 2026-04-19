@@ -81,4 +81,152 @@ Core tables (players, matches, game_plans, leagues, events, training_templates, 
 
 ### Roles
 
-`playerRole` is either `'kapitaen'` or `'user'`. Captain-only features (AdminRollen, AdminAufstellung, AdminErgebnis, AdminTraining) are gated on this value inside `profil/+page.svelte` and related admin components under `src/lib/components/admin/`.
+`playerRole` is either `'kapitaen'` or `'user'`. Captain-only features (AdminRollen, AdminAufstellung, AdminErgebnis, AdminTraining) are gated on this value inside `AdminTab.svelte` and related admin components under `src/lib/components/admin/`.
+
+---
+
+## Coding Conventions
+
+These patterns must be followed consistently so agents can navigate the codebase without ambiguity.
+
+### Error Handling (Supabase)
+
+Always destructure errors and call `triggerToast` — never set a `msg` state string:
+
+```js
+const { data, error } = await sb.from('...').select(...);
+if (error) { triggerToast('Fehler: ' + error.message); return; }
+```
+
+### Loading State
+
+One `let loading = $state(true)` per data domain, always reset to `false` in a `finally` block or after the load.
+
+### Date / Time Display
+
+**Never** define local month or day arrays. Always import from `$lib/utils/dates.js`:
+
+```js
+import { DAY_SHORT, MONTH_SHORT, MONTH_FULL, fmtDate, fmtTime, toDateStr, daysUntil } from '$lib/utils/dates.js';
+```
+
+- `fmtDate('2026-04-19')` → `'So, 19. Apr'`
+- `fmtTime('09:30:00')` → `'09:30 Uhr'`
+- `toDateStr(new Date())` → `'2026-04-19'`
+- `daysUntil('2026-04-19')` → number (negative = past)
+- `DAY_SHORT` is Sunday-first `['So','Mo',…]`; calendar grids that need Monday-first keep their own local array
+
+### Player Utilities
+
+**Never** reimplement `imgPath` or `shortName` inline. Import from `$lib/utils/players.js`:
+
+```js
+import { imgPath, shortName } from '$lib/utils/players.js';
+```
+
+### Competition Types
+
+**Never** define `BEWERB_TYPEN` or `BEWERB_LABEL` locally. Import from `$lib/constants/competitions.js`:
+
+```js
+import { BEWERB_TYPEN, BEWERB_LABEL } from '$lib/constants/competitions.js';
+```
+
+### Callback Props
+
+- `onReload` — callback to reload the parent's list after a child write
+- `onClose` — callback to close a sheet/modal
+
+### Toast Notifications
+
+```js
+import { triggerToast } from '$lib/stores/toast.js';
+triggerToast('Gespeichert');          // success
+triggerToast('Fehler: ' + err.message); // error
+```
+
+---
+
+## Where Things Live
+
+Quick lookup — "where do I find / put X?":
+
+| What | Where |
+|------|-------|
+| German date/time formatting | `$lib/utils/dates.js` |
+| Player avatar URL + short name | `$lib/utils/players.js` |
+| Competition type labels | `$lib/constants/competitions.js` |
+| Toast notifications | `triggerToast()` in `$lib/stores/toast.js` |
+| Auth + role checks | `$lib/stores/auth.js` |
+| Tab routing config | `PAGE_CONFIG` in `$lib/stores/subtab.js` |
+| Eligibility / roster rules | `$lib/utils/eligibility.js` |
+| Arrival/duration windows | `$lib/utils/league.js` |
+| Round code (H01–FNN) | `$lib/utils/roundCode.js` |
+| Post-match question rotation | `$lib/utils/feedbackRotation.js` |
+
+---
+
+## Component Index
+
+### Routes (page routers — thin, delegate to tab components)
+
+| File | Purpose |
+|------|---------|
+| `routes/(app)/+page.svelte` | Dashboard router: Neuigkeiten / Events tabs |
+| `routes/(app)/kalender/+page.svelte` | Calendar & training lane booking (single page) |
+| `routes/(app)/spielbetrieb/+page.svelte` | Spielbetrieb router: Spiele / Turnier / Landesbewerb / Statistiken |
+| `routes/(app)/profil/+page.svelte` | Profil router: Meine Daten / Einstellungen / Admin + `:global` CSS |
+
+### Spielbetrieb Tab Components
+
+| File | Purpose |
+|------|---------|
+| `components/spielbetrieb/SpielbetriebeTab.svelte` | Match list + detail view with lineup and scores |
+| `components/spielbetrieb/TurniereTab.svelte` | Tournament list, voting status, create form |
+| `components/spielbetrieb/LandesbewerbeTab.svelte` | Landesbewerb list, registration status, create form |
+| `components/spielbetrieb/TournamentMatchCard.svelte` | Full tournament detail card (voting, schedule, players) |
+| `components/spielbetrieb/LandesbewerbCard.svelte` | Full Landesbewerb detail card (registration, player list) |
+
+### Profil Tab Components
+
+| File | Purpose |
+|------|---------|
+| `components/profil/MeineDatenTab.svelte` | Player stats, next match, profile edit, events RSVP, milestones |
+| `components/profil/EinstellungenTab.svelte` | Push notification toggle + prefs, sign-out |
+| `components/profil/AdminTab.svelte` | Kapitäns-Panel: admin action grid + bottom sheets |
+
+### Dashboard Components
+
+| File | Purpose |
+|------|---------|
+| `components/dashboard/NewsFeed.svelte` | Club news + polls feed |
+| `components/dashboard/MyNextMatchCard.svelte` | Next match card for logged-in player |
+| `components/dashboard/QuickActions.svelte` | Quick navigation shortcuts |
+| `components/dashboard/UpcomingEvents.svelte` | Upcoming events list |
+| `components/dashboard/OpenRegistrationsCard.svelte` | Tournaments/Landesbewerbe with open registration |
+
+### Shared Components
+
+| File | Purpose |
+|------|---------|
+| `components/MatchCarousel.svelte` | Horizontal scrollable match cards for current week |
+| `components/ActionHub.svelte` | Action items: lineup confirm, polls, events, tournaments |
+| `components/BottomNav.svelte` | Tab bar + subtab strip; reads `PAGE_CONFIG` from subtab store |
+| `components/BottomSheet.svelte` | Slide-up modal sheet with handle and backdrop |
+| `components/SpotlightSearch.svelte` | Pull-to-open global search overlay |
+| `components/PagePill.svelte` | Toast pill — slides from top for 3 s |
+
+### Admin Components (`components/admin/`)
+
+| File | Purpose |
+|------|---------|
+| `AdminRollen.svelte` | Assign player roles |
+| `AdminAufstellung.svelte` | Create/edit match lineups |
+| `AdminErgebnis.svelte` | Enter match results |
+| `AdminTraining.svelte` | Manage training sessions |
+
+### Statistiken Components
+
+| File | Purpose |
+|------|---------|
+| `components/statistiken/StatsView.svelte` | Full stats view: leaderboard, trend charts, filters |

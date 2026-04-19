@@ -3,6 +3,9 @@
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
 	import { currentSubtab } from '$lib/stores/subtab.js';
+	import { triggerToast } from '$lib/stores/toast.js';
+	import { MONTH_FULL, DAY_SHORT } from '$lib/utils/dates.js';
+	import { imgPath } from '$lib/utils/players.js';
 
 	let today       = new Date();
 	let viewYear    = $state(today.getFullYear());
@@ -29,13 +32,20 @@
 		return d === 0 ? 6 : d - 1;
 	}
 
-	const MONTH_NAMES = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-	const DAY_NAMES   = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+	// Calendar grid header starts Monday; different order from DAY_SHORT (Sun-first)
+	const DAY_NAMES_WEEK = ['Mo','Di','Mi','Do','Fr','Sa','So'];
 
 	async function loadMonth() {
 		const from = fmt(viewYear, viewMonth, 1);
 		const to   = fmt(viewYear, viewMonth, daysInMonth(viewYear, viewMonth));
-		const [{ data: m }, { data: ev }, { data: t }, { data: o }, { data: b }, { data: p }] = await Promise.all([
+		const [
+			{ data: m,  error: e1 },
+			{ data: ev, error: e2 },
+			{ data: t,  error: e3 },
+			{ data: o,  error: e4 },
+			{ data: b,  error: e5 },
+			{ data: p,  error: e6 },
+		] = await Promise.all([
 			sb.from('matches').select('id, date, time, home_away, opponent, location, round, is_tournament, tournament_title').gte('date', from).lte('date', to),
 			sb.from('events').select('*').gte('date', from).lte('date', to),
 			sb.from('training_templates').select('*').eq('active', true),
@@ -43,6 +53,8 @@
 			sb.from('training_bookings').select('*').gte('date', from).lte('date', to),
 			sb.from('players').select('id, name, avatar_url, photo'),
 		]);
+		const err = e1 ?? e2 ?? e3 ?? e4 ?? e5 ?? e6;
+		if (err) { triggerToast('Fehler: ' + err.message); return; }
 		matches   = m ?? [];
 		events    = ev ?? [];
 		templates = t ?? [];
@@ -71,11 +83,6 @@
 		if (matches.some(x => x.date === key && x.opponent?.toLowerCase() !== 'spielfrei')) return 'match';
 		if (events.some(x  => x.date === key)) return 'event';
 		return null;
-	}
-
-	function imgPath(photo, name) {
-		const key = photo || name;
-		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
 	}
 
 	function getPlayer(id) {
@@ -144,17 +151,18 @@
 		if (!selectedDay) return '';
 		const d = new Date(viewYear, viewMonth, selectedDay);
 		const weekdays = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
-		return weekdays[d.getDay()] + ', ' + selectedDay + '. ' + MONTH_NAMES[viewMonth];
+		return weekdays[d.getDay()] + ', ' + selectedDay + '. ' + MONTH_FULL[viewMonth];
 	});
 
 	async function loadNext14() {
 		const from = new Date();
 		const to   = new Date(); to.setDate(from.getDate() + 13);
 		const fmtD = d => fmt(d.getFullYear(), d.getMonth(), d.getDate());
-		const [{ data: o }, { data: b }] = await Promise.all([
+		const [{ data: o, error: e1 }, { data: b, error: e2 }] = await Promise.all([
 			sb.from('training_overrides').select('*').gte('date', fmtD(from)).lte('date', fmtD(to)),
 			sb.from('training_bookings').select('*').gte('date', fmtD(from)).lte('date', fmtD(to)),
 		]);
+		if (e1 ?? e2) { triggerToast('Fehler: ' + (e1 ?? e2).message); return; }
 		nextOverrides = o ?? [];
 		nextBookings  = b ?? [];
 	}
@@ -203,8 +211,6 @@
 		loadNext14();
 	}
 
-	const DAY_SHORT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
-
 	// Group next trainings by date
 	const trainingDays = $derived.by(() => {
 		const map = new Map();
@@ -238,7 +244,7 @@
 		return DAY_SHORT[dateObj.getDay()];
 	}
 	function chipDate(dateObj) {
-		return dateObj.getDate() + '. ' + MONTH_NAMES[dateObj.getMonth()];
+		return dateObj.getDate() + '. ' + MONTH_FULL[dateObj.getMonth()];
 	}
 
 	onMount(() => { loadMonth(); loadNext14(); });
@@ -339,14 +345,14 @@
 					<span class="material-symbols-outlined">chevron_left</span>
 				</button>
 				<span class="kal-month-label">
-					{MONTH_NAMES[viewMonth]} <span class="kal-month-year">{viewYear}</span>
+					{MONTH_FULL[viewMonth]} <span class="kal-month-year">{viewYear}</span>
 				</span>
 				<button class="kal-nav-btn" onclick={nextMonth} aria-label="Nächster Monat">
 					<span class="material-symbols-outlined">chevron_right</span>
 				</button>
 			</div>
 			<div class="kal-grid kal-grid--header">
-				{#each DAY_NAMES as d}<div class="kal-day-label">{d}</div>{/each}
+				{#each DAY_NAMES_WEEK as d}<div class="kal-day-label">{d}</div>{/each}
 			</div>
 			<div class="kal-grid kal-grid--days">
 				{#each calendarCells as cell}

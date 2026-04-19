@@ -2,8 +2,8 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { user } from '$lib/stores/auth';
-
-	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+	import { DAY_SHORT } from '$lib/utils/dates.js';
+	import { imgPath } from '$lib/utils/players.js';
 
 	// --- Lineup state ---
 	let loadingLineup = $state(true);
@@ -27,14 +27,9 @@
 		return { from: fmt(mon), to: fmt(sun) };
 	}
 
-	function imgPath(photo, name) {
-		const key = photo || name;
-		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
-	}
-
 	function dateLabel(m) {
 		const d = new Date(m.date + 'T12:00');
-		return DAY_NAMES[d.getDay()] + ', ' +
+		return DAY_SHORT[d.getDay()] + ', ' +
 			d.getDate() + '.' + (d.getMonth() + 1) + '. \u2022 ' +
 			(m.time ? m.time.substring(0, 5) : '') + ' Uhr';
 	}

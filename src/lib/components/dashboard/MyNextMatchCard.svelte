@@ -3,8 +3,7 @@
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
-
-	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+	import { DAY_SHORT, daysUntil } from '$lib/utils/dates.js';
 
 	let match    = $state(null);
 	let position = $state(null);
@@ -14,16 +13,8 @@
 
 	function dateLabel(m) {
 		const d = new Date(m.date + 'T12:00');
-		return DAY_NAMES[d.getDay()] + ', ' +
+		return DAY_SHORT[d.getDay()] + ', ' +
 			d.getDate() + '.' + (d.getMonth() + 1) + '.';
-	}
-
-	function daysUntil(dateStr) {
-		const today = new Date();
-		today.setHours(0, 0, 0, 0);
-		const target = new Date(dateStr + 'T12:00');
-		target.setHours(0, 0, 0, 0);
-		return Math.round((target - today) / (1000 * 60 * 60 * 24));
 	}
 
 	async function load() {

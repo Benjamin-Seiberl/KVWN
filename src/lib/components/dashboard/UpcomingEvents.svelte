@@ -3,8 +3,7 @@
 	import { sb } from '$lib/supabase';
 	import { goto } from '$app/navigation';
 
-	const DAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-	const MONTHS    = ['Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+	import { fmtDate } from '$lib/utils/dates.js';
 
 	let events  = $state([]);
 	let loading = $state(true);
@@ -22,10 +21,6 @@
 		loading = false;
 	});
 
-	function fmtDate(d) {
-		const dt = new Date(d + 'T12:00');
-		return DAY_SHORT[dt.getDay()] + ', ' + dt.getDate() + '. ' + MONTHS[dt.getMonth()];
-	}
 	function fmtTime(t) { return t ? t.substring(0, 5) : ''; }
 </script>
 

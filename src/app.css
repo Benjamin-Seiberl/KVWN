@@ -3796,12 +3796,12 @@ button.widget--card:active {
   bottom: calc(4.375rem + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
-  max-width: 460px;
-  width: calc(100% - 32px);
+  max-width: 320px;
+  width: calc(100% - 80px);
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 14px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
   background: var(--color-surface-container-lowest);
   border-radius: 20px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.06);
@@ -3811,25 +3811,30 @@ button.widget--card:active {
 .pill-subtab-opt {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 999px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
   border: none;
-  background: var(--color-surface-container);
+  background: transparent;
   color: var(--color-on-surface-variant);
   font-family: var(--font-display);
-  font-size: 0.8125rem;
-  font-weight: 700;
+  font-size: 0.875rem;
+  font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: background 150ms, color 150ms;
+  width: 100%;
+  text-align: left;
 }
 .pill-subtab-opt .material-symbols-outlined {
   font-size: 1rem;
   font-variation-settings: 'FILL' 0, 'wght' 400;
 }
+.pill-subtab-opt:active {
+  background: var(--color-surface-container);
+}
 .pill-subtab-opt.active {
-  background: rgba(204, 0, 0, 0.1);
+  background: rgba(204, 0, 0, 0.08);
   color: var(--color-primary);
 }
 .pill-subtab-opt.active .material-symbols-outlined {
@@ -3839,16 +3844,19 @@ button.widget--card:active {
 .pill-tab-chevron {
   display: inline-flex;
   align-items: center;
-  margin-left: 2px;
-  opacity: 0.7;
-  transition: transform 220ms ease;
+  flex-shrink: 0;
+  margin-left: 4px;
+  margin-right: 6px;
+  opacity: 0.55;
+  transition: transform 220ms ease, opacity 220ms ease;
 }
 .pill-tab-chevron .material-symbols-outlined {
-  font-size: 0.9rem;
-  font-variation-settings: 'FILL' 0, 'wght' 500;
+  font-size: 1rem;
+  font-variation-settings: 'FILL' 0, 'wght' 400;
 }
 .pill-tab-chevron--open {
   transform: rotate(180deg);
+  opacity: 0.85;
 }
 
 /* ============================================================

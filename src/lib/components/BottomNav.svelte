@@ -95,13 +95,13 @@
 				<div class="pill-tab-label-wrap">
 					<div class="pill-tab-label-inner">
 						<span class="pill-tab-label">{tab.label}</span>
-						{#if active && hasSubtabs}
-							<span class="pill-tab-chevron" class:pill-tab-chevron--open={subtabMenuOpen}>
-								<span class="material-symbols-outlined">expand_less</span>
-							</span>
-						{/if}
 					</div>
 				</div>
+				{#if active && hasSubtabs}
+					<span class="pill-tab-chevron" class:pill-tab-chevron--open={subtabMenuOpen}>
+						<span class="material-symbols-outlined">expand_less</span>
+					</span>
+				{/if}
 			</a>
 		{/each}
 	</nav>

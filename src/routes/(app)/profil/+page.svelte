@@ -1,631 +1,29 @@
 <script>
-	import { onMount } from 'svelte';
-	import { sb } from '$lib/supabase';
-	import { playerId, signOut, playerRole } from '$lib/stores/auth';
 	import { currentSubtab } from '$lib/stores/subtab.js';
-	import { registerPush, unregisterPush, pushStatus } from '$lib/push/register.js';
-	import AdminRollen from '$lib/components/admin/AdminRollen.svelte';
-	import AdminTraining from '$lib/components/admin/AdminTraining.svelte';
-	import AdminErgebnis from '$lib/components/admin/AdminErgebnis.svelte';
-	import AdminAufstellung from '$lib/components/admin/AdminAufstellung.svelte';
+	import { playerRole }    from '$lib/stores/auth';
+	import MeineDatenTab     from '$lib/components/profil/MeineDatenTab.svelte';
+	import EinstellungenTab  from '$lib/components/profil/EinstellungenTab.svelte';
+	import AdminTab          from '$lib/components/profil/AdminTab.svelte';
 
-	// ── Active Tab ──────────────────────────────────────────
-	// Fall back to meine-daten if admin tab is active but user is no longer admin
-	let activeTab = $derived.by(() => {
+	const activeTab = $derived.by(() => {
 		const t = $currentSubtab;
 		if (t === 'admin' && $playerRole !== 'kapitaen') return 'meine-daten';
 		return t ?? 'meine-daten';
 	});
-
-	// ── State ────────────────────────────────────────────────
-	let me          = $state(null);
-	let uploading   = $state(false);
-	let msg         = $state('');
-	let pushOn      = $state(false);
-	let nextMatch   = $state(null);
-	let events      = $state([]);
-	let rsvps       = $state([]);   // { event_id, response }[]
-	let myStats     = $state(null); // { avg, avg5, best, gamesPlayed, rank }
-	let milestones  = $state([]);
-
-	const MONTHS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-	const DAYS   = ['So','Mo','Di','Mi','Do','Fr','Sa'];
-
-	// ── Bug-Fix: reaktiv wenn $playerId verfügbar wird ──────
-	$effect(() => {
-		if ($playerId) load();
-	});
-
-	async function load() {
-		const pid = $playerId;
-		if (!pid) return;
-
-		const today = new Date().toISOString().slice(0, 10);
-
-		const [
-			{ data: playerData },
-			{ data: matchData },
-			{ data: eventData },
-			{ data: rsvpData },
-			{ data: scoreData },
-			{ data: allPlayers },
-		] = await Promise.all([
-			sb.from('players')
-				.select('id, name, email, phone, avatar_url, photo, push_prefs, role, shirt_size, pants_size')
-				.eq('id', pid).maybeSingle(),
-			// Nächstes Match
-			sb.from('matches')
-				.select('id, date, time, opponent, home_away, leagues(name)')
-				.gte('date', today)
-				.order('date', { ascending: true })
-				.limit(1)
-				.maybeSingle(),
-			// Kommende Events
-			sb.from('events')
-				.select('id, title, date, time, location, description')
-				.gte('date', today)
-				.order('date', { ascending: true })
-				.limit(6),
-			// Meine RSVPs
-			sb.from('event_rsvps')
-				.select('event_id, response')
-				.eq('player_id', pid),
-			// Meine Spielergebnisse
-			sb.from('game_plan_players')
-				.select('score, game_plans!inner(cal_week)')
-				.eq('player_id', pid)
-				.eq('played', true)
-				.not('score', 'is', null)
-				.order('cal_week', { referencedTable: 'game_plans', ascending: false }),
-			// Alle Spieler für Rang-Berechnung
-			sb.from('game_plan_players')
-				.select('player_id, score')
-				.eq('played', true)
-				.not('score', 'is', null),
-		]);
-
-		me      = playerData;
-		nextMatch = matchData;
-		events  = eventData ?? [];
-		rsvps   = rsvpData ?? [];
-		pushOn  = await pushStatus();
-
-		// Stats berechnen
-		const myScores = (scoreData ?? []).map(g => Number(g.score));
-		if (myScores.length) {
-			// Rang: alle Spieler Schnitt berechnen
-			const playerAvgs = {};
-			for (const g of allPlayers ?? []) {
-				if (!playerAvgs[g.player_id]) playerAvgs[g.player_id] = [];
-				playerAvgs[g.player_id].push(Number(g.score));
-			}
-			const avgOf = (arr) => arr.length ? Math.round(arr.reduce((a,b) => a+b, 0) / arr.length) : 0;
-			const sorted = Object.entries(playerAvgs).sort((a, b) => avgOf(b[1]) - avgOf(a[1]));
-			const rank = sorted.findIndex(([id]) => id === pid) + 1;
-			const avg  = avgOf(myScores);
-			const avg5 = avgOf(myScores.slice(0, 5));
-			const best = Math.max(...myScores);
-			myStats = { avg, avg5, best, gamesPlayed: myScores.length, rank };
-			milestones = calcMilestones(myScores, myScores.length, me);
-		}
-	}
-
-	// ── Milestones ──────────────────────────────────────────
-	function calcMilestones(scores, gamesPlayed) {
-		const ms = [];
-		if (gamesPlayed >= 1)   ms.push({ icon: 'sports_score',      label: 'Erstes Vereinsspiel',           sub: `${gamesPlayed} Spiele bisher` });
-		if (gamesPlayed >= 10)  ms.push({ icon: 'military_tech',      label: '10 Spiele',                     sub: 'Meilenstein erreicht' });
-		if (gamesPlayed >= 25)  ms.push({ icon: 'military_tech',      label: '25 Spiele',                     sub: 'Meilenstein erreicht' });
-		if (gamesPlayed >= 50)  ms.push({ icon: 'emoji_events',       label: '50 Spiele',                     sub: 'Halbes Hunderter!' });
-		if (gamesPlayed >= 100) ms.push({ icon: 'workspace_premium',  label: '100 Spiele',                    sub: 'Jahrhundert-Marke!' });
-		if (gamesPlayed >= 150) ms.push({ icon: 'grade',              label: '150 Spiele',                    sub: 'Legende!' });
-		const best = Math.max(...scores);
-		if (best >= 500) ms.push({ icon: 'star',                       label: '500+ Holz',                    sub: `Bestleistung: ${best}` });
-		if (best >= 550) ms.push({ icon: 'stars',                      label: '550+ Holz',                    sub: `Bestleistung: ${best}` });
-		if (best >= 600) ms.push({ icon: 'diamond',                    label: '600+ Holz',                    sub: `Bestleistung: ${best}` });
-		const avg = Math.round(scores.reduce((a,b) => a+b,0) / scores.length);
-		if (avg >= 500) ms.push({ icon: 'trending_up',                 label: 'Ø 500+',                       sub: `Durchschnitt: ${avg}` });
-		return ms.reverse();
-	}
-
-	// ── RSVP ────────────────────────────────────────────────
-	function myRsvp(eventId) {
-		return rsvps.find(r => r.event_id === eventId)?.response ?? null;
-	}
-
-	async function rsvp(eventId, response) {
-		const pid = $playerId;
-		if (!pid) return;
-		const existing = myRsvp(eventId);
-		if (existing === response) {
-			await sb.from('event_rsvps').delete().eq('event_id', eventId).eq('player_id', pid);
-			rsvps = rsvps.filter(r => r.event_id !== eventId);
-		} else {
-			await sb.from('event_rsvps').upsert({ event_id: eventId, player_id: pid, response });
-			rsvps = [...rsvps.filter(r => r.event_id !== eventId), { event_id: eventId, response }];
-		}
-	}
-
-	// ── Profil speichern ────────────────────────────────────
-	async function save() {
-		msg = '';
-		const { error } = await sb.from('players').update({
-			name:       me.name,
-			phone:      me.phone,
-			push_prefs: me.push_prefs,
-			shirt_size: me.shirt_size,
-			pants_size: me.pants_size,
-		}).eq('id', me.id);
-		msg = error ? `❌ ${error.message}` : '✅ Gespeichert';
-	}
-
-	async function uploadAvatar(e) {
-		const file = e.target.files?.[0];
-		if (!file) return;
-		uploading = true; msg = '';
-		const ext = file.name.split('.').pop();
-		const path = `${me.id}/${Date.now()}.${ext}`;
-		const { error: upErr } = await sb.storage.from('avatars').upload(path, file, { upsert: true });
-		if (upErr) { msg = `❌ ${upErr.message}`; uploading = false; return; }
-		const { data } = sb.storage.from('avatars').getPublicUrl(path);
-		const url = data.publicUrl;
-		const { error } = await sb.from('players').update({ avatar_url: url }).eq('id', me.id);
-		uploading = false;
-		if (error) msg = `❌ ${error.message}`;
-		else { me.avatar_url = url; msg = '✅ Foto aktualisiert'; }
-	}
-
-	async function togglePush() {
-		try {
-			if (pushOn) { await unregisterPush(); pushOn = false; }
-			else        { await registerPush($playerId); pushOn = true; }
-		} catch (e) { msg = `❌ ${e.message}`; }
-	}
-
-	function updatePref(key, val) {
-		me.push_prefs = { ...(me.push_prefs || {}), [key]: val };
-	}
-
-	// ── Datum-Hilfsfunktionen ───────────────────────────────
-	function daysUntil(dateStr) {
-		const today = new Date(); today.setHours(0,0,0,0);
-		const d     = new Date(dateStr + 'T00:00:00');
-		const diff  = Math.round((d - today) / 86400000);
-		if (diff === 0) return 'Heute';
-		if (diff === 1) return 'Morgen';
-		if (diff === 2) return 'Übermorgen';
-		return `In ${diff} Tagen`;
-	}
-
-	function fmtDate(dateStr) {
-		const d = new Date(dateStr + 'T00:00:00');
-		return `${DAYS[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]}`;
-	}
-
-	// ── Admin: Sheet-State ──────────────────────────────────
-	let rollenOpen      = $state(false);
-	let trainingOpen    = $state(false);
-	let ergebnisOpen    = $state(false);
-	let aufstellungOpen = $state(false);
-
-	function adminAction(action) {
-		if (!action.live) return;
-		action.open?.();
-	}
-
-	const ADMIN_SECTIONS = [
-		{
-			title: 'Spielerverwaltung',
-			icon: 'group',
-			color: '#3b82f6',
-			actions: [
-				{ icon: 'shield_person', label: 'Rollen verwalten',      live: true, open: () => rollenOpen = true },
-				{ icon: 'person_add',    label: 'Spieler hinzufügen' },
-				{ icon: 'person_remove', label: 'Spieler deaktivieren' },
-			],
-		},
-		{
-			title: 'Spielbetrieb',
-			icon: 'emoji_events',
-			color: '#CC0000',
-			actions: [
-				{ icon: 'edit_calendar', label: 'Aufstellung erstellen', live: true, open: () => aufstellungOpen = true },
-				{ icon: 'sports_score',  label: 'Ergebnis eintragen',    live: true, open: () => ergebnisOpen = true },
-				{ icon: 'leaderboard',   label: 'Tabelle pflegen' },
-			],
-		},
-		{
-			title: 'Training',
-			icon: 'fitness_center',
-			color: '#059669',
-			actions: [
-				{ icon: 'event',         label: 'Training verwalten',    live: true, open: () => trainingOpen = true },
-				{ icon: 'how_to_reg',    label: 'Anwesenheit erfassen' },
-			],
-		},
-		{
-			title: 'Vereinskommunikation',
-			icon: 'campaign',
-			color: '#ea580c',
-			actions: [
-				{ icon: 'newspaper',     label: 'News verfassen' },
-				{ icon: 'notifications', label: 'Push an alle senden' },
-				{ icon: 'poll',          label: 'Umfrage erstellen' },
-				{ icon: 'celebration',   label: 'Event anlegen' },
-			],
-		},
-		{
-			title: 'Statistiken & Daten',
-			icon: 'analytics',
-			color: '#0891b2',
-			actions: [
-				{ icon: 'bar_chart',     label: 'Saisonstatistik' },
-				{ icon: 'download',      label: 'Export (CSV)' },
-			],
-		},
-		{
-			title: 'System',
-			icon: 'settings',
-			color: '#64748b',
-			actions: [
-				{ icon: 'manage_accounts', label: 'Admin-Zugänge' },
-				{ icon: 'backup',          label: 'Datensicherung' },
-				{ icon: 'bug_report',      label: 'Debug-Log' },
-			],
-		},
-	];
 </script>
 
 <div class="profil-page">
-
-	{#if !me}
-		<!-- Loading state -->
-		<div class="profil-loading">
-			<div class="skeleton-card animate-pulse-skeleton"></div>
-			<div class="skeleton-card skeleton-card--short animate-pulse-skeleton" style="animation-delay:80ms"></div>
-		</div>
-	{:else}
-
-	<!-- ════════════════════════════════════════════════════ -->
-	<!-- TAB: MEINE DATEN                                     -->
-	<!-- ════════════════════════════════════════════════════ -->
 	{#if activeTab === 'meine-daten'}
-
-		<!-- 1) Performance -->
-		{#if myStats}
-		{@const formDiff = myStats.avg5 - myStats.avg}
-		<section class="perf-card">
-			<!-- Header -->
-			<div class="perf-header">
-				<span class="perf-eyebrow">Meine Performance</span>
-				<span class="perf-games">{myStats.gamesPlayed} Spiele</span>
-			</div>
-
-			<!-- Hero: Saison-Schnitt -->
-			<div class="perf-hero">
-				<span class="material-symbols-outlined perf-trophy">emoji_events</span>
-				<div class="perf-avg-value">{myStats.avg}</div>
-				<div class="perf-avg-label">Saison-Schnitt</div>
-			</div>
-
-			<!-- Divider -->
-			<div class="perf-divider"></div>
-
-			<!-- Supporting stats -->
-			<div class="perf-stats-row">
-				<div class="perf-stat">
-					<span class="perf-stat-value">#{myStats.rank}</span>
-					<span class="perf-stat-label">Vereinsrang</span>
-				</div>
-				<div class="perf-stat-sep"></div>
-				<div class="perf-stat">
-					<span class="perf-stat-value perf-stat-form">
-						{myStats.avg5}
-						{#if formDiff > 0}
-							<span class="perf-trend perf-trend--up">+{formDiff}</span>
-						{:else if formDiff < 0}
-							<span class="perf-trend perf-trend--dn">{formDiff}</span>
-						{/if}
-					</span>
-					<span class="perf-stat-label">Form Ø5</span>
-				</div>
-				<div class="perf-stat-sep"></div>
-				<div class="perf-stat">
-					<span class="perf-stat-value">{myStats.best}</span>
-					<span class="perf-stat-label">Rekord</span>
-				</div>
-			</div>
-		</section>
-		{/if}
-
-		<!-- 2) Nächstes Spiel -->
-		{#if nextMatch}
-		{@const badge = daysUntil(nextMatch.date)}
-		<section class="next-match-card">
-			<div class="next-match-head">
-				<h3 class="section-title">
-					<span class="material-symbols-outlined">emoji_events</span>
-					Nächstes Spiel
-				</h3>
-				<span class="days-badge" class:days-badge--urgent={badge === 'Heute' || badge === 'Morgen'}>{badge}</span>
-			</div>
-			<div class="next-match-body">
-				<div class="next-match-info">
-					<div>
-						<p class="match-meta-label">Gegner / Liga</p>
-						<h4 class="match-opponent">{nextMatch.opponent}</h4>
-						<p class="match-league">{nextMatch.leagues?.name ?? ''} · {nextMatch.home_away === 'HEIM' ? 'Heimspiel' : 'Auswärts'}</p>
-					</div>
-					<div class="match-date-block">
-						<p class="match-meta-label">Termin</p>
-						<p class="match-date">{fmtDate(nextMatch.date)}</p>
-						{#if nextMatch.time}
-							<p class="match-time">{String(nextMatch.time).slice(0,5)} Uhr</p>
-						{/if}
-					</div>
-				</div>
-				<a href="/spielbetrieb" class="match-link-row">
-					<div class="match-link-icon">
-						<span class="material-symbols-outlined">sports_score</span>
-					</div>
-					<div class="match-link-text">
-						<p class="match-meta-label">Spielbetrieb</p>
-						<p class="match-link-label">Aufstellung &amp; Treffpunkt ansehen</p>
-					</div>
-					<span class="material-symbols-outlined match-link-arrow">open_in_new</span>
-				</a>
-			</div>
-		</section>
-		{/if}
-
-		<!-- 3) Meine Infos (royal) -->
-		<section class="profil-card">
-			<!-- Gradient header mit großem Avatar -->
-			<div class="profil-card-hero">
-				<div class="profil-avatar-ring">
-					<div class="profil-avatar">
-						{#if me.avatar_url || me.photo}
-							<img src={me.avatar_url || me.photo} alt={me.name} />
-						{:else}
-							<span>{(me.name || '?').slice(0,1).toUpperCase()}</span>
-						{/if}
-					</div>
-				</div>
-				<label class="profil-photo-btn">
-					<input type="file" accept="image/*" onchange={uploadAvatar} hidden />
-					<span class="material-symbols-outlined">photo_camera</span>
-				</label>
-			</div>
-
-			<!-- Name + E-Mail -->
-			<div class="profil-card-identity">
-				<h2 class="profil-card-name">{me.name}</h2>
-				<p class="profil-card-email">{me.email}</p>
-				<div class="profil-card-gold-line"></div>
-			</div>
-
-			<!-- Felder -->
-			<div class="profil-card-fields">
-				<label class="field">
-					<span>Name</span>
-					<input type="text" bind:value={me.name} />
-				</label>
-				<label class="field">
-					<span>Telefon</span>
-					<input type="tel" bind:value={me.phone} placeholder="+43 …" />
-				</label>
-				<div class="fields-row">
-					<label class="field">
-						<span>Trikotgröße</span>
-						<select bind:value={me.shirt_size}>
-							<option value="">–</option>
-							{#each ['XS','S','M','L','XL','XXL','XXXL'] as s}
-								<option value={s}>{s}</option>
-							{/each}
-						</select>
-					</label>
-					<label class="field">
-						<span>Hosengröße</span>
-						<input type="text" bind:value={me.pants_size} placeholder="z.B. 32/32" />
-					</label>
-				</div>
-			</div>
-
-			<!-- Speichern -->
-			<div class="profil-card-actions">
-				<button class="btn btn--primary" onclick={save}>
-					<span class="material-symbols-outlined">check</span> Speichern
-				</button>
-				{#if msg}<p class="msg">{msg}</p>{/if}
-			</div>
-		</section>
-
-		<!-- 4) Vereinstermine Agenda -->
-		{#if events.length}
-		<section class="card">
-			<h2 class="section-title">
-				<span class="material-symbols-outlined">event</span>
-				Vereinstermine
-			</h2>
-			<div class="agenda">
-				{#each events as ev}
-				{@const d = new Date(ev.date + 'T00:00:00')}
-				{@const myR = myRsvp(ev.id)}
-				<div class="agenda-item">
-					<div class="agenda-date-col">
-						<span class="agenda-day">{d.getDate()}</span>
-						<span class="agenda-month">{MONTHS[d.getMonth()]}</span>
-					</div>
-					<div class="agenda-info">
-						<p class="agenda-title">{ev.title}</p>
-						{#if ev.time || ev.location}
-							<p class="agenda-sub">
-								{#if ev.time}{String(ev.time).slice(0,5)} Uhr{/if}
-								{#if ev.time && ev.location} · {/if}
-								{#if ev.location}{ev.location}{/if}
-							</p>
-						{/if}
-					</div>
-					<div class="agenda-rsvp">
-						<button
-							class="rsvp-btn rsvp-btn--yes"
-							class:active={myR === 'yes'}
-							onclick={() => rsvp(ev.id, 'yes')}
-							aria-label="Zusagen"
-						>
-							<span class="material-symbols-outlined">check</span>
-						</button>
-						<button
-							class="rsvp-btn rsvp-btn--no"
-							class:active={myR === 'no'}
-							onclick={() => rsvp(ev.id, 'no')}
-							aria-label="Absagen"
-						>
-							<span class="material-symbols-outlined">close</span>
-						</button>
-					</div>
-				</div>
-				{/each}
-			</div>
-		</section>
-		{/if}
-
-		<!-- E) Karriere-Meilensteine -->
-		{#if milestones.length}
-		<section class="milestones">
-			<h2 class="section-title">
-				<span class="material-symbols-outlined">workspace_premium</span>
-				Karriere-Meilensteine
-			</h2>
-			<div class="milestones-scroll">
-				{#each milestones as m}
-				<div class="milestone-card">
-					<span class="milestone-icon material-symbols-outlined">{m.icon}</span>
-					<p class="milestone-label">{m.label}</p>
-					<p class="milestone-sub">{m.sub}</p>
-				</div>
-				{/each}
-			</div>
-		</section>
-		{/if}
-
-	<!-- ════════════════════════════════════════════════════ -->
-	<!-- TAB: EINSTELLUNGEN                                   -->
-	<!-- ════════════════════════════════════════════════════ -->
+		<MeineDatenTab />
 	{:else if activeTab === 'einstellungen'}
-
-		<!-- F) Benachrichtigungen -->
-		<section class="card">
-			<h2 class="section-title">
-				<span class="material-symbols-outlined">notifications</span>
-				Benachrichtigungen
-			</h2>
-			<button class="btn btn--outline btn--push" onclick={togglePush}>
-				<span class="material-symbols-outlined">{pushOn ? 'notifications_active' : 'notifications_off'}</span>
-				{pushOn ? 'Push deaktivieren' : 'Push aktivieren'}
-			</button>
-			<div class="prefs">
-				{#each [
-					{ k: 'lineup',  label: 'Aufstellung' },
-					{ k: 'meetup',  label: 'Treffpunkt'  },
-					{ k: 'news',    label: 'News'        },
-					{ k: 'poll',    label: 'Umfragen'    },
-				] as p}
-					<label class="toggle">
-						<span>{p.label}</span>
-						<input
-							type="checkbox"
-							checked={me.push_prefs?.[p.k] ?? true}
-							onchange={(e) => updatePref(p.k, e.target.checked)}
-						/>
-					</label>
-				{/each}
-			</div>
-		</section>
-
-		<!-- G) Abwesenheiten (Placeholder) -->
-		<section class="card placeholder-section">
-			<h2 class="section-title">
-				<span class="material-symbols-outlined">event_busy</span>
-				Abwesenheiten
-			</h2>
-			<p class="placeholder-hint">Demnächst: Abwesenheiten für Spieltermine melden, damit der Kapitän bei der Aufstellung Bescheid weiß.</p>
-		</section>
-
-		<!-- H) Offene Aktionen (Placeholder) -->
-		<section class="card placeholder-section">
-			<h2 class="section-title">
-				<span class="material-symbols-outlined">pending_actions</span>
-				Offene Aktionen
-			</h2>
-			<p class="placeholder-hint">Hier erscheinen bald Aktionen wie die Bestätigung zur Jahreshauptversammlung oder Abstimmungen zum Vereinsdress.</p>
-		</section>
-
-		<!-- Abmelden -->
-		<button class="btn btn--ghost btn--logout" onclick={signOut}>
-			<span class="material-symbols-outlined">logout</span> Abmelden
-		</button>
-
-	<!-- ════════════════════════════════════════════════════ -->
-	<!-- TAB: ADMIN                                           -->
-	<!-- ════════════════════════════════════════════════════ -->
-	{:else if activeTab === 'admin' && $playerRole === 'kapitaen'}
-
-		<div class="admin-header">
-			<span class="material-symbols-outlined admin-header-icon">shield_person</span>
-			<div>
-				<h2 class="admin-header-title">Kapitäns-Panel</h2>
-				<p class="admin-header-sub">Verwaltung · KV Wiener Neustadt</p>
-			</div>
-		</div>
-
-		{#each ADMIN_SECTIONS as section}
-		<section class="admin-section">
-			<div class="admin-section-head">
-				<div class="admin-section-icon" style="background: {section.color}20; color: {section.color}">
-					<span class="material-symbols-outlined">{section.icon}</span>
-				</div>
-				<h3 class="admin-section-title">{section.title}</h3>
-			</div>
-			<div class="admin-action-grid">
-				{#each section.actions as action}
-				<button
-					class="admin-action"
-					class:admin-action--live={action.live}
-					class:admin-action--disabled={!action.live}
-					onclick={() => adminAction(action)}
-				>
-					<span class="material-symbols-outlined admin-action-icon" style="color: {action.live ? section.color : ''}">{action.icon}</span>
-					<span class="admin-action-label">{action.label}</span>
-					{#if !action.live}
-						<span class="admin-action-badge">Bald</span>
-					{/if}
-				</button>
-				{/each}
-			</div>
-		</section>
-		{/each}
-
-		<div class="admin-version">
-			<span class="material-symbols-outlined">info</span>
-			Admin-Panel v0.2
-		</div>
-
+		<EinstellungenTab />
+	{:else if activeTab === 'admin'}
+		<AdminTab />
 	{/if}
-	<!-- end tab conditionals -->
-
-	{/if}<!-- end {#if me} -->
 </div>
 
-<!-- Admin Bottom Sheets (außerhalb des Layout-Flows) -->
-{#if $playerRole === 'kapitaen'}
-	<AdminRollen bind:open={rollenOpen} />
-	<AdminTraining bind:open={trainingOpen} />
-	<AdminErgebnis bind:open={ergebnisOpen} />
-	<AdminAufstellung bind:open={aufstellungOpen} />
-{/if}
-
 <style>
+:global {
 /* ── Seiten-Wrapper ─────────────────────────────────── */
 .profil-page {
 	display: flex;
@@ -873,9 +271,7 @@
 	gap: 4px;
 }
 
-.perf-stat-form { /* override color for form when same */
-	color: #fff;
-}
+.perf-stat-form { color: #fff; }
 
 .perf-trend {
 	font-family: var(--font-display);
@@ -885,15 +281,8 @@
 	border-radius: 999px;
 }
 
-.perf-trend--up {
-	color: #4ade80;
-	background: rgba(74, 222, 128, 0.15);
-}
-
-.perf-trend--dn {
-	color: #f87171;
-	background: rgba(248, 113, 113, 0.15);
-}
+.perf-trend--up { color: #4ade80; background: rgba(74, 222, 128, 0.15); }
+.perf-trend--dn { color: #f87171; background: rgba(248, 113, 113, 0.15); }
 
 .perf-stat-label {
 	font-size: 0.65rem;
@@ -1018,7 +407,6 @@
 	gap: var(--space-2);
 }
 
-/* keep old stats classes for milestone/etc sections that still use them */
 .trend-up { font-size: 0.7rem; color: #16a34a; }
 .trend-dn { font-size: 0.7rem; color: var(--color-error); }
 
@@ -1051,10 +439,7 @@
 	color: var(--color-on-surface-variant);
 }
 
-.days-badge--urgent {
-	background: var(--color-primary);
-	color: #fff;
-}
+.days-badge--urgent { background: var(--color-primary); color: #fff; }
 
 .next-match-body {
 	display: flex;
@@ -1297,20 +682,6 @@
 
 .toggle:first-child { border-top: none; }
 
-/* ── Placeholder Sections ───────────────────────────── */
-.placeholder-section {
-	border-style: dashed;
-	border-color: var(--color-outline-variant);
-	background: transparent;
-}
-
-.placeholder-hint {
-	font-size: 0.85rem;
-	color: var(--color-on-surface-variant);
-	margin: 0;
-	line-height: 1.5;
-}
-
 /* ── Admin Panel ────────────────────────────────────── */
 .admin-header {
 	display: flex;
@@ -1403,13 +774,8 @@
 	width: 100%;
 }
 
-.admin-action--live:active {
-	background: var(--color-surface-container-low);
-}
-.admin-action--disabled {
-	opacity: 0.45;
-	cursor: default;
-}
+.admin-action--live:active { background: var(--color-surface-container-low); }
+.admin-action--disabled    { opacity: 0.45; cursor: default; }
 
 .admin-action-icon {
 	font-size: 1.2rem;
@@ -1447,7 +813,6 @@
 	padding: var(--space-3);
 }
 
-.admin-version .material-symbols-outlined {
-	font-size: 1rem;
-}
+.admin-version .material-symbols-outlined { font-size: 1rem; }
+} /* end :global */
 </style>
