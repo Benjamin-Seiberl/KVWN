@@ -1,5 +1,6 @@
 <script>
 	import { page } from '$app/stores';
+	import { fly } from 'svelte/transition';
 	import { scrollY, scrollDirection } from '$lib/stores/scroll.js';
 	import { currentPageConfig, currentSubtab, setSubtab } from '$lib/stores/subtab.js';
 	import { playerRole } from '$lib/stores/auth.js';
@@ -44,31 +45,38 @@
 		setSubtab($page.url.pathname, key);
 		subtabMenuOpen = false;
 	}
+
+	const stripBottom = $derived(`calc(4.375rem + env(safe-area-inset-bottom, 0px))`);
 </script>
 
 <!-- Backdrop -->
 {#if subtabMenuOpen}
-	<button class="pill-subtab-backdrop" onclick={() => subtabMenuOpen = false} aria-label="Schließen"></button>
+	<button
+		class="pill-subtab-backdrop"
+		onclick={() => subtabMenuOpen = false}
+		aria-label="Schließen"
+		transition:fly={{ duration: 150, opacity: 0 }}
+	></button>
 {/if}
 
 <!-- Subtab Strip -->
-<div
-	class="pill-subtab-strip"
-	class:pill-subtab-strip--visible={subtabMenuOpen && navVisible}
-	class:pill-subtab-strip--nav-hidden={!navVisible}
-	aria-hidden={!subtabMenuOpen}
->
-	{#each visibleSubtabs as st}
-		<button
-			class="pill-subtab-opt"
-			class:active={$currentSubtab === st.key}
-			onclick={() => selectSubtab(st.key)}
-		>
-			<span class="material-symbols-outlined">{st.icon}</span>
-			<span>{st.label}</span>
-		</button>
-	{/each}
-</div>
+{#if subtabMenuOpen && navVisible}
+	<div
+		class="pill-subtab-strip"
+		transition:fly={{ y: 12, duration: 200, opacity: 0 }}
+	>
+		{#each visibleSubtabs as st}
+			<button
+				class="pill-subtab-opt"
+				class:active={$currentSubtab === st.key}
+				onclick={() => selectSubtab(st.key)}
+			>
+				<span class="material-symbols-outlined">{st.icon}</span>
+				<span>{st.label}</span>
+			</button>
+		{/each}
+	</div>
+{/if}
 
 <!-- Bottom Nav -->
 <div class="pill-nav-outer" class:nav-hidden={!navVisible} aria-label="Hauptnavigation">
