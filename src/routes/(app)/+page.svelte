@@ -3,6 +3,7 @@
 	import { sb } from '$lib/supabase';
 	import { user } from '$lib/stores/auth';
 	import { currentSubtab } from '$lib/stores/subtab.js';
+	import { MONTH_FULL } from '$lib/utils/dates.js';
 	import MatchCarousel   from '$lib/components/MatchCarousel.svelte';
 	import ActionHub       from '$lib/components/ActionHub.svelte';
 	import NewsFeed        from '$lib/components/dashboard/NewsFeed.svelte';
@@ -27,11 +28,11 @@
 		return 'Guten Abend';
 	}
 
+	const DAY_FULL = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+
 	function todayLabel() {
 		const d = new Date();
-		const days = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
-		const months = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-		return days[d.getDay()].toUpperCase() + ', ' + d.getDate() + '. ' + months[d.getMonth()].toUpperCase();
+		return DAY_FULL[d.getDay()].toUpperCase() + ', ' + d.getDate() + '. ' + MONTH_FULL[d.getMonth()].toUpperCase();
 	}
 
 	$effect(() => {

@@ -4,28 +4,10 @@
 	import { playerId, playerRole } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import BottomSheet from '$lib/components/BottomSheet.svelte';
+	import { fmtDate, fmtTime } from '$lib/utils/dates.js';
+	import { BEWERB_LABEL } from '$lib/constants/competitions.js';
 
 	let { lb, onReload = () => {} } = $props();
-
-	const BEWERB_TYPEN = {
-		einzel_ak_herren:        'Einzel AK Herren',
-		einzel_ak_damen:         'Einzel AK Damen',
-		nachwuchs_u10_maennlich: 'Nachwuchs U10 männlich',
-		nachwuchs_u10_weiblich:  'Nachwuchs U10 weiblich',
-		nachwuchs_u15_maennlich: 'Nachwuchs U15 männlich',
-		nachwuchs_u15_weiblich:  'Nachwuchs U15 weiblich',
-		nachwuchs_u19_maennlich: 'Nachwuchs U19 männlich',
-		nachwuchs_u19_weiblich:  'Nachwuchs U19 weiblich',
-		nachwuchs_u23_maennlich: 'Nachwuchs U23 männlich',
-		nachwuchs_u23_weiblich:  'Nachwuchs U23 weiblich',
-		ue50_herren:             'Ü50 Herren',
-		ue50_damen:              'Ü50 Damen',
-		ue60_herren:             'Ü60 Herren',
-		ue60_damen:              'Ü60 Damen',
-		lm_sprint_herren:        'LM Sprint Herren',
-		lm_sprint_damen:         'LM Sprint Damen',
-		tandem_mixed:            'Tandem Mixed',
-	};
 
 	let registrations = $state([]);
 	let saving        = $state(false);
@@ -41,15 +23,6 @@
 	const msLeft   = $derived(deadline ? deadline.getTime() - Date.now() : Infinity);
 	const isUrgent = $derived(isOpen && deadline && msLeft < 24 * 60 * 60 * 1000 && !myReg);
 
-	const DAY_SHORT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
-	const MONTHS    = ['Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-
-	function fmtDate(dateStr) {
-		if (!dateStr) return '';
-		const d = new Date(dateStr + 'T12:00');
-		return DAY_SHORT[d.getDay()] + ', ' + d.getDate() + '. ' + MONTHS[d.getMonth()];
-	}
-	function fmtTime(t) { return t ? String(t).slice(0, 5) + ' Uhr' : ''; }
 	function fmtDeadline(d) {
 		if (!d) return '';
 		return d.toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -136,7 +109,7 @@
 			<span class="material-symbols-outlined">workspace_premium</span>
 		</div>
 		<div class="lbw-hero-info">
-			<span class="lbw-typ-badge">{BEWERB_TYPEN[lb.typ] ?? lb.typ}</span>
+			<span class="lbw-typ-badge">{BEWERB_LABEL[lb.typ] ?? lb.typ}</span>
 			<h2 class="lbw-title">{lb.title}</h2>
 			{#if lb.location}
 				<p class="lbw-loc">

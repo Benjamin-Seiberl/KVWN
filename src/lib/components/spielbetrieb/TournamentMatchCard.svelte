@@ -3,6 +3,8 @@
 	import { sb }        from '$lib/supabase';
 	import { playerId, playerRole } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
+	import { fmtDate, fmtTime } from '$lib/utils/dates.js';
+	import { imgPath } from '$lib/utils/players.js';
 
 	let { tournament, onReload = () => {} } = $props();
 
@@ -31,19 +33,6 @@
 	let newStartTime = $state('');
 	let addingTeam   = $state(false);
 
-	const MONTH_NAMES = ['Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-	const DAY_SHORT   = ['So','Mo','Di','Mi','Do','Fr','Sa'];
-
-	function fmtDate(dateStr) {
-		if (!dateStr) return '';
-		const d = new Date(dateStr + 'T12:00');
-		return DAY_SHORT[d.getDay()] + ', ' + d.getDate() + '. ' + MONTH_NAMES[d.getMonth()];
-	}
-	function fmtTime(t) { return t ? String(t).slice(0, 5) + ' Uhr' : ''; }
-	function imgPath(photo, name) {
-		const key = photo || name;
-		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
-	}
 	function dateVoteCount(optionId) {
 		return dateVotes.filter(v => v.date_option_id === optionId).length;
 	}

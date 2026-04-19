@@ -3,8 +3,8 @@
 	import { sb } from '$lib/supabase';
 	import BottomSheet from './BottomSheet.svelte';
 	import { playerId } from '$lib/stores/auth';
+	import { DAY_SHORT } from '$lib/utils/dates.js';
 
-	const DAY_NAMES = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 	const DAY_NAMES_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
 	let matches  = $state([]);
@@ -25,7 +25,7 @@
 
 	function dateLabel(m) {
 		const d = new Date(m.date + 'T12:00');
-		return DAY_NAMES[d.getDay()] + ', ' +
+		return DAY_SHORT[d.getDay()] + ', ' +
 			d.getDate() + '.' + (d.getMonth() + 1) + '. \u2022 ' + formatTime(m.time) + ' Uhr';
 	}
 

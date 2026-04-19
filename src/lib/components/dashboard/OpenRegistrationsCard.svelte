@@ -4,18 +4,10 @@
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { goto } from '$app/navigation';
+	import { fmtDate } from '$lib/utils/dates.js';
 
 	let items   = $state([]);
 	let loading = $state(true);
-
-	const DAY_SHORT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
-	const MONTHS    = ['Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-
-	function fmtDate(dateStr) {
-		if (!dateStr) return '';
-		const d = new Date(dateStr + 'T12:00');
-		return DAY_SHORT[d.getDay()] + ', ' + d.getDate() + '. ' + MONTHS[d.getMonth()];
-	}
 	function fmtDeadline(ts) {
 		return new Date(ts).toLocaleString('de-AT', { dateStyle: 'short', timeStyle: 'short' });
 	}
