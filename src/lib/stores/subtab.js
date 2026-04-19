@@ -12,34 +12,37 @@ export const PAGE_CONFIG = {
 	'/kalender': {
 		title: 'Kalender',
 		tabs: [
-			{ key: 'events',    label: 'Events',    icon: 'calendar_month' },
-			{ key: 'trainings', label: 'Trainings', icon: 'fitness_center' },
+			{ key: 'uebersicht', label: 'Übersicht',  icon: 'dashboard'      },
+			{ key: 'events',     label: 'Events',     icon: 'calendar_month' },
+			{ key: 'trainings',  label: 'Trainings',  icon: 'fitness_center' },
 		],
 	},
 	'/spielbetrieb': {
 		title: 'Spielbetrieb',
 		tabs: [
-			{ key: 'spiele',      label: 'Spiele',      icon: 'emoji_events' },
-			{ key: 'turnier',        label: 'Turnier',        icon: 'military_tech' },
-			{ key: 'landesbewerb',   label: 'Landesbewerb',   icon: 'workspace_premium' },
-			{ key: 'statistiken',    label: 'Statistiken',    icon: 'bar_chart' },
+			{ key: 'uebersicht',   label: 'Übersicht',    icon: 'dashboard'         },
+			{ key: 'spiele',       label: 'Spiele',       icon: 'emoji_events'      },
+			{ key: 'turnier',      label: 'Turnier',      icon: 'military_tech'     },
+			{ key: 'landesbewerb', label: 'Landesbewerb', icon: 'workspace_premium' },
+			{ key: 'statistiken',  label: 'Statistiken',  icon: 'bar_chart'         },
 		],
 	},
 	'/profil': {
 		title: 'Profil',
 		tabs: [
-			{ key: 'meine-daten',    label: 'Meine Daten',    icon: 'person' },
-			{ key: 'einstellungen',  label: 'Einstellungen',  icon: 'settings' },
-			{ key: 'admin',          label: 'Kapitän',        icon: 'shield_person', adminOnly: true },
+			{ key: 'uebersicht',    label: 'Übersicht',    icon: 'dashboard'                        },
+			{ key: 'meine-daten',   label: 'Meine Daten',  icon: 'person'                           },
+			{ key: 'einstellungen', label: 'Einstellungen',icon: 'settings'                         },
+			{ key: 'admin',         label: 'Kapitän',      icon: 'shield_person', adminOnly: true   },
 		],
 	},
 };
 
 export const activeSubtabs = writable({
 	'/':             'neuigkeiten',
-	'/kalender':     'events',
-	'/spielbetrieb': 'spiele',
-	'/profil':       'meine-daten',
+	'/kalender':     'uebersicht',
+	'/spielbetrieb': 'uebersicht',
+	'/profil':       'uebersicht',
 });
 
 export function setSubtab(path, key) {

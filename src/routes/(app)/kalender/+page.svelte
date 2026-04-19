@@ -5,6 +5,7 @@
 	import { currentSubtab } from '$lib/stores/subtab.js';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { MONTH_FULL, DAY_SHORT } from '$lib/utils/dates.js';
+	import KalenderUebersichtTab from '$lib/components/kalender/UebersichtTab.svelte';
 	import { imgPath } from '$lib/utils/players.js';
 
 	let today       = new Date();
@@ -253,7 +254,9 @@
 <div class="page active">
 <div class="kal-page">
 
-{#if $currentSubtab === 'trainings'}
+{#if $currentSubtab === 'uebersicht'}
+	<KalenderUebersichtTab />
+{:else if $currentSubtab === 'trainings'}
 	<!-- ── Next 2 weeks: day picker + training card ────────────────────────── -->
 	<section class="tr-section">
 		<div class="sec-head">

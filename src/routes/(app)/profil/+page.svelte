@@ -1,19 +1,22 @@
 <script>
 	import { currentSubtab } from '$lib/stores/subtab.js';
 	import { playerRole }    from '$lib/stores/auth';
+	import UebersichtTab     from '$lib/components/profil/UebersichtTab.svelte';
 	import MeineDatenTab     from '$lib/components/profil/MeineDatenTab.svelte';
 	import EinstellungenTab  from '$lib/components/profil/EinstellungenTab.svelte';
 	import AdminTab          from '$lib/components/profil/AdminTab.svelte';
 
 	const activeTab = $derived.by(() => {
 		const t = $currentSubtab;
-		if (t === 'admin' && $playerRole !== 'kapitaen') return 'meine-daten';
-		return t ?? 'meine-daten';
+		if (t === 'admin' && $playerRole !== 'kapitaen') return 'uebersicht';
+		return t ?? 'uebersicht';
 	});
 </script>
 
 <div class="profil-page">
-	{#if activeTab === 'meine-daten'}
+	{#if activeTab === 'uebersicht'}
+		<UebersichtTab />
+	{:else if activeTab === 'meine-daten'}
 		<MeineDatenTab />
 	{:else if activeTab === 'einstellungen'}
 		<EinstellungenTab />
