@@ -2794,6 +2794,238 @@ button.widget--card:active {
 }
 
 /* ============================================================
+   Match Detail – Dramatische Squad-Karten
+   ============================================================ */
+
+@keyframes md-roster-in {
+  from { opacity: 0; transform: translateY(30px) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+
+.md-squad-section {
+  background: linear-gradient(155deg, #150404 0%, #1e0808 45%, #0e0e0e 100%);
+  margin: var(--space-2) var(--space-3) var(--space-3);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  padding-bottom: var(--space-4);
+  box-shadow:
+    0 0 0 1px rgba(204, 0, 0, 0.2),
+    0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* Header – Trennlinie + Label */
+.md-squad-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.md-squad-header-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(204, 0, 0, 0.55));
+}
+.md-squad-header-rule:last-child {
+  background: linear-gradient(to left, transparent, rgba(204, 0, 0, 0.55));
+}
+
+.md-squad-header-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: var(--text-label-lg);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.md-squad-header-icon {
+  font-size: 1rem;
+  font-variation-settings: 'FILL' 1, 'wght' 700;
+}
+
+/* 2-Spalten-Grid */
+.md-squad-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 var(--space-3);
+}
+
+/* Spielerkarte – Hochformat wie eine Sammelkarte */
+.md-squad-card {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  aspect-ratio: 9 / 13;
+  background: #1a1a1a;
+  animation: md-roster-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.md-squad-card--me {
+  box-shadow:
+    0 4px 28px rgba(204, 0, 0, 0.45),
+    0 0 0 2.5px var(--color-primary);
+}
+
+/* Foto – füllt die gesamte Karte */
+.md-squad-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+/* Vignette: transparent oben → fast-schwarz unten */
+.md-squad-vignette {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.08) 0%,
+    transparent          30%,
+    rgba(6, 0, 0, 0.55)  62%,
+    rgba(4, 0, 0, 0.93)  100%
+  );
+  pointer-events: none;
+}
+
+/* Trikotnummer – oben rechts */
+.md-squad-pos {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--text-label-md);
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+  z-index: 2;
+}
+
+.md-squad-card--me .md-squad-pos {
+  background: #fff;
+  color: var(--color-primary);
+}
+
+/* "DU"-Badge – oben links, nur für eigenen Spieler */
+.md-squad-me-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 2;
+}
+
+/* Ergebnis-Badge – oben Mitte, wenn Spiel gespielt */
+.md-squad-score {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: var(--text-title-sm);
+  font-weight: 900;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 2;
+}
+
+/* Info-Overlay – unten */
+.md-squad-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-2) var(--space-2) 10px;
+  z-index: 2;
+}
+
+.md-squad-name {
+  font-family: var(--font-display);
+  font-size: var(--text-body-sm);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+  line-height: 1.15;
+  word-break: break-word;
+  margin-bottom: 3px;
+}
+
+.md-squad-avg {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+}
+
+.md-squad-avg-val {
+  font-family: var(--font-display);
+  font-size: var(--text-label-lg);
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.md-squad-avg-unit {
+  font-family: var(--font-body);
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  margin-right: 2px;
+}
+
+.md-squad-trend {
+  display: flex;
+  align-items: center;
+}
+
+.md-squad-trend .material-symbols-outlined {
+  font-size: 0.85rem;
+  font-variation-settings: 'FILL' 0, 'wght' 600;
+}
+
+.md-squad-trend--up   { color: #66bb6a; }
+.md-squad-trend--down { color: #ef5350; }
+
+/* Leerzustand im dunklen Block */
+.md-squad-empty {
+  color: rgba(255, 255, 255, 0.45);
+  padding: var(--space-8) var(--space-4);
+}
+
+/* ============================================================
    MATCH-WORKFLOW  – Timeline, Treffpunkt, Fahrten, Lokal, Feedback
    (siehe src/lib/components/spielbetrieb/*.svelte)
    ============================================================ */
@@ -3547,6 +3779,114 @@ button.widget--card:active {
   transition: opacity 250ms ease-out 160ms;
 }
 
+/* ── Bottom-Nav Subtab Strip ───────────────────────────────── */
+
+.pnav-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.08);
+  z-index: 98;
+  border: none;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pnav-strip {
+  position: fixed;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  left: 0; right: 0;
+  padding: 0 1rem;
+  display: flex;
+  justify-content: center;
+  z-index: 99;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 220ms ease, transform 280ms cubic-bezier(0.34, 1.15, 0.64, 1);
+}
+.pnav-strip--open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.pnav-strip--nav-hidden {
+  transform: translateY(30px);
+}
+
+.pnav-strip-inner {
+  width: 100%;
+  max-width: 480px;
+  background: var(--color-surface-container-lowest);
+  border-radius: 1.375rem;
+  box-shadow: 0 -2px 16px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.13);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pnav-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: 1rem;
+  border: none;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 130ms, color 130ms;
+  text-align: left;
+  letter-spacing: 0.005em;
+}
+.pnav-strip-item .material-symbols-outlined {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  font-variation-settings: 'FILL' 0, 'wght' 400;
+  transition: font-variation-settings 200ms;
+}
+.pnav-strip-item-label { flex: 1; }
+.pnav-strip-item-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+.pnav-strip-item.active {
+  background: rgba(204,0,0,0.08);
+  color: var(--color-primary);
+}
+.pnav-strip-item.active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 600;
+}
+
+/* Chevron in active bottom-nav tab */
+.pill-tab-label-inner {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.pill-tab-chevron {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform 250ms cubic-bezier(0.34,1.2,0.64,1);
+}
+.pill-tab-chevron .material-symbols-outlined {
+  font-size: 0.95rem;
+  font-variation-settings: 'FILL' 0, 'wght' 500;
+}
+.pill-tab-chevron--open { transform: rotate(180deg); }
+
 /* ============================================================
    Page Header – Static Title + Sub-Tab Bar
    ============================================================ */
@@ -3633,215 +3973,50 @@ button.widget--card:active {
 }
 
 /* ============================================================
-   Dynamic Island Pill
+   Toast Pill (oben, nur bei Toasts sichtbar)
    ============================================================ */
 
-.di-pill {
+.toast-pill {
   position: fixed;
   top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
   left: 50%;
-  transform: translateX(-50%);
-  z-index: 91;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-width: 140px;
-  /* Fixed radius – 24px looks like a full pill at 48px height and a
-     rounded rectangle when expanded. No transition needed, no jarring shape change. */
-  border-radius: 24px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  box-shadow: 0 8px 32px rgba(204, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-  touch-action: none;
-  -webkit-tap-highlight-color: transparent;
-  pointer-events: auto;
-
-  /* GPU-composited – ensures buttery rendering */
-  will-change: transform, opacity, filter;
-  filter: blur(0px);
-
-  /* Default transition (overridden to 'none' during drag via inline style) */
-  transition: height    400ms cubic-bezier(0.34, 1.3, 0.64, 1),
-              opacity   550ms cubic-bezier(0.16, 1,   0.3,  1),
-              transform 550ms cubic-bezier(0.16, 1,   0.3,  1),
-              filter    550ms cubic-bezier(0.16, 1,   0.3,  1);
-}
-
-.di-pill.di-pill--hidden {
+  transform: translateX(-50%) translateY(-64px);
   opacity: 0;
+  z-index: 200;
   pointer-events: none;
-  /* Fährt von oben rein / nach oben raus */
-  transform: translateX(-50%) translateY(-72px);
-  filter: blur(6px);
-}
 
-/* No border-radius override needed – 24px works for both states */
-
-.di-pill-head {
-  height: 48px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-  padding: 0 var(--space-8);
-}
+  gap: 8px;
+  padding: 10px 18px 10px 14px;
+  border-radius: 999px;
 
-.di-pill-label {
+  background: var(--color-surface-container-lowest);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.13), 0 0 0 1px rgba(0,0,0,0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: var(--text-title-sm);
+  font-size: 0.9375rem;
   color: var(--color-on-surface);
   white-space: nowrap;
-  line-height: 1;
+
+  transition: transform 380ms cubic-bezier(0.34, 1.3, 0.64, 1),
+              opacity   300ms ease;
 }
-
-.di-pill-drag-bar {
-  position: absolute;
-  bottom: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 32px;
-  height: 3px;
-  border-radius: var(--radius-full);
-  background: rgba(0, 0, 0, 0.15);
-  transition: opacity 300ms ease-out;
-}
-
-.di-pill--expanded .di-pill-drag-bar,
-.di-pill--dragging .di-pill-drag-bar {
-  opacity: 0;
-}
-
-.di-pill-body {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
-  gap: var(--space-4);
-  /* Extra horizontal padding keeps buttons well clear of the rounded corners */
-  padding: var(--space-2) var(--space-6) var(--space-5);
-  flex-shrink: 0;
-  transition: opacity 350ms ease-out;
-}
-
-.di-pill-body.di-pill-body--hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.di-pill-option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  /* Generous padding so active background doesn't crowd the pill edges */
-  padding: var(--space-2) var(--space-5);
-  border-radius: var(--radius-lg);
-  border: none;
-  background: none;
-  font-family: var(--font-body);
-  cursor: pointer;
-  transition: background-color 200ms, color 200ms;
-  -webkit-tap-highlight-color: transparent;
-  color: var(--color-on-surface-variant);
-}
-
-.di-pill-option .material-symbols-outlined {
-  font-size: 1.25rem;
-  font-variation-settings: 'FILL' 0, 'wght' 400;
-}
-
-.di-pill-option.active {
-  background: rgba(204, 0, 0, 0.1);
-  color: var(--color-primary);
-}
-
-.di-pill-option.active .material-symbols-outlined {
-  font-variation-settings: 'FILL' 1, 'wght' 600;
-}
-
-.di-pill-option-label {
-  font-size: var(--text-label-sm);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-/* ── Dynamic Island Toast ──────────────────────────────── */
-
-/* Toast-Modus: Pille morpht sich in Toast-Form */
-.di-pill.di-pill--toast {
-  /* Breite passt sich dem Text an */
-  min-width: 160px;
-  width: max-content;
-  /* Stärkerer roter Glow */
-  box-shadow: 0 8px 32px rgba(204, 0, 0, 0.5);
-  cursor: default;
-  pointer-events: none;
-}
-
-/* ── Crossfade-Schichten ──────────────────────────────── */
-
-/* Toast-Layer: absolute über dem normalen Inhalt */
-.di-pill-toast-layer {
-  position: absolute;
-  inset: 0;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  opacity: 0;
-  transform: scale(0.75);
-  filter: blur(4px);
-  pointer-events: none;
-  transition:
-    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 600ms cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 2;
-}
-.di-pill-toast-layer--active {
+.toast-pill--visible {
+  transform: translateX(-50%) translateY(0);
   opacity: 1;
-  transform: scale(1);
-  filter: blur(0);
 }
-
-.di-pill-toast-icon {
-  font-size: 1.2rem;
+.toast-pill-icon {
+  font-size: 1.15rem;
   color: var(--color-primary);
-  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20;
+  font-variation-settings: 'FILL' 1, 'wght' 600;
   flex-shrink: 0;
 }
-
-.di-pill-toast-text {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 15px;
+.toast-pill-text {
   color: var(--color-primary);
-  white-space: nowrap;
-  padding: 0 var(--space-4);
-}
-
-/* Normal-Layer: weicht unscharf nach hinten aus */
-.di-pill-normal-layer {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  transition:
-    opacity 600ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 600ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 600ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-.di-pill-normal-layer--hidden {
-  opacity: 0;
-  transform: scale(1.1);
-  filter: blur(4px);
-  pointer-events: none;
 }
 
 /* ============================================================
