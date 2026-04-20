@@ -6,9 +6,28 @@
 	import { onMount } from 'svelte';
 	import { initScrollListener } from '$lib/stores/scroll.js';
 	import BottomNav       from '$lib/components/BottomNav.svelte';
+	import BackButton      from '$lib/components/BackButton.svelte';
 	import PagePill        from '$lib/components/PagePill.svelte';
 	import SpotlightSearch from '$lib/components/SpotlightSearch.svelte';
 	import { spotlightOpen } from '$lib/stores/spotlight.js';
+	import { currentSubtab, setSubtab } from '$lib/stores/subtab.js';
+
+	// Welcher Tab gilt als "Startseite" pro Route
+	const OVERVIEW_TABS = {
+		'/':             'neuigkeiten',
+		'/kalender':     'uebersicht',
+		'/spielbetrieb': 'uebersicht',
+		'/profil':       'uebersicht',
+	};
+
+	let isSubPage = $derived(
+		!!$currentSubtab &&
+		$currentSubtab !== (OVERVIEW_TABS[$page.url.pathname] ?? 'uebersicht')
+	);
+
+	function goBack() {
+		setSubtab($page.url.pathname, OVERVIEW_TABS[$page.url.pathname] ?? 'uebersicht');
+	}
 
 	let { children } = $props();
 
@@ -143,6 +162,11 @@
 	<!-- Dynamic Island Pill -->
 	<PagePill />
 
+	<!-- iOS Liquid Glass Back-Button (nur auf Unterseiten) -->
+	{#if isSubPage}
+		<BackButton onclick={goBack} />
+	{/if}
+
 	<!-- ── Spotlight pull indicator: fades in as user pulls down ── -->
 	<div
 		class="ptr-container"
@@ -163,6 +187,11 @@
 				transition: {snapTransition};
 			"
 		>
+			<!-- Platz für den Back-Button auf Unterseiten -->
+			{#if isSubPage}
+				<div class="back-btn-space" aria-hidden="true"></div>
+			{/if}
+
 			{#if $navigating}
 				<div class="page-skeleton animate-fade-float">
 					<div class="skeleton-card skeleton-card--short shimmer-box"></div>
@@ -232,5 +261,10 @@
 	/* ── Layout wrappers ──────────────────────────────────────────────────────── */
 	.layout-feed-wrap {
 		will-change: transform;
+	}
+
+	.back-btn-space {
+		height: calc(env(safe-area-inset-top, 0px) + 64px);
+		pointer-events: none;
 	}
 </style>
