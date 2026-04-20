@@ -2,7 +2,6 @@
 	import { currentSubtab } from '$lib/stores/subtab.js';
 	import { playerRole }    from '$lib/stores/auth';
 	import UebersichtTab     from '$lib/components/profil/UebersichtTab.svelte';
-	import MeineDatenTab     from '$lib/components/profil/MeineDatenTab.svelte';
 	import EinstellungenTab  from '$lib/components/profil/EinstellungenTab.svelte';
 	import AdminTab          from '$lib/components/profil/AdminTab.svelte';
 
@@ -16,8 +15,6 @@
 <div class="profil-page">
 	{#if activeTab === 'uebersicht'}
 		<UebersichtTab />
-	{:else if activeTab === 'meine-daten'}
-		<MeineDatenTab />
 	{:else if activeTab === 'einstellungen'}
 		<EinstellungenTab />
 	{:else if activeTab === 'admin'}

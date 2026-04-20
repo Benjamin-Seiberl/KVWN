@@ -32,7 +32,6 @@ export const PAGE_CONFIG = {
 		title: 'Profil',
 		tabs: [
 			{ key: 'uebersicht',    label: 'Übersicht',    icon: 'dashboard'                      },
-			{ key: 'meine-daten',   label: 'Meine Daten',  icon: 'person'                         },
 			{ key: 'einstellungen', label: 'Einstellungen',icon: 'settings'                       },
 			{ key: 'admin',         label: 'Kapitän',      icon: 'shield_person', adminOnly: true },
 		],
