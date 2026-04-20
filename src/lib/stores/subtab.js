@@ -20,21 +20,21 @@ export const PAGE_CONFIG = {
 	'/spielbetrieb': {
 		title: 'Spielbetrieb',
 		tabs: [
-			{ key: 'uebersicht',    label: 'Übersicht',     icon: 'dashboard'           },
-			{ key: 'aufstellungen', label: 'Aufstellungen',  icon: 'format_list_numbered'},
-			{ key: 'spiele',        label: 'Spiele',         icon: 'emoji_events'        },
-			{ key: 'turnier',       label: 'Turnier',        icon: 'military_tech'       },
-			{ key: 'landesbewerb',  label: 'Landesbewerb',   icon: 'workspace_premium'   },
-			{ key: 'statistiken',   label: 'Statistiken',    icon: 'bar_chart'           },
+			{ key: 'uebersicht',    label: 'Übersicht',     icon: 'dashboard'            },
+			{ key: 'aufstellungen', label: 'Aufstellungen',  icon: 'format_list_numbered' },
+			{ key: 'spiele',        label: 'Spiele',         icon: 'emoji_events'         },
+			{ key: 'turnier',       label: 'Turnier',        icon: 'military_tech'        },
+			{ key: 'landesbewerb',  label: 'Landesbewerb',   icon: 'workspace_premium'    },
+			{ key: 'statistiken',   label: 'Statistiken',    icon: 'bar_chart'            },
 		],
 	},
 	'/profil': {
 		title: 'Profil',
 		tabs: [
-			{ key: 'uebersicht',    label: 'Übersicht',    icon: 'dashboard'                        },
-			{ key: 'meine-daten',   label: 'Meine Daten',  icon: 'person'                           },
-			{ key: 'einstellungen', label: 'Einstellungen',icon: 'settings'                         },
-			{ key: 'admin',         label: 'Kapitän',      icon: 'shield_person', adminOnly: true   },
+			{ key: 'uebersicht',    label: 'Übersicht',    icon: 'dashboard'                      },
+			{ key: 'meine-daten',   label: 'Meine Daten',  icon: 'person'                         },
+			{ key: 'einstellungen', label: 'Einstellungen',icon: 'settings'                       },
+			{ key: 'admin',         label: 'Kapitän',      icon: 'shield_person', adminOnly: true },
 		],
 	},
 };
