@@ -377,7 +377,7 @@
 									{#if isMe}
 										<span class="tds-lane-badge tds-lane-badge--me">Du</span>
 									{/if}
-									<span class="tds-lane-name">Bahn {lane} · {shortName(pl?.name) ?? '—'}</span>
+									<span class="tds-lane-name">Bahn {lane}</span>
 								</button>
 							{:else}
 								{@const needSwitch   = (!!myAnyBooking || !!myAnyWait)}
@@ -425,7 +425,6 @@
 											<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
 											<span class="tds-wait-pos">{w.position}</span>
 										</div>
-										<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
 									</button>
 								{/each}
 
