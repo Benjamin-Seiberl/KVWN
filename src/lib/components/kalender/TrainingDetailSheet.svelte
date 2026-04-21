@@ -212,6 +212,52 @@
 		saving = false;
 	}
 
+	async function switchBooking(newStart) {
+		if (saving) return;
+		saving = true;
+		try {
+			if (myAnyBooking) {
+				const { data, error } = await sb.rpc('cancel_training_booking', { p_booking_id: myAnyBooking.id });
+				if (error) {
+					if (error.message.includes('same_day_storno_forbidden')) {
+						triggerToast('Wechsel am selben Tag nicht mehr möglich');
+					} else {
+						triggerToast('Fehler: ' + error.message);
+					}
+					return;
+				}
+				const promoted = data?.promoted_player_id;
+				if (promoted) {
+					fetch('/api/push/notify', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({
+							player_ids: [promoted],
+							title: 'Nachgerückt!',
+							body: 'Du bist nachgerückt! Dein Training um ' + String(data.start_time).slice(0,5) + ' Uhr ist gesichert.',
+							url: '/kalender',
+						}),
+					}).catch(() => {});
+				}
+			} else if (myAnyWait) {
+				const { error } = await sb.from('training_waitlist').delete().eq('id', myAnyWait.id);
+				if (error) { triggerToast('Fehler: ' + error.message); return; }
+			}
+			const { data, error } = await sb.rpc('book_training_slot', { p_date: date, p_start: newStart });
+			if (error) {
+				triggerToast('Fehler: ' + error.message);
+			} else if (data?.status === 'booked') {
+				triggerToast('Gewechselt');
+			} else if (data?.status === 'waitlisted') {
+				triggerToast('Auf Warteliste (Position ' + data.position + ')');
+			}
+			await refreshBookings();
+			onReload?.();
+		} finally {
+			saving = false;
+		}
+	}
+
 	async function leaveWaitlist(waitId) {
 		if (!waitId || saving) return;
 		saving = true;
@@ -318,14 +364,21 @@
 						{/each}
 
 						{#each Array(freeSpots) as _, i (i)}
+							{@const cannotSwitch = lockedElsewhere && !!myAnyBooking && isSameDayOrPast}
 							<button
 								class="tds-lane tds-lane--free"
-								onclick={() => { if (!lockedElsewhere) book(s.start_time); }}
-								disabled={saving || !$playerId || lockedElsewhere}
-								aria-label="Freier Platz"
+								class:tds-lane--switch={lockedElsewhere && !cannotSwitch}
+								onclick={() => {
+									if (cannotSwitch) return;
+									if (lockedElsewhere) switchBooking(s.start_time);
+									else book(s.start_time);
+								}}
+								disabled={saving || !$playerId || cannotSwitch}
+								aria-label={lockedElsewhere ? 'Hierher wechseln' : 'Freier Platz'}
+								title={lockedElsewhere ? 'Hierher wechseln' : 'Buchen'}
 							>
-								<span class="material-symbols-outlined tds-lane-plus">add</span>
-								<span class="tds-lane-name tds-lane-name--muted">Frei</span>
+								<span class="material-symbols-outlined tds-lane-plus">{lockedElsewhere ? 'swap_horiz' : 'add'}</span>
+								<span class="tds-lane-name tds-lane-name--muted">{lockedElsewhere ? 'Wechseln' : 'Frei'}</span>
 							</button>
 						{/each}
 					</div>
@@ -378,8 +431,8 @@
 					<!-- Contextual hint -->
 					{#if myB && isSameDayOrPast}
 						<p class="tds-hint">Storno am selben Tag nicht mehr möglich.</p>
-					{:else if lockedElsewhere && !myB && !myW}
-						<p class="tds-hint">Du bist bereits in einem anderen Slot gebucht.</p>
+					{:else if lockedElsewhere && !!myAnyBooking && isSameDayOrPast}
+						<p class="tds-hint">Wechsel am selben Tag nicht mehr möglich.</p>
 					{/if}
 				</div>
 			{/each}
@@ -540,6 +593,13 @@
 	}
 	.tds-lane--free:not([disabled]) .tds-lane-plus {
 		animation: tds-pulse 2.4s ease-in-out infinite;
+	}
+	/* Switch lane — dashed gold, signals swap */
+	.tds-lane--switch .tds-lane-plus {
+		border: 2.5px dashed rgba(212,175,55,0.6);
+		background: rgba(212,175,55,0.08);
+		color: var(--color-secondary, #D4AF37);
+		animation: none;
 	}
 	.tds-lane--free[disabled] .tds-lane-plus {
 		border-color: rgba(0,0,0,0.1);
