@@ -364,27 +364,30 @@
 						{/each}
 
 						{#each Array(freeSpots) as _, i (i)}
-							{@const cannotSwitch = lockedElsewhere && !!myAnyBooking && isSameDayOrPast}
+							{@const needSwitch   = (!!myAnyBooking || !!myAnyWait) && !myB}
+							{@const cannotSwitch = needSwitch && !!myAnyBooking && isSameDayOrPast}
+							{@const isOwnSlot    = !!myB}
 							<button
 								class="tds-lane tds-lane--free"
-								class:tds-lane--switch={lockedElsewhere && !cannotSwitch}
+								class:tds-lane--switch={needSwitch && !cannotSwitch}
 								onclick={() => {
-									if (cannotSwitch) return;
-									if (lockedElsewhere) switchBooking(s.start_time);
+									if (cannotSwitch || isOwnSlot) return;
+									if (needSwitch) switchBooking(s.start_time);
 									else book(s.start_time);
 								}}
-								disabled={saving || !$playerId || cannotSwitch}
-								aria-label={lockedElsewhere ? 'Hierher wechseln' : 'Freier Platz'}
-								title={lockedElsewhere ? 'Hierher wechseln' : 'Buchen'}
+								disabled={saving || !$playerId || cannotSwitch || isOwnSlot}
+								aria-label={needSwitch ? 'Hierher wechseln' : 'Freier Platz'}
+								title={needSwitch ? 'Hierher wechseln' : 'Buchen'}
 							>
-								<span class="material-symbols-outlined tds-lane-plus">{lockedElsewhere ? 'swap_horiz' : 'add'}</span>
-								<span class="tds-lane-name tds-lane-name--muted">{lockedElsewhere ? 'Wechseln' : 'Frei'}</span>
+								<span class="material-symbols-outlined tds-lane-plus">{needSwitch ? 'swap_horiz' : 'add'}</span>
+								<span class="tds-lane-name tds-lane-name--muted">{needSwitch ? 'Wechseln' : 'Frei'}</span>
 							</button>
 						{/each}
 					</div>
 
 					<!-- Waitlist strip -->
-					{#if slotWait.length > 0 || (isFull && !myB && !myW && !lockedElsewhere)}
+					{#if slotWait.length > 0 || (isFull && !myB && !myW && !(!!myAnyBooking && isSameDayOrPast))}
+						{@const canJoinWait = isFull && !myB && !myW && !(!!myAnyBooking && isSameDayOrPast)}
 						<div class="tds-wait-row">
 							<span class="tds-wait-label">
 								<span class="material-symbols-outlined">hourglass_top</span>
@@ -410,13 +413,14 @@
 									</button>
 								{/each}
 
-								{#if isFull && !myB && !myW && !lockedElsewhere}
+								{#if canJoinWait}
+									{@const switchToWait = !!myAnyBooking || !!myAnyWait}
 									<button
 										class="tds-wait-item tds-wait-item--add"
-										onclick={() => book(s.start_time)}
+										onclick={() => { if (switchToWait) switchBooking(s.start_time); else book(s.start_time); }}
 										disabled={saving || !$playerId}
-										aria-label="Auf die Warteliste"
-										title="Auf die Warteliste"
+										aria-label={switchToWait ? 'Zur Warteliste wechseln' : 'Auf die Warteliste'}
+										title={switchToWait ? 'Zur Warteliste wechseln' : 'Auf die Warteliste'}
 									>
 										<div class="tds-wait-circle tds-wait-circle--add">
 											<span class="material-symbols-outlined">add</span>
