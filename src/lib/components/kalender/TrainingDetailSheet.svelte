@@ -145,6 +145,16 @@
 		saving = false;
 	}
 
+	// ── Bookings/waitlist-only refresh (no skeleton flicker) ───────────────
+	async function refreshBookings() {
+		const [bks, wl] = await Promise.all([
+			sb.from('training_bookings').select('id, start_time, player_id').eq('date', date),
+			sb.from('training_waitlist').select('id, start_time, player_id, position').eq('date', date).order('position'),
+		]);
+		if (!bks.error) bookings = bks.data ?? [];
+		if (!wl.error)  waitlist = wl.data ?? [];
+	}
+
 	// ── Booking actions ─────────────────────────────────────────────────────
 	async function book(startTime) {
 		if (!startTime || saving) return;
@@ -164,7 +174,7 @@
 		} else if (data?.status === 'already_waitlisted') {
 			triggerToast('Bereits auf Warteliste');
 		}
-		await loadSheet();
+		await refreshBookings();
 		onReload?.();
 		saving = false;
 	}
@@ -197,7 +207,7 @@
 				} catch {}
 			}
 		}
-		await loadSheet();
+		await refreshBookings();
 		onReload?.();
 		saving = false;
 	}
@@ -208,7 +218,7 @@
 		const { error } = await sb.from('training_waitlist').delete().eq('id', waitId);
 		if (error) triggerToast('Fehler: ' + error.message);
 		else       triggerToast('Von Warteliste abgemeldet');
-		await loadSheet();
+		await refreshBookings();
 		onReload?.();
 		saving = false;
 	}
@@ -321,7 +331,7 @@
 					</div>
 
 					<!-- Waitlist strip -->
-					{#if slotWait.length > 0}
+					{#if slotWait.length > 0 || (isFull && !myB && !myW && !lockedElsewhere)}
 						<div class="tds-wait-row">
 							<span class="tds-wait-label">
 								<span class="material-symbols-outlined">hourglass_top</span>
@@ -331,66 +341,46 @@
 								{#each slotWait as w (w.id)}
 									{@const pl = getPlayer(w.player_id)}
 									{@const isMe = w.player_id === $playerId}
-									<div class="tds-wait-item" class:tds-wait-item--me={isMe} title="{shortName(pl?.name)} · Pos {w.position}">
+									<button
+										class="tds-wait-item"
+										class:tds-wait-item--me={isMe}
+										onclick={() => { if (isMe) leaveWaitlist(w.id); }}
+										disabled={!isMe || saving}
+										title={isMe ? 'Von Warteliste abmelden' : (shortName(pl?.name) + ' · Pos ' + w.position)}
+									>
 										<div class="tds-wait-circle">
 											<img src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
 											<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
 											<span class="tds-wait-pos">{w.position}</span>
 										</div>
 										<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
-									</div>
+									</button>
 								{/each}
+
+								{#if isFull && !myB && !myW && !lockedElsewhere}
+									<button
+										class="tds-wait-item tds-wait-item--add"
+										onclick={() => book(s.start_time)}
+										disabled={saving || !$playerId}
+										aria-label="Auf die Warteliste"
+										title="Auf die Warteliste"
+									>
+										<div class="tds-wait-circle tds-wait-circle--add">
+											<span class="material-symbols-outlined">add</span>
+										</div>
+										<span class="tds-lane-name tds-lane-name--muted">Warteliste</span>
+									</button>
+								{/if}
 							</div>
 						</div>
 					{/if}
 
-					<!-- Action button -->
-					<div class="tds-action-wrap">
-						{#if myB}
-							<button
-								class="mw-btn mw-btn--wide tds-btn-storno"
-								onclick={() => storno(myB.id)}
-								disabled={saving || isSameDayOrPast}
-							>
-								<span class="material-symbols-outlined">event_busy</span>
-								Storno
-							</button>
-							{#if isSameDayOrPast}
-								<p class="tds-hint">Storno am selben Tag nicht mehr möglich.</p>
-							{:else}
-								<p class="tds-hint tds-hint--ok">Du bist gebucht. Viel Spaß beim Training!</p>
-							{/if}
-						{:else if myW}
-							<button
-								class="mw-btn mw-btn--wide mw-btn--ghost"
-								onclick={() => leaveWaitlist(myW.id)}
-								disabled={saving}
-							>
-								Von Warteliste abmelden
-							</button>
-							<p class="tds-hint">Du bist auf Position {myW.position}. Du wirst automatisch benachrichtigt.</p>
-						{:else if lockedElsewhere}
-							<p class="tds-hint">Du bist bereits in einem anderen Slot gebucht.</p>
-						{:else if isFull}
-							<button
-								class="mw-btn mw-btn--wide tds-btn-waitlist"
-								onclick={() => book(s.start_time)}
-								disabled={saving || !$playerId}
-							>
-								<span class="material-symbols-outlined">hourglass_empty</span>
-								Auf die Warteliste
-							</button>
-						{:else}
-							<button
-								class="mw-btn mw-btn--wide mw-btn--primary"
-								onclick={() => book(s.start_time)}
-								disabled={saving || !$playerId}
-							>
-								<span class="material-symbols-outlined">check</span>
-								Buchen
-							</button>
-						{/if}
-					</div>
+					<!-- Contextual hint -->
+					{#if myB && isSameDayOrPast}
+						<p class="tds-hint">Storno am selben Tag nicht mehr möglich.</p>
+					{:else if lockedElsewhere && !myB && !myW}
+						<p class="tds-hint">Du bist bereits in einem anderen Slot gebucht.</p>
+					{/if}
 				</div>
 			{/each}
 		</div>
@@ -626,6 +616,29 @@
 	.tds-wait-item {
 		display: flex; flex-direction: column; align-items: center; gap: 6px;
 		width: 52px;
+		background: none; border: none; padding: 0;
+		font: inherit; color: inherit;
+		-webkit-tap-highlight-color: transparent;
+		cursor: pointer;
+	}
+	.tds-wait-item[disabled] { cursor: default; }
+	.tds-wait-item:not([disabled]):active .tds-wait-circle { transform: scale(0.92); }
+	.tds-wait-circle { transition: transform 140ms cubic-bezier(0.32, 0.72, 0, 1); }
+	.tds-wait-circle--add {
+		border: 2.5px dashed rgba(234,88,12,0.55);
+		background: rgba(234,88,12,0.05);
+		color: rgba(234,88,12,0.85);
+	}
+	.tds-wait-circle--add .material-symbols-outlined {
+		font-size: 1.3rem;
+		font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.tds-wait-item--add:not([disabled]) .tds-wait-circle--add {
+		animation: tds-pulse-orange 2.4s ease-in-out infinite;
+	}
+	@keyframes tds-pulse-orange {
+		0%, 100% { box-shadow: 0 0 0 0 rgba(234,88,12,0.28); }
+		50%       { box-shadow: 0 0 0 6px rgba(234,88,12,0); }
 	}
 	.tds-wait-circle {
 		position: relative;
@@ -656,33 +669,10 @@
 		box-shadow: 0 0 0 2px rgba(204,0,0,0.12);
 	}
 
-	/* Action */
-	.tds-action-wrap { margin-top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
-	.tds-btn-waitlist {
-		background: #ea580c;
-		color: #fff;
-		border: none;
-	}
-	.tds-btn-waitlist:hover:not(:disabled) { background: #c2410c; }
-	.tds-btn-storno {
-		background: transparent;
-		color: var(--color-primary);
-		border: 2px solid var(--color-primary);
-	}
-	.tds-btn-storno:disabled {
-		border-color: var(--color-outline-variant);
-		color: var(--color-outline);
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
 	.tds-hint {
 		font-size: var(--text-label-sm);
 		color: var(--color-on-surface-variant);
 		text-align: center;
-		margin: 0;
-	}
-	.tds-hint--ok {
-		color: #16a34a;
-		font-weight: 600;
+		margin: var(--space-3) 0 0;
 	}
 </style>
