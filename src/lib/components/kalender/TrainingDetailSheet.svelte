@@ -20,12 +20,9 @@
 	let loading   = $state(false);
 	let saving    = $state(false);
 
-	let selectedStart = $state(null);
-
 	// ── Load when sheet opens on a date ─────────────────────────────────────
 	$effect(() => {
 		if (open && date) loadSheet();
-		else if (!open) { selectedStart = null; }
 	});
 
 	async function loadSheet() {
@@ -91,17 +88,18 @@
 		return out;
 	});
 
-	// Auto-select first slot on load
-	$effect(() => {
-		if (slots.length && !selectedStart) selectedStart = slots[0].start_time;
-	});
-
 	// ── Derived helpers ─────────────────────────────────────────────────────
 	function bookingsForStart(start) {
 		return bookings.filter(b => String(b.start_time).slice(0,5) === String(start).slice(0,5));
 	}
 	function waitlistForStart(start) {
 		return waitlist.filter(w => String(w.start_time).slice(0,5) === String(start).slice(0,5));
+	}
+	function myBookingFor(start) {
+		return bookingsForStart(start).find(b => b.player_id === $playerId) ?? null;
+	}
+	function myWaitFor(start) {
+		return waitlistForStart(start).find(w => w.player_id === $playerId) ?? null;
 	}
 	function getPlayer(id) {
 		return players.find(p => p.id === id);
@@ -115,11 +113,9 @@
 		return '#dc2626';
 	}
 
-	const selectedSlot = $derived(slots.find(s => s.start_time === selectedStart) ?? null);
-	const myBooking   = $derived(selectedSlot ? bookingsForStart(selectedStart).find(b => b.player_id === $playerId) ?? null : null);
-	const myWait      = $derived(selectedSlot ? waitlistForStart(selectedStart).find(w => w.player_id === $playerId) ?? null : null);
-	const slotRatio   = $derived(selectedSlot ? occRatio(selectedStart, selectedSlot.capacity) : 0);
 	const isSameDayOrPast = $derived(!!date && date <= toDateStr(new Date()));
+	const myAnyBooking = $derived(bookings.find(b => b.player_id === $playerId) ?? null);
+	const myAnyWait    = $derived(waitlist.find(w => w.player_id === $playerId) ?? null);
 
 	const titleLabel = $derived(date ? 'Training am ' + WEEKDAY_LONG[new Date(date + 'T12:00:00').getDay()] : 'Training');
 	const subtitle   = $derived.by(() => {
@@ -150,12 +146,12 @@
 	}
 
 	// ── Booking actions ─────────────────────────────────────────────────────
-	async function book() {
-		if (!selectedSlot || saving) return;
+	async function book(startTime) {
+		if (!startTime || saving) return;
 		saving = true;
 		const { data, error } = await sb.rpc('book_training_slot', {
 			p_date:  date,
-			p_start: selectedSlot.start_time,
+			p_start: startTime,
 		});
 		if (error) {
 			triggerToast('Fehler: ' + error.message);
@@ -173,10 +169,10 @@
 		saving = false;
 	}
 
-	async function storno() {
-		if (!myBooking || saving) return;
+	async function storno(bookingId) {
+		if (!bookingId || saving) return;
 		saving = true;
-		const { data, error } = await sb.rpc('cancel_training_booking', { p_booking_id: myBooking.id });
+		const { data, error } = await sb.rpc('cancel_training_booking', { p_booking_id: bookingId });
 		if (error) {
 			if (error.message.includes('same_day_storno_forbidden')) {
 				triggerToast('Storno am selben Tag nicht mehr möglich');
@@ -206,10 +202,10 @@
 		saving = false;
 	}
 
-	async function leaveWaitlist() {
-		if (!myWait || saving) return;
+	async function leaveWaitlist(waitId) {
+		if (!waitId || saving) return;
 		saving = true;
-		const { error } = await sb.from('training_waitlist').delete().eq('id', myWait.id);
+		const { error } = await sb.from('training_waitlist').delete().eq('id', waitId);
 		if (error) triggerToast('Fehler: ' + error.message);
 		else       triggerToast('Von Warteliste abgemeldet');
 		await loadSheet();
@@ -262,149 +258,142 @@
 			{/if}
 		</div>
 
-		<!-- ── Heatmap pills ─────────────────────────────────────────────── -->
-		<p class="tds-section-title">Zeitslots</p>
-		<div class="tds-pills">
-			{#each slots as s}
-				{@const r = occRatio(s.start_time, s.capacity)}
-				{@const active = s.start_time === selectedStart}
-				<button
-					class="tds-pill"
-					class:tds-pill--active={active}
-					style="--pill-color:{pillColor(r)};"
-					onclick={() => selectedStart = s.start_time}
-				>
-					<span class="tds-pill-time">{String(s.start_time).slice(0,5)}</span>
-					<span class="tds-pill-load">{bookingsForStart(s.start_time).length}/{s.capacity}</span>
-					{#if s.isSpecial}<span class="tds-pill-badge">Sonder</span>{/if}
-				</button>
+		<!-- ── Slot cards (stacked vertically) ──────────────────────────── -->
+		<div class="tds-slot-stack">
+			{#each slots as s (s.start_time)}
+				{@const slotBookings = bookingsForStart(s.start_time)}
+				{@const slotWait     = waitlistForStart(s.start_time)}
+				{@const freeSpots    = Math.max(0, s.capacity - slotBookings.length)}
+				{@const myB          = myBookingFor(s.start_time)}
+				{@const myW          = myWaitFor(s.start_time)}
+				{@const r            = occRatio(s.start_time, s.capacity)}
+				{@const isFull       = r >= 1}
+				{@const lockedElsewhere = (!!myAnyBooking && !myB) || (!!myAnyWait && !myW)}
+
+				<div class="tds-slot-card" style="--slot-accent:{pillColor(r)};">
+					<div class="tds-slot-head">
+						<div class="tds-slot-head__left">
+							<span class="tds-slot-time">
+								{String(s.start_time).slice(0,5)} – {String(s.end_time).slice(0,5)} Uhr
+							</span>
+							<span class="tds-slot-stats">{slotBookings.length}/{s.capacity} belegt{#if slotWait.length} · {slotWait.length} warten{/if}</span>
+						</div>
+						{#if s.isSpecial}
+							<span class="tds-slot-badge">Sonder</span>
+						{/if}
+						{#if s.note}
+							<span class="tds-slot-note">{s.note}</span>
+						{/if}
+					</div>
+
+					<!-- Lane circles -->
+					<div class="tds-lanes">
+						{#each slotBookings as b (b.id)}
+							{@const pl = getPlayer(b.player_id)}
+							{@const isMe = b.player_id === $playerId}
+							<button
+								class="tds-lane tds-lane--taken"
+								class:tds-lane--mine={isMe}
+								onclick={() => { if (isMe && !isSameDayOrPast) storno(b.id); }}
+								disabled={!isMe || isSameDayOrPast || saving}
+								title={isMe ? 'Storno' : shortName(pl?.name)}
+							>
+								<img class="tds-lane-img" src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
+								<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
+								{#if isMe}
+									<span class="tds-lane-badge tds-lane-badge--me">Du</span>
+								{/if}
+								<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
+							</button>
+						{/each}
+
+						{#each Array(freeSpots) as _, i (i)}
+							<button
+								class="tds-lane tds-lane--free"
+								onclick={() => { if (!lockedElsewhere) book(s.start_time); }}
+								disabled={saving || !$playerId || lockedElsewhere}
+								aria-label="Freier Platz"
+							>
+								<span class="material-symbols-outlined tds-lane-plus">add</span>
+								<span class="tds-lane-name tds-lane-name--muted">Frei</span>
+							</button>
+						{/each}
+					</div>
+
+					<!-- Waitlist strip -->
+					{#if slotWait.length > 0}
+						<div class="tds-wait-row">
+							<span class="tds-wait-label">
+								<span class="material-symbols-outlined">hourglass_top</span>
+								Warteliste
+							</span>
+							<div class="tds-wait-circles">
+								{#each slotWait as w (w.id)}
+									{@const pl = getPlayer(w.player_id)}
+									{@const isMe = w.player_id === $playerId}
+									<div class="tds-wait-item" class:tds-wait-item--me={isMe} title="{shortName(pl?.name)} · Pos {w.position}">
+										<div class="tds-wait-circle">
+											<img src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
+											<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
+											<span class="tds-wait-pos">{w.position}</span>
+										</div>
+										<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					<!-- Action button -->
+					<div class="tds-action-wrap">
+						{#if myB}
+							<button
+								class="mw-btn mw-btn--wide tds-btn-storno"
+								onclick={() => storno(myB.id)}
+								disabled={saving || isSameDayOrPast}
+							>
+								<span class="material-symbols-outlined">event_busy</span>
+								Storno
+							</button>
+							{#if isSameDayOrPast}
+								<p class="tds-hint">Storno am selben Tag nicht mehr möglich.</p>
+							{:else}
+								<p class="tds-hint tds-hint--ok">Du bist gebucht. Viel Spaß beim Training!</p>
+							{/if}
+						{:else if myW}
+							<button
+								class="mw-btn mw-btn--wide mw-btn--ghost"
+								onclick={() => leaveWaitlist(myW.id)}
+								disabled={saving}
+							>
+								Von Warteliste abmelden
+							</button>
+							<p class="tds-hint">Du bist auf Position {myW.position}. Du wirst automatisch benachrichtigt.</p>
+						{:else if lockedElsewhere}
+							<p class="tds-hint">Du bist bereits in einem anderen Slot gebucht.</p>
+						{:else if isFull}
+							<button
+								class="mw-btn mw-btn--wide tds-btn-waitlist"
+								onclick={() => book(s.start_time)}
+								disabled={saving || !$playerId}
+							>
+								<span class="material-symbols-outlined">hourglass_empty</span>
+								Auf die Warteliste
+							</button>
+						{:else}
+							<button
+								class="mw-btn mw-btn--wide mw-btn--primary"
+								onclick={() => book(s.start_time)}
+								disabled={saving || !$playerId}
+							>
+								<span class="material-symbols-outlined">check</span>
+								Buchen
+							</button>
+						{/if}
+					</div>
+				</div>
 			{/each}
 		</div>
-
-		<!-- ── Selected slot body ────────────────────────────────────────── -->
-		{#if selectedSlot}
-			{@const slotBookings = bookingsForStart(selectedStart)}
-			{@const slotWait     = waitlistForStart(selectedStart)}
-			{@const freeSpots    = Math.max(0, selectedSlot.capacity - slotBookings.length)}
-
-			<div class="tds-slot-card">
-				<div class="tds-slot-head">
-					<div class="tds-slot-head__left">
-						<span class="tds-slot-time">
-							{String(selectedSlot.start_time).slice(0,5)} – {String(selectedSlot.end_time).slice(0,5)} Uhr
-						</span>
-						<span class="tds-slot-stats">{slotBookings.length}/{selectedSlot.capacity} belegt{#if slotWait.length} · {slotWait.length} warten{/if}</span>
-					</div>
-					{#if selectedSlot.note}
-						<span class="tds-slot-note">{selectedSlot.note}</span>
-					{/if}
-				</div>
-
-				<!-- ── Lane circles ─────────────────────────────────────── -->
-				<div class="tds-lanes">
-					{#each slotBookings as b (b.id)}
-						{@const pl = getPlayer(b.player_id)}
-						{@const isMe = b.player_id === $playerId}
-						<button
-							class="tds-lane tds-lane--taken"
-							class:tds-lane--mine={isMe}
-							onclick={() => { if (isMe && !isSameDayOrPast) storno(); }}
-							disabled={!isMe || isSameDayOrPast || saving}
-							title={isMe ? 'Storno' : shortName(pl?.name)}
-						>
-							<img class="tds-lane-img" src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
-							<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
-							{#if isMe}
-								<span class="tds-lane-badge tds-lane-badge--me">Du</span>
-							{/if}
-							<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
-						</button>
-					{/each}
-
-					{#each Array(freeSpots) as _, i (i)}
-						<button
-							class="tds-lane tds-lane--free"
-							onclick={() => { if (!myBooking && !myWait) book(); }}
-							disabled={saving || !$playerId || !!myBooking || !!myWait}
-							aria-label="Freier Platz"
-						>
-							<span class="material-symbols-outlined tds-lane-plus">add</span>
-							<span class="tds-lane-name tds-lane-name--muted">Frei</span>
-						</button>
-					{/each}
-				</div>
-
-				<!-- ── Waitlist strip ───────────────────────────────────── -->
-				{#if slotWait.length > 0}
-					<div class="tds-wait-row">
-						<span class="tds-wait-label">
-							<span class="material-symbols-outlined">hourglass_top</span>
-							Warteliste
-						</span>
-						<div class="tds-wait-circles">
-							{#each slotWait as w (w.id)}
-								{@const pl = getPlayer(w.player_id)}
-								{@const isMe = w.player_id === $playerId}
-								<div class="tds-wait-item" class:tds-wait-item--me={isMe} title="{shortName(pl?.name)} · Pos {w.position}">
-									<div class="tds-wait-circle">
-										<img src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
-										<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
-										<span class="tds-wait-pos">{w.position}</span>
-									</div>
-									<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
-								</div>
-							{/each}
-						</div>
-					</div>
-				{/if}
-
-				<!-- ── Action button ────────────────────────────────────── -->
-				<div class="tds-action-wrap">
-					{#if myBooking}
-						<button
-							class="mw-btn mw-btn--wide tds-btn-storno"
-							onclick={storno}
-							disabled={saving || isSameDayOrPast}
-						>
-							<span class="material-symbols-outlined">event_busy</span>
-							Storno
-						</button>
-						{#if isSameDayOrPast}
-							<p class="tds-hint">Storno am selben Tag nicht mehr möglich.</p>
-						{:else}
-							<p class="tds-hint tds-hint--ok">Du bist gebucht. Viel Spaß beim Training!</p>
-						{/if}
-					{:else if myWait}
-						<button
-							class="mw-btn mw-btn--wide mw-btn--ghost"
-							onclick={leaveWaitlist}
-							disabled={saving}
-						>
-							Von Warteliste abmelden
-						</button>
-						<p class="tds-hint">Du bist auf Position {myWait.position}. Du wirst automatisch benachrichtigt.</p>
-					{:else if slotRatio >= 1}
-						<button
-							class="mw-btn mw-btn--wide tds-btn-waitlist"
-							onclick={book}
-							disabled={saving || !$playerId}
-						>
-							<span class="material-symbols-outlined">hourglass_empty</span>
-							Auf die Warteliste
-						</button>
-					{:else}
-						<button
-							class="mw-btn mw-btn--wide mw-btn--primary"
-							onclick={book}
-							disabled={saving || !$playerId}
-						>
-							<span class="material-symbols-outlined">check</span>
-							Buchen
-						</button>
-					{/if}
-				</div>
-			</div>
-		{/if}
 	{/if}
 </BottomSheet>
 
@@ -449,69 +438,33 @@
 	}
 	.tds-key-release:active { transform: scale(0.95); }
 
-	/* Section titles */
-	.tds-section-title {
-		font-family: var(--font-display);
-		font-size: var(--text-label-sm); font-weight: 800;
-		text-transform: uppercase; letter-spacing: 0.06em;
-		color: var(--color-on-surface-variant);
-		margin: 0 0 var(--space-2);
-	}
-	.tds-section-title--sub { margin-top: var(--space-4); }
-
-	/* Heatmap pills */
-	.tds-pills {
-		display: flex; gap: var(--space-2);
-		overflow-x: auto; scrollbar-width: none;
-		padding: 2px 0 var(--space-3);
-	}
-	.tds-pills::-webkit-scrollbar { display: none; }
-
-	.tds-pill {
-		position: relative;
-		flex-shrink: 0;
-		display: flex; flex-direction: column; align-items: center; gap: 2px;
-		min-width: 72px;
-		padding: var(--space-3) var(--space-4);
-		border-radius: var(--radius-lg);
-		border: 2px solid var(--pill-color, var(--color-outline-variant));
-		background: color-mix(in srgb, var(--pill-color, var(--color-outline-variant)) 12%, transparent);
-		cursor: pointer;
-		-webkit-tap-highlight-color: transparent;
-		transition: transform 100ms ease, box-shadow 150ms ease;
-		font: inherit;
-	}
-	.tds-pill:active { transform: scale(0.95); }
-	.tds-pill--active {
-		background: var(--pill-color, var(--color-primary));
-		box-shadow: 0 4px 12px color-mix(in srgb, var(--pill-color, var(--color-primary)) 40%, transparent);
-	}
-	.tds-pill-time {
-		font-family: var(--font-display);
-		font-weight: 800; font-size: var(--text-label-md);
-		color: var(--pill-color, var(--color-on-surface));
-	}
-	.tds-pill--active .tds-pill-time { color: #fff; }
-	.tds-pill-load {
-		font-size: 0.7rem; font-weight: 600;
-		color: var(--color-on-surface-variant);
-	}
-	.tds-pill--active .tds-pill-load { color: rgba(255,255,255,0.85); }
-	.tds-pill-badge {
-		position: absolute; top: -6px; right: -4px;
-		background: var(--color-primary); color: #fff;
-		border-radius: 999px; padding: 1px 6px;
-		font-size: 0.58rem; font-weight: 800;
-		text-transform: uppercase; letter-spacing: 0.05em;
+	/* Stacked slot cards */
+	.tds-slot-stack {
+		display: flex; flex-direction: column; gap: var(--space-4);
 	}
 
-	/* Slot card wrapper */
 	.tds-slot-card {
-		background: linear-gradient(180deg, var(--color-surface-container-lowest, #fff) 0%, color-mix(in srgb, var(--color-primary) 3%, var(--color-surface-container-lowest, #fff)) 100%);
+		position: relative;
+		background: linear-gradient(180deg, var(--color-surface-container-lowest, #fff) 0%, color-mix(in srgb, var(--slot-accent, var(--color-primary)) 4%, var(--color-surface-container-lowest, #fff)) 100%);
 		border-radius: var(--radius-xl, 20px);
 		border: 1.5px solid var(--color-outline-variant);
 		padding: var(--space-4);
 		box-shadow: var(--shadow-card);
+		overflow: hidden;
+	}
+	.tds-slot-card::before {
+		content: '';
+		position: absolute; left: 0; top: 0; bottom: 0;
+		width: 4px;
+		background: var(--slot-accent, var(--color-outline-variant));
+	}
+	.tds-slot-badge {
+		flex-shrink: 0;
+		background: var(--color-primary); color: #fff;
+		border-radius: 999px; padding: 2px 8px;
+		font-size: 0.6rem; font-weight: 800;
+		text-transform: uppercase; letter-spacing: 0.05em;
+		align-self: center;
 	}
 
 	.tds-slot-head {
