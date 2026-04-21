@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/cron/keyduty-check", "schedule": "0 10 * * *" }
+  ]
+}

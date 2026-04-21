@@ -10,6 +10,7 @@
 	import { toDateStr, fmtDate, DAY_SHORT }        from '$lib/utils/dates.js';
 	import BottomSheet    from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard    from '$lib/components/spielbetrieb/CarpoolCard.svelte';
+	import TrainingDetailSheet from '$lib/components/kalender/TrainingDetailSheet.svelte';
 
 	// ── Date helpers ─────────────────────────────────────────────────────────
 	function daysUntilLabel(dateStr) {
@@ -32,6 +33,7 @@
 	let pastMatches    = $state([]);
 	let templates      = $state([]);
 	let nextOverrides  = $state([]);
+	let nextSpecials   = $state([]);
 	let nextBookings   = $state([]);
 	let keyDuties      = $state([]);
 	let pendingLineups = $state([]);
@@ -49,6 +51,14 @@
 	let keySheetOpen = $state(false);
 	let keySheetItem = $state(null); // { date, start_time, currentPlayerId }
 
+	// Training detail sheet
+	let trSheetOpen = $state(false);
+	let trSheetDate = $state(null);
+	function openTrSheet(date) {
+		trSheetDate = date;
+		trSheetOpen = true;
+	}
+
 	// ── Date range constants ──────────────────────────────────────────────────
 	const today  = toDateStr(new Date());
 	const plus14 = toDateStr(new Date(Date.now() + 14 * 86400000));
@@ -56,13 +66,13 @@
 
 	// ── Training expansion (same logic as +page.svelte) ───────────────────────
 	const nextTrainings = $derived.by(() => {
-		if (!templates.length) return [];
 		const sessions = [];
 		const base = new Date(); base.setHours(0,0,0,0);
 		for (let i = 0; i < 14; i++) {
 			const d   = new Date(base); d.setDate(base.getDate() + i);
 			const dow = d.getDay();
 			const key = fmt(d.getFullYear(), d.getMonth(), d.getDate());
+
 			for (const tpl of templates.filter(t => t.day_of_week === dow)) {
 				const sh = Number(String(tpl.start_time).slice(0,2));
 				const eh = Number(String(tpl.end_time).slice(0,2));
@@ -71,12 +81,44 @@
 					const endTime   = `${String(h+1).padStart(2,'0')}:00`;
 					const ov = nextOverrides.find(o => o.date === key && String(o.start_time).slice(0,5) === startTime);
 					if (ov?.closed) continue;
-					sessions.push({ date: key, dateObj: d, start_time: startTime, end_time: endTime, lane_count: tpl.lane_count, note: ov?.note ?? null });
+					sessions.push({ date: key, dateObj: d, start_time: startTime, end_time: endTime, capacity: tpl.lane_count, note: ov?.note ?? null });
 				}
 			}
+
+			for (const sp of nextSpecials.filter(s => s.date === key)) {
+				sessions.push({
+					date: key, dateObj: d,
+					start_time: String(sp.start_time).slice(0,5),
+					end_time:   String(sp.end_time).slice(0,5),
+					capacity:   sp.capacity,
+					note:       sp.note ?? null,
+					special:    true,
+				});
+			}
 		}
+		sessions.sort((a,b) =>
+			a.date === b.date
+				? a.start_time.localeCompare(b.start_time)
+				: a.date.localeCompare(b.date)
+		);
 		return sessions;
 	});
+
+	// Group slots by day for feed (one row per day)
+	const nextTrainingDays = $derived.by(() => {
+		const map = new Map();
+		for (const s of nextTrainings) {
+			if (!map.has(s.date)) map.set(s.date, { date: s.date, dateObj: s.dateObj, slots: [] });
+			map.get(s.date).slots.push(s);
+		}
+		return [...map.values()];
+	});
+
+	function dayRatio(day) {
+		if (!day.slots.length) return 0;
+		const rs = day.slots.map(s => s.capacity > 0 ? bookingsFor(s.date, s.start_time) / s.capacity : 0);
+		return rs.reduce((a,b) => a + b, 0) / rs.length;
+	}
 
 	// ── Occupancy helpers ─────────────────────────────────────────────────────
 	function bookingsFor(date, startTime) {
@@ -161,7 +203,7 @@
 
 	// ── Hub card derived ──────────────────────────────────────────────────────
 	const nextMatch      = $derived(matches[0] ?? null);
-	const nextTraining   = $derived(nextTrainings[0] ?? null);
+	const nextTrainingDay = $derived(nextTrainingDays[0] ?? null);
 	const eventCount     = $derived(upcomingEvents.length);
 	const nextEventDays  = $derived(upcomingEvents.length ? daysUntilLabel(upcomingEvents[0].date) : null);
 
@@ -172,8 +214,8 @@
 			items.push({ type: 'event',    sortKey: ev.date + 'T' + (ev.time ?? '23:59'), data: ev });
 		for (const m of matches)
 			items.push({ type: 'match',    sortKey: m.date  + 'T' + (m.time  ?? '23:59'), data: m  });
-		for (const tr of nextTrainings)
-			items.push({ type: 'training', sortKey: tr.date + 'T' + tr.start_time,         data: tr });
+		for (const day of nextTrainingDays)
+			items.push({ type: 'training', sortKey: day.date + 'T' + day.slots[0].start_time, data: day });
 		for (const bp of birthdayPills)
 			items.push({ type: 'birthday', sortKey: bp.date + 'T12:00',                    data: bp });
 		if ($playerRole === 'kapitaen') {
@@ -266,7 +308,8 @@
 				.gte('date', minus2).lt('date', today).order('date'),
 			sb.from('training_templates').select('*').eq('active', true),
 			sb.from('training_overrides').select('*').gte('date', today).lte('date', plus14),
-			sb.from('training_bookings').select('date, start_time, lane_number, player_id').gte('date', today).lte('date', plus14),
+			sb.from('training_specials').select('*').gte('date', today).lte('date', plus14),
+			sb.from('training_bookings').select('date, start_time, player_id').gte('date', today).lte('date', plus14),
 			sb.from('training_key_duties').select('date, start_time, player_id, players(name)').gte('date', today).lte('date', plus14),
 			sb.from('players').select('id, name, photo, birth_date').not('birth_date', 'is', null),
 		];
@@ -285,10 +328,11 @@
 		pastMatches    = results[3].data ?? [];
 		templates      = results[4].data ?? [];
 		nextOverrides  = results[5].data ?? [];
-		nextBookings   = results[6].data ?? [];
-		keyDuties      = results[7].data ?? [];
-		allPlayers     = results[8].data ?? [];
-		pendingLineups = results[9]?.data ?? [];
+		nextSpecials   = results[6].data ?? [];
+		nextBookings   = results[7].data ?? [];
+		keyDuties      = results[8].data ?? [];
+		allPlayers     = results[9].data ?? [];
+		pendingLineups = results[10]?.data ?? [];
 		loading        = false;
 	}
 
@@ -378,9 +422,10 @@
 		<button class="hub-card" onclick={() => setSubtab('/kalender', 'trainings')}>
 			<span class="material-symbols-outlined hub-icon">fitness_center</span>
 			<span class="hub-label">Training</span>
-			{#if nextTraining}
-				{@const ratio = occRatio(nextTraining.date, nextTraining.start_time, nextTraining.lane_count)}
-				<span class="hub-info">{DAY_SHORT[(new Date(nextTraining.date + 'T00:00:00')).getDay()]} · {nextTraining.start_time.slice(0,5)}</span>
+			{#if nextTrainingDay}
+				{@const ratio = dayRatio(nextTrainingDay)}
+				{@const first = nextTrainingDay.slots[0]}
+				<span class="hub-info">{DAY_SHORT[nextTrainingDay.dateObj.getDay()]} · {first.start_time}</span>
 				<div class="hub-bar" style="--bar-ratio:{ratio}; --bar-color:{occColor(ratio)}"></div>
 			{:else}
 				<span class="hub-info hub-info--muted">Kein Training</span>
@@ -460,31 +505,51 @@
 									</div>
 
 								{:else if item.type === 'training'}
-									{@const tr    = item.data}
-									{@const ratio = occRatio(tr.date, tr.start_time, tr.lane_count)}
-									{@const duty  = keyDutyFor(tr.date, tr.start_time)}
+									{@const day   = item.data}
+									{@const first = day.slots[0]}
+									{@const last  = day.slots[day.slots.length - 1]}
+									{@const ratio = dayRatio(day)}
+									{@const duty  = keyDutyFor(day.date, first.start_time)}
 									{@const isMe  = duty?.player_id === $playerId}
-									<div class="feed-item feed-item--training">
+									<button class="feed-item feed-item--training feed-item--btn" onclick={() => openTrSheet(day.date)}>
 										<span class="feed-item-icon material-symbols-outlined" style="color:var(--color-primary)">fitness_center</span>
 										<div class="feed-item-body">
 											<span class="feed-item-title">Training</span>
-											<span class="feed-item-sub">{tr.start_time.slice(0,5)} – {tr.end_time.slice(0,5)} Uhr</span>
+											<span class="feed-item-sub">{first.start_time} – {last.end_time} Uhr</span>
 											<div class="feed-occ-bar" style="--bar-ratio:{ratio}; --bar-color:{occColor(ratio)}"></div>
 										</div>
 										{#if !duty}
-											<button class="feed-key-chip feed-key-chip--free" onclick={() => takeKeyDuty(tr.date, tr.start_time)}>
+											<span
+												class="feed-key-chip feed-key-chip--free"
+												role="button"
+												tabindex="0"
+												onclick={(e) => { e.stopPropagation(); takeKeyDuty(day.date, first.start_time); }}
+												onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); takeKeyDuty(day.date, first.start_time); } }}
+											>
 												<span class="material-symbols-outlined">key</span>frei
-											</button>
+											</span>
 										{:else if isMe}
-											<button class="feed-key-chip feed-key-chip--me" onclick={() => releaseKeyDuty(tr.date, tr.start_time)}>
+											<span
+												class="feed-key-chip feed-key-chip--me"
+												role="button"
+												tabindex="0"
+												onclick={(e) => { e.stopPropagation(); releaseKeyDuty(day.date, first.start_time); }}
+												onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); releaseKeyDuty(day.date, first.start_time); } }}
+											>
 												<span class="material-symbols-outlined">key</span>Ich
-											</button>
+											</span>
 										{:else}
-											<button class="feed-key-chip feed-key-chip--other" onclick={() => openKeySwapSheet(tr.date, tr.start_time, duty.player_id)}>
+											<span
+												class="feed-key-chip feed-key-chip--other"
+												role="button"
+												tabindex="0"
+												onclick={(e) => { e.stopPropagation(); openKeySwapSheet(day.date, first.start_time, duty.player_id); }}
+												onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openKeySwapSheet(day.date, first.start_time, duty.player_id); } }}
+											>
 												<span class="material-symbols-outlined">key</span>{keyDutyPlayerName(duty)?.split(' ').pop() ?? '?'}
-											</button>
+											</span>
 										{/if}
-									</div>
+									</button>
 
 								{:else if item.type === 'event'}
 									{@const ev = item.data}
@@ -540,6 +605,9 @@
 		<CarpoolCard match={carpoolSheetMatch} meetup={carpoolSheetMeetup} carpools={carpoolSheetData} onChanged={() => openCarpoolSheet(carpoolSheetMatch)} />
 	{/if}
 </BottomSheet>
+
+<!-- ── Training detail BottomSheet ─────────────────────────────────────────── -->
+<TrainingDetailSheet bind:open={trSheetOpen} date={trSheetDate} onReload={loadData} />
 
 <!-- ── Key duty swap BottomSheet ────────────────────────────────────────────── -->
 <BottomSheet bind:open={keySheetOpen} title="Schlüssel-Dienst">

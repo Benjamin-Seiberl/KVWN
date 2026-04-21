@@ -3579,19 +3579,6 @@ button.widget--card:active {
   flex-shrink: 0;
 }
 
-/* ── TrainingWidget skeleton shapes ──────────────────────── */
-.skel-tw-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-md);
-}
-.skel-tw-line {
-  height: 12px;
-  border-radius: var(--radius-full);
-  width: 70%;
-  margin-top: var(--space-2);
-}
-
 /* ── StatsView skeleton shapes ───────────────────────────── */
 .skel-chart-card {
   background: var(--color-surface-container-lowest);

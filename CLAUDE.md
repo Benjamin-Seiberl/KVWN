@@ -61,6 +61,7 @@ Every `+page.svelte` is a thin router — separate `{#if}` blocks (not `{:else i
 - **`players.email`** — the RLS auth bridge. Policies match `auth.jwt() ->> 'email'` against `players.email`. No `auth_user_id` column.
 - **`matches.is_tournament` / `is_landesbewerb`** — boolean flags; no separate table per type.
 - **Player photos** — `static/images/<photo-or-name>.jpg`, built by `imgPath()`.
+- **`training_templates.lane_count` = Kapazität** pro Slot. Kein Rename (legacy). Bookings ohne `lane_number` (kapazitätsbasiert). `training_specials` = einmalige Sessions. `training_waitlist` = Warteliste. Buchen/Storno via RPCs `book_training_slot`, `cancel_training_booking`.
 
 ## RLS Write Patterns
 

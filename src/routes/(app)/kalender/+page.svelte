@@ -1,12 +1,11 @@
 <script>
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
-	import { playerId } from '$lib/stores/auth';
 	import { currentSubtab } from '$lib/stores/subtab.js';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { MONTH_FULL, DAY_SHORT } from '$lib/utils/dates.js';
 	import UebersichtTab from '$lib/components/kalender/UebersichtTab.svelte';
-	import { imgPath } from '$lib/utils/players.js';
+	import TrainingDetailSheet from '$lib/components/kalender/TrainingDetailSheet.svelte';
 
 	let today       = new Date();
 	let viewYear    = $state(today.getFullYear());
@@ -17,12 +16,11 @@
 	let events    = $state([]);
 	let templates = $state([]);
 	let overrides = $state([]);
+	let specials  = $state([]);
 	let bookings  = $state([]);
-	let players   = $state([]);
+	let waitlist  = $state([]);
 
-	// ── Next-14-days training data ────────────────────────────────────────────
-	let nextOverrides = $state([]);
-	let nextBookings  = $state([]);
+	const WEEKDAY_LONG = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
 
 	function fmt(y, m, d) {
 		return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -42,26 +40,14 @@
 		const [
 			{ data: m,  error: e1 },
 			{ data: ev, error: e2 },
-			{ data: t,  error: e3 },
-			{ data: o,  error: e4 },
-			{ data: b,  error: e5 },
-			{ data: p,  error: e6 },
 		] = await Promise.all([
 			sb.from('matches').select('id, date, time, home_away, opponent, location, round, is_tournament, tournament_title').gte('date', from).lte('date', to),
 			sb.from('events').select('*').gte('date', from).lte('date', to),
-			sb.from('training_templates').select('*').eq('active', true),
-			sb.from('training_overrides').select('*').gte('date', from).lte('date', to),
-			sb.from('training_bookings').select('*').gte('date', from).lte('date', to),
-			sb.from('players').select('id, name, avatar_url, photo'),
 		]);
-		const err = e1 ?? e2 ?? e3 ?? e4 ?? e5 ?? e6;
+		const err = e1 ?? e2;
 		if (err) { triggerToast('Fehler: ' + err.message); return; }
 		matches   = m ?? [];
 		events    = ev ?? [];
-		templates = t ?? [];
-		overrides = o ?? [];
-		bookings  = b ?? [];
-		players   = p ?? [];
 	}
 
 	function prevMonth() {
@@ -86,19 +72,13 @@
 		return null;
 	}
 
-	function getPlayer(id) {
-		return players.find(p => p.id === id);
-	}
-
 	// ── Time helpers ──────────────────────────────────────────────────────────
-	/** Convert "HH:MM" or "HH:MM:SS" to total minutes */
 	function toMinutes(timeStr) {
 		if (!timeStr) return 0;
 		const s = String(timeStr);
 		return Number(s.slice(0,2)) * 60 + Number(s.slice(3,5));
 	}
 
-	/** Add minutes to "HH:MM" string */
 	function addMinutes(timeStr, mins) {
 		const total = toMinutes(timeStr) + mins;
 		const h = Math.floor(total / 60) % 24;
@@ -127,23 +107,19 @@
 	// ── Unified chronological timeline for selected day ───────────────────────
 	const dayTimeline = $derived.by(() => {
 		if (!selectedKey || !selectedDay) return [];
-
 		const items = [];
 
-		// Matches
 		for (const m of selectedMatches) {
 			const startTime  = String(m.time ?? '').slice(0,5);
 			const endTime    = startTime ? addMinutes(startTime, 120) : '';
 			items.push({ type: 'match', sortTime: toMinutes(startTime || '00:00'), data: { ...m, startTime, endTime } });
 		}
 
-		// Events
 		for (const ev of selectedEvents) {
 			const startTime = String(ev.time ?? '').slice(0,5);
 			items.push({ type: 'event', sortTime: toMinutes(startTime || '00:00'), data: { ...ev, startTime } });
 		}
 
-		// Sort chronologically
 		items.sort((a, b) => a.sortTime - b.sortTime);
 		return items;
 	});
@@ -151,32 +127,45 @@
 	const selectedLabel = $derived.by(() => {
 		if (!selectedDay) return '';
 		const d = new Date(viewYear, viewMonth, selectedDay);
-		const weekdays = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
-		return weekdays[d.getDay()] + ', ' + selectedDay + '. ' + MONTH_FULL[viewMonth];
+		return WEEKDAY_LONG[d.getDay()] + ', ' + selectedDay + '. ' + MONTH_FULL[viewMonth];
 	});
 
+	// ── Next 14 days training data ────────────────────────────────────────────
 	async function loadNext14() {
 		const from = new Date();
 		const to   = new Date(); to.setDate(from.getDate() + 13);
 		const fmtD = d => fmt(d.getFullYear(), d.getMonth(), d.getDate());
-		const [{ data: o, error: e1 }, { data: b, error: e2 }] = await Promise.all([
+		const [
+			{ data: t,  error: e1 },
+			{ data: o,  error: e2 },
+			{ data: s,  error: e3 },
+			{ data: b,  error: e4 },
+			{ data: w,  error: e5 },
+		] = await Promise.all([
+			sb.from('training_templates').select('*').eq('active', true),
 			sb.from('training_overrides').select('*').gte('date', fmtD(from)).lte('date', fmtD(to)),
+			sb.from('training_specials').select('*').gte('date', fmtD(from)).lte('date', fmtD(to)),
 			sb.from('training_bookings').select('*').gte('date', fmtD(from)).lte('date', fmtD(to)),
+			sb.from('training_waitlist').select('*').gte('date', fmtD(from)).lte('date', fmtD(to)),
 		]);
-		if (e1 ?? e2) { triggerToast('Fehler: ' + (e1 ?? e2).message); return; }
-		nextOverrides = o ?? [];
-		nextBookings  = b ?? [];
+		const err = e1 ?? e2 ?? e3 ?? e4 ?? e5;
+		if (err) { triggerToast('Fehler: ' + err.message); return; }
+		templates = t ?? [];
+		overrides = o ?? [];
+		specials  = s ?? [];
+		bookings  = b ?? [];
+		waitlist  = w ?? [];
 	}
 
-	// ── Next 14 days: expand templates → concrete sessions ───────────────────
+	// Expand templates + specials into concrete hour slots for the next 14 days
 	const nextTrainings = $derived.by(() => {
-		if (!templates.length) return [];
 		const sessions = [];
 		const base = new Date(); base.setHours(0,0,0,0);
 		for (let i = 0; i < 14; i++) {
 			const d   = new Date(base); d.setDate(base.getDate() + i);
 			const dow = d.getDay();
 			const key = fmt(d.getFullYear(), d.getMonth(), d.getDate());
+
 			const dayTpls = templates.filter(t => t.day_of_week === dow);
 			for (const tpl of dayTpls) {
 				const sh = Number(String(tpl.start_time).slice(0,2));
@@ -184,35 +173,36 @@
 				for (let h = sh; h < eh; h++) {
 					const startTime = `${String(h).padStart(2,'0')}:00`;
 					const endTime   = `${String(h+1).padStart(2,'0')}:00`;
-					const ov = nextOverrides.find(o => o.date === key && String(o.start_time).slice(0,5) === startTime);
+					const ov = overrides.find(o => o.date === key && String(o.start_time).slice(0,5) === startTime);
 					if (ov?.closed) continue;
-					sessions.push({ date: key, dateObj: d, start_time: startTime, end_time: endTime, lane_count: tpl.lane_count, note: ov?.note ?? null });
+					sessions.push({ date: key, dateObj: d, start_time: startTime, end_time: endTime, capacity: tpl.lane_count, note: ov?.note ?? null });
 				}
 			}
+
+			for (const sp of specials.filter(s => s.date === key)) {
+				sessions.push({
+					date: key, dateObj: d,
+					start_time: String(sp.start_time).slice(0,5),
+					end_time:   String(sp.end_time).slice(0,5),
+					capacity:   sp.capacity,
+					note:       sp.note ?? null,
+					special:    true,
+				});
+			}
 		}
+		sessions.sort((a,b) =>
+			a.date === b.date
+				? a.start_time.localeCompare(b.start_time)
+				: a.date.localeCompare(b.date)
+		);
 		return sessions;
 	});
 
-	function nextBookingsFor(date, startTime) {
-		return nextBookings.filter(b => b.date === date && String(b.start_time).slice(0,5) === startTime);
-	}
-	function myNextBooking(date, startTime) {
-		return nextBookingsFor(date, startTime).find(b => b.player_id === $playerId);
-	}
-	async function bookNextLane(date, startTime, lane) {
-		if (!$playerId) return;
-		const mine = myNextBooking(date, startTime);
-		if (mine && mine.lane_number === lane) {
-			await sb.from('training_bookings').delete().eq('id', mine.id);
-		} else if (mine) {
-			await sb.from('training_bookings').update({ lane_number: lane }).eq('id', mine.id);
-		} else {
-			await sb.from('training_bookings').insert({ date, start_time: startTime, lane_number: lane, player_id: $playerId });
-		}
-		loadNext14();
+	function bookingsFor(date, startTime) {
+		return bookings.filter(b => b.date === date && String(b.start_time).slice(0,5) === startTime).length;
 	}
 
-	// Group next trainings by date
+	// Group sessions by day
 	const trainingDays = $derived.by(() => {
 		const map = new Map();
 		for (const slot of nextTrainings) {
@@ -224,28 +214,44 @@
 		return [...map.values()];
 	});
 
-	let selectedTrainingDate = $state(null);
+	function dayRatio(day) {
+		if (!day.slots.length) return 0;
+		const ratios = day.slots.map(s => s.capacity > 0 ? bookingsFor(s.date, s.start_time) / s.capacity : 0);
+		return ratios.reduce((a,b) => a + b, 0) / ratios.length;
+	}
 
-	// Auto-select first training day once data loads
-	$effect(() => {
-		if (trainingDays.length && !selectedTrainingDate) {
-			selectedTrainingDate = trainingDays[0].date;
-		}
-	});
+	function occColor(ratio) {
+		if (ratio < 0.5)  return '#16a34a';
+		if (ratio < 0.85) return '#ea580c';
+		return '#dc2626';
+	}
 
-	const selectedDayData = $derived(
-		trainingDays.find(d => d.date === selectedTrainingDate) ?? null
-	);
+	function dayHint(day) {
+		const total  = day.slots.reduce((sum, s) => sum + s.capacity, 0);
+		const taken  = day.slots.reduce((sum, s) => sum + bookingsFor(s.date, s.start_time), 0);
+		const free   = Math.max(0, total - taken);
+		if (free === 0) return 'Alle Slots voll · Warteliste offen';
+		return `${free} von ${total} Plätzen frei`;
+	}
 
 	function chipLabel(dateObj) {
-		const today = new Date(); today.setHours(0,0,0,0);
-		const diff  = Math.round((dateObj - today) / 86400000);
+		const t = new Date(); t.setHours(0,0,0,0);
+		const diff  = Math.round((dateObj - t) / 86400000);
 		if (diff === 0) return 'Heute';
 		if (diff === 1) return 'Morgen';
-		return DAY_SHORT[dateObj.getDay()];
+		return WEEKDAY_LONG[dateObj.getDay()];
 	}
 	function chipDate(dateObj) {
 		return dateObj.getDate() + '. ' + MONTH_FULL[dateObj.getMonth()];
+	}
+
+	// ── Sheet state ──────────────────────────────────────────────────────────
+	let sheetOpen = $state(false);
+	let sheetDate = $state(null);
+
+	function openSheet(date) {
+		sheetDate = date;
+		sheetOpen = true;
 	}
 
 	onMount(() => { loadMonth(); loadNext14(); });
@@ -260,7 +266,6 @@
 <div class="kal-page">
 
 {#if $currentSubtab === 'trainings'}
-	<!-- ── Next 2 weeks: day picker + training card ────────────────────────── -->
 	<section class="tr-section">
 		<div class="sec-head">
 			<span class="material-symbols-outlined sec-icon">fitness_center</span>
@@ -273,75 +278,27 @@
 				<p>Kein Training in den nächsten 14 Tagen</p>
 			</div>
 		{:else}
-			<!-- Day chips -->
-			<div class="tr-day-scroller">
-				{#each trainingDays as day}
-					<button
-						class="tr-day-chip"
-						class:tr-day-chip--active={selectedTrainingDate === day.date}
-						onclick={() => selectedTrainingDate = day.date}
-					>
-						<span class="tr-chip-label">{chipLabel(day.dateObj)}</span>
-						<span class="tr-chip-date">{chipDate(day.dateObj)}</span>
+			<div class="tr-day-list">
+				{#each trainingDays as day (day.date)}
+					{@const ratio = dayRatio(day)}
+					{@const first = day.slots[0]}
+					{@const last  = day.slots[day.slots.length - 1]}
+					<button class="tr-day-card" onclick={() => openSheet(day.date)}>
+						<div class="tr-day-card__head">
+							<span class="tr-chip-label">Training am {WEEKDAY_LONG[day.dateObj.getDay()]}</span>
+							<span class="tr-chip-date">{chipDate(day.dateObj)} · {first.start_time}–{last.end_time} Uhr</span>
+						</div>
+						<div class="feed-occ-bar" style="--bar-ratio:{ratio}; --bar-color:{occColor(ratio)}"></div>
+						<div class="tr-day-card__hint">
+							<span class="material-symbols-outlined">sports_score</span>{dayHint(day)}
+						</div>
 					</button>
 				{/each}
 			</div>
-
-			<!-- Single card for selected day -->
-			{#if selectedDayData}
-				<div class="tr-day-card">
-					{#each selectedDayData.slots as slot, idx}
-						{@const taken     = nextBookingsFor(slot.date, slot.start_time)}
-						{@const mine      = myNextBooking(slot.date, slot.start_time)}
-						{@const freeCount = slot.lane_count - taken.length}
-
-						{#if idx > 0}<div class="tr-slot-divider"></div>{/if}
-
-						<div class="tr-slot">
-							<div class="tr-slot-header">
-								<span class="tr-slot-time">{slot.start_time} – {slot.end_time}</span>
-								{#if slot.note}<span class="tr-card-note">{slot.note}</span>{/if}
-							</div>
-							<div class="lanes">
-								{#each Array(slot.lane_count) as _, i}
-									{@const laneNum = i + 1}
-									{@const booking = taken.find(x => x.lane_number === laneNum)}
-									{@const isMe    = booking?.player_id === $playerId}
-									{@const pl      = booking ? getPlayer(booking.player_id) : null}
-									<button
-										class="lane"
-										class:lane--free={!booking}
-										class:lane--mine={isMe}
-										class:lane--taken={!!booking && !isMe}
-										onclick={() => bookNextLane(slot.date, slot.start_time, laneNum)}
-										title="Bahn {laneNum}"
-									>
-										{#if pl}
-											<img class="lane-img" src={imgPath(pl.photo, pl.name)} alt={pl.name ?? ''} draggable="false"
-												onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('lane-initial--hidden'); }} />
-											<span class="lane-initial lane-initial--hidden">{(pl.name ?? '?').slice(0,1).toUpperCase()}</span>
-										{:else}
-											<span class="material-symbols-outlined lane-add-icon">add</span>
-										{/if}
-									</button>
-								{/each}
-							</div>
-							<p class="kal-lanes-hint">
-								{#if freeCount === 0}
-									<span class="material-symbols-outlined">block</span>Alle Bahnen belegt
-								{:else if mine}
-									<span class="material-symbols-outlined">check_circle</span>Du bist eingetragen · {freeCount} frei
-								{:else}
-									<span class="material-symbols-outlined">sports_score</span>{freeCount} von {slot.lane_count} frei
-								{/if}
-							</p>
-						</div>
-					{/each}
-				</div>
-			{/if}
 		{/if}
 	</section>
 
+	<TrainingDetailSheet bind:open={sheetOpen} date={sheetDate} onReload={loadNext14} />
 {/if}
 
 {#if $currentSubtab === 'events'}
@@ -369,7 +326,6 @@
 								class="kal-day-btn"
 								class:kal-day-btn--today={isToday(cell.day)}
 								class:kal-day-btn--selected={selectedDay === cell.day}
-								class:kal-day-btn--training={type === 'training'}
 								class:kal-day-btn--match={type === 'match'}
 								class:kal-day-btn--event={type === 'event'}
 								onclick={() => selectedDay = cell.day}
@@ -410,7 +366,6 @@
 					<div class="kal-event-list">
 						{#each dayTimeline as item}
 
-							<!-- ── Match ── -->
 							{#if item.type === 'match'}
 								{@const m = item.data}
 								<a class="kal-event-card kal-event-card--match" href="/spielbetrieb">
@@ -427,7 +382,6 @@
 									</div>
 								</a>
 
-							<!-- ── Event ── -->
 							{:else if item.type === 'event'}
 								{@const ev = item.data}
 								<div class="kal-event-card kal-event-card--event">
@@ -484,7 +438,6 @@
 	.kal-day-btn { position: relative; width: 100%; aspect-ratio: 1; max-width: 2.75rem; border-radius: var(--radius-md); font-size: var(--text-body-md); font-weight: 500; color: var(--color-on-surface); display: flex; align-items: center; justify-content: center; transition: background 0.12s, transform 0.1s; flex-direction: column; background: none; border: 0; cursor: pointer; }
 	.kal-day-btn--today { font-weight: 800; background: var(--color-surface-container); }
 	.kal-day-btn--selected { background: var(--color-primary) !important; color: #fff !important; font-weight: 800; box-shadow: var(--shadow-float); }
-	.kal-day-btn--training { background: rgba(204, 0, 0, 0.07); color: var(--color-primary); font-weight: 700; }
 	.kal-day-btn--match { background: rgba(212, 175, 55, 0.12); font-weight: 700; border: 2px solid rgba(212, 175, 55, 0.4); }
 	.kal-day-btn--event { background: rgba(42, 120, 180, 0.1); color: #2a78b4; font-weight: 700; }
 	.kal-dot { position: absolute; bottom: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--color-primary); }
@@ -494,7 +447,6 @@
 	.kal-legend { display: flex; gap: var(--space-6); padding-top: var(--space-4); margin-top: var(--space-4); border-top: 1px solid var(--color-surface-container); }
 	.kal-legend-item { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-label-sm); font-weight: 600; color: var(--color-on-surface-variant); text-transform: uppercase; letter-spacing: 0.05em; }
 	.kal-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
-	.kal-legend-dot--training { background: var(--color-primary); }
 	.kal-legend-dot--match    { background: var(--color-secondary); }
 	.kal-legend-dot--event    { background: #2a78b4; }
 
@@ -526,107 +478,8 @@
 	.kal-event-btn { margin-top: var(--space-2); align-self: flex-start; padding: var(--space-2) var(--space-4); background: var(--color-primary); color: #fff; border-radius: var(--radius-md); font-size: var(--text-label-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
 	.kal-event-btn--match { background: var(--color-surface-container-lowest, #fff); color: var(--color-primary); border: 2px solid var(--color-primary); }
 
-	/* ── Lane circles ── */
-	.lanes {
-		display: flex;
-		gap: 10px;
-		flex-wrap: wrap;
-		margin-top: 2px;
-	}
-
-	.lane {
-		position: relative;
-		width: 52px;
-		height: 52px;
-		border-radius: 50%;
-		border: 2.5px dashed rgba(60,60,67,0.2);
-		background: rgba(0,0,0,0.02);
-		display: grid;
-		place-items: center;
-		cursor: pointer;
-		padding: 0;
-		overflow: hidden;
-		transition: transform 140ms cubic-bezier(0.32, 0.72, 0, 1),
-		            border-color 200ms ease,
-		            box-shadow 200ms ease;
-		-webkit-tap-highlight-color: transparent;
-	}
-	.lane:active { transform: scale(0.92); }
-
-	/* Free lane — inviting pulse + green-ish hint */
-	.lane--free {
-		border-style: dashed;
-		border-color: rgba(34, 197, 94, 0.5);
-		background: rgba(34, 197, 94, 0.04);
-		animation: lane-pulse 2.4s ease-in-out infinite;
-	}
-	@keyframes lane-pulse {
-		0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.25); }
-		50%       { box-shadow: 0 0 0 5px rgba(34,197,94,0); }
-	}
-
-	/* My booking — gold */
-	.lane--mine {
-		border-style: solid;
-		border-color: var(--color-secondary, #D4AF37);
-		box-shadow: 0 0 0 3px rgba(212,175,55,0.25), 0 2px 8px rgba(212,175,55,0.2);
-		animation: none;
-	}
-
-	/* Someone else's booking */
-	.lane--taken {
-		border-style: solid;
-		border-color: rgba(60,60,67,0.15);
-		background: #f4f4f4;
-		animation: none;
-	}
-
-	/* Player photo inside lane */
-	.lane-img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		object-position: top center;
-		display: block;
-		border-radius: 50%;
-	}
-
-	/* Fallback initial (shown when image errors) */
-	.lane-initial {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-family: var(--font-display);
-		font-weight: 800;
-		font-size: 1.1rem;
-		color: var(--color-on-surface-variant);
-		background: var(--color-surface-container);
-	}
-	.lane-initial--hidden { display: none; }
-
-	/* Add icon in free lane */
-	.lane-add-icon {
-		font-size: 1.3rem;
-		color: rgba(34, 197, 94, 0.7);
-		font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
-	}
-
-	/* Availability hint below lanes */
-	.kal-lanes-hint {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		font-size: 0.72rem;
-		font-weight: 600;
-		color: var(--color-text-soft, #888);
-		margin-top: 2px;
-	}
-	.kal-lanes-hint .material-symbols-outlined { font-size: 0.9rem; }
-
-	/* ── Section header (matches dashboard style) ── */
-	.sec-head, .tr-divider {
+	/* ── Section header ── */
+	.sec-head {
 		display: flex;
 		align-items: center;
 		gap: 7px;
@@ -647,101 +500,79 @@
 	/* ── Training section ── */
 	.tr-section { display: flex; flex-direction: column; gap: var(--space-4); }
 
-	/* Day chip scroller */
-	.tr-day-scroller {
-		display: flex;
-		gap: var(--space-2);
-		overflow-x: auto;
-		scrollbar-width: none;
-		padding-bottom: 2px;
-	}
-	.tr-day-scroller::-webkit-scrollbar { display: none; }
-
-	.tr-day-chip {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 2px;
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-lg);
-		border: 1.5px solid var(--color-outline-variant);
-		background: var(--color-surface-container-lowest);
-		cursor: pointer;
-		flex-shrink: 0;
-		transition: background 150ms ease, border-color 150ms ease, transform 100ms ease;
-		-webkit-tap-highlight-color: transparent;
-		font: inherit;
-		box-shadow: var(--shadow-card);
-	}
-	.tr-day-chip:active { transform: scale(0.95); }
-	.tr-day-chip--active {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		box-shadow: 0 4px 14px rgba(158, 0, 0, 0.28);
-	}
-
-	.tr-chip-label {
-		font-family: var(--font-display);
-		font-size: var(--text-label-sm);
-		font-weight: 800;
-		color: var(--color-on-surface);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-	}
-	.tr-chip-date {
-		font-family: var(--font-body);
-		font-size: 0.65rem;
-		font-weight: 500;
-		color: var(--color-on-surface-variant);
-		white-space: nowrap;
-	}
-	.tr-day-chip--active .tr-chip-label,
-	.tr-day-chip--active .tr-chip-date {
-		color: #fff;
-	}
-
-	/* Single day card */
-	.tr-day-card {
-		background: var(--color-surface-container-lowest);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-card);
-		border: 1.5px solid rgba(204, 0, 0, 0.12);
-		overflow: hidden;
-	}
-
-	.tr-slot {
-		padding: var(--space-4);
+	.tr-day-list {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
 	}
-	.tr-slot-divider {
-		height: 1px;
-		background: var(--color-outline-variant);
-		margin: 0 var(--space-4);
-	}
-	.tr-slot-header {
+
+	.tr-day-card {
+		width: 100%;
+		text-align: left;
+		background: var(--color-surface-container-lowest);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-card);
+		border: 1.5px solid rgba(204, 0, 0, 0.12);
+		padding: var(--space-4);
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		gap: var(--space-2);
+		cursor: pointer;
+		transition: transform 120ms ease, box-shadow 120ms ease;
+		-webkit-tap-highlight-color: transparent;
+		font: inherit;
+		color: inherit;
+	}
+	.tr-day-card:active { transform: scale(0.98); }
+
+	.tr-day-card__head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
 		gap: var(--space-2);
 	}
-	.tr-slot-time {
+
+	.tr-chip-label {
 		font-family: var(--font-display);
-		font-size: var(--text-label-md);
-		font-weight: 700;
-		color: var(--color-primary);
-		background: rgba(204, 0, 0, 0.08);
-		border-radius: var(--radius-md);
-		padding: 2px 8px;
+		font-size: var(--text-title-sm);
+		font-weight: 800;
+		color: var(--color-on-surface);
 	}
-	.tr-card-note {
+	.tr-chip-date {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-on-surface-variant);
+		white-space: nowrap;
+	}
+
+	.feed-occ-bar {
+		width: 100%;
+		height: 4px;
+		background: rgba(0,0,0,0.06);
+		border-radius: 2px;
+		position: relative;
+		overflow: hidden;
+	}
+	.feed-occ-bar::after {
+		content: '';
+		position: absolute;
+		left: 0; top: 0; bottom: 0;
+		width: calc(var(--bar-ratio, 0) * 100%);
+		background: var(--bar-color, #16a34a);
+		border-radius: 2px;
+		transition: width 300ms ease;
+	}
+
+	.tr-day-card__hint {
+		display: flex;
+		align-items: center;
+		gap: 4px;
 		font-size: 0.72rem;
 		font-weight: 600;
-		background: rgba(204,0,0,0.08);
-		color: var(--color-primary);
-		border-radius: 999px;
-		padding: 2px 8px;
+		color: var(--color-on-surface-variant);
 	}
+	.tr-day-card__hint .material-symbols-outlined { font-size: 0.9rem; }
 
 	/* ── No events ── */
 	.kal-no-events { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-10) var(--space-4); color: var(--color-outline); }
