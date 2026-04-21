@@ -33,7 +33,7 @@
 				sb.from('training_templates').select('*').eq('active', true).eq('day_of_week', dow),
 				sb.from('training_specials').select('*').eq('date', date),
 				sb.from('training_overrides').select('*').eq('date', date),
-				sb.from('training_bookings').select('id, start_time, player_id').eq('date', date),
+				sb.from('training_bookings').select('id, start_time, player_id, lane_number').eq('date', date),
 				sb.from('training_waitlist').select('id, start_time, player_id, position').eq('date', date).order('position'),
 				sb.from('training_key_duties').select('start_time, player_id, players(name, photo)').eq('date', date).maybeSingle(),
 				sb.from('players').select('id, name, photo'),
@@ -92,6 +92,9 @@
 	function bookingsForStart(start) {
 		return bookings.filter(b => String(b.start_time).slice(0,5) === String(start).slice(0,5));
 	}
+	function laneBooking(start, lane) {
+		return bookings.find(b => String(b.start_time).slice(0,5) === String(start).slice(0,5) && b.lane_number === lane) ?? null;
+	}
 	function waitlistForStart(start) {
 		return waitlist.filter(w => String(w.start_time).slice(0,5) === String(start).slice(0,5));
 	}
@@ -148,7 +151,7 @@
 	// ── Bookings/waitlist-only refresh (no skeleton flicker) ───────────────
 	async function refreshBookings() {
 		const [bks, wl] = await Promise.all([
-			sb.from('training_bookings').select('id, start_time, player_id').eq('date', date),
+			sb.from('training_bookings').select('id, start_time, player_id, lane_number').eq('date', date),
 			sb.from('training_waitlist').select('id, start_time, player_id, position').eq('date', date).order('position'),
 		]);
 		if (!bks.error) bookings = bks.data ?? [];
@@ -156,21 +159,24 @@
 	}
 
 	// ── Booking actions ─────────────────────────────────────────────────────
-	async function book(startTime) {
+	async function book(startTime, laneNumber) {
 		if (!startTime || saving) return;
 		saving = true;
-		const { data, error } = await sb.rpc('book_training_slot', {
+		const { data, error } = await sb.rpc('book_training_lane', {
 			p_date:  date,
 			p_start: startTime,
+			p_lane:  laneNumber,
 		});
 		if (error) {
 			triggerToast('Fehler: ' + error.message);
 		} else if (data?.status === 'booked') {
-			triggerToast('Gebucht');
+			triggerToast('Gebucht (Bahn ' + data.lane + ')');
 		} else if (data?.status === 'waitlisted') {
 			triggerToast('Auf Warteliste (Position ' + data.position + ')');
+		} else if (data?.status === 'lane_taken') {
+			triggerToast('Bahn bereits belegt');
 		} else if (data?.status === 'already_booked') {
-			triggerToast('Bereits gebucht');
+			triggerToast('Bereits gebucht (Bahn ' + data.lane + ')');
 		} else if (data?.status === 'already_waitlisted') {
 			triggerToast('Bereits auf Warteliste');
 		}
@@ -193,6 +199,7 @@
 			triggerToast('Storniert');
 			const promoted = data?.promoted_player_id;
 			if (promoted) {
+				const promotedLane = data?.promoted_lane;
 				try {
 					await fetch('/api/push/notify', {
 						method: 'POST',
@@ -200,7 +207,7 @@
 						body: JSON.stringify({
 							player_ids: [promoted],
 							title: 'Nachgerückt!',
-							body: 'Du bist nachgerückt! Dein Training um ' + String(data.start_time).slice(0,5) + ' Uhr ist gesichert.',
+							body: 'Du bist nachgerückt! Dein Training um ' + String(data.start_time).slice(0,5) + ' Uhr' + (promotedLane ? ' (Bahn ' + promotedLane + ')' : '') + ' ist gesichert.',
 							url: '/kalender',
 						}),
 					});
@@ -212,7 +219,7 @@
 		saving = false;
 	}
 
-	async function switchBooking(newStart) {
+	async function switchBooking(newStart, newLane) {
 		if (saving) return;
 		saving = true;
 		try {
@@ -228,13 +235,14 @@
 				}
 				const promoted = data?.promoted_player_id;
 				if (promoted) {
+					const promotedLane = data?.promoted_lane;
 					fetch('/api/push/notify', {
 						method: 'POST',
 						headers: { 'content-type': 'application/json' },
 						body: JSON.stringify({
 							player_ids: [promoted],
 							title: 'Nachgerückt!',
-							body: 'Du bist nachgerückt! Dein Training um ' + String(data.start_time).slice(0,5) + ' Uhr ist gesichert.',
+							body: 'Du bist nachgerückt! Dein Training um ' + String(data.start_time).slice(0,5) + ' Uhr' + (promotedLane ? ' (Bahn ' + promotedLane + ')' : '') + ' ist gesichert.',
 							url: '/kalender',
 						}),
 					}).catch(() => {});
@@ -243,13 +251,20 @@
 				const { error } = await sb.from('training_waitlist').delete().eq('id', myAnyWait.id);
 				if (error) { triggerToast('Fehler: ' + error.message); return; }
 			}
-			const { data, error } = await sb.rpc('book_training_slot', { p_date: date, p_start: newStart });
+			if (newLane === undefined || newLane === null) {
+				// Waitlist switch — no specific lane, pick first (RPC will route to waitlist if full)
+				const firstFree = Array.from({ length: 99 }, (_, i) => i + 1).find(ln => !laneBooking(newStart, ln)) ?? 1;
+				newLane = firstFree;
+			}
+			const { data, error } = await sb.rpc('book_training_lane', { p_date: date, p_start: newStart, p_lane: newLane });
 			if (error) {
 				triggerToast('Fehler: ' + error.message);
 			} else if (data?.status === 'booked') {
-				triggerToast('Gewechselt');
+				triggerToast('Gewechselt (Bahn ' + data.lane + ')');
 			} else if (data?.status === 'waitlisted') {
 				triggerToast('Auf Warteliste (Position ' + data.position + ')');
+			} else if (data?.status === 'lane_taken') {
+				triggerToast('Bahn bereits belegt');
 			}
 			await refreshBookings();
 			onReload?.();
@@ -344,44 +359,45 @@
 
 					<!-- Lane circles -->
 					<div class="tds-lanes">
-						{#each slotBookings as b (b.id)}
-							{@const pl = getPlayer(b.player_id)}
-							{@const isMe = b.player_id === $playerId}
-							<button
-								class="tds-lane tds-lane--taken"
-								class:tds-lane--mine={isMe}
-								onclick={() => { if (isMe && !isSameDayOrPast) storno(b.id); }}
-								disabled={!isMe || isSameDayOrPast || saving}
-								title={isMe ? 'Storno' : shortName(pl?.name)}
-							>
-								<img class="tds-lane-img" src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
-								<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
-								{#if isMe}
-									<span class="tds-lane-badge tds-lane-badge--me">Du</span>
-								{/if}
-								<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
-							</button>
-						{/each}
-
-						{#each Array(freeSpots) as _, i (i)}
-							{@const needSwitch   = (!!myAnyBooking || !!myAnyWait) && !myB}
-							{@const cannotSwitch = needSwitch && !!myAnyBooking && isSameDayOrPast}
-							{@const isOwnSlot    = !!myB}
-							<button
-								class="tds-lane tds-lane--free"
-								class:tds-lane--switch={needSwitch && !cannotSwitch}
-								onclick={() => {
-									if (cannotSwitch || isOwnSlot) return;
-									if (needSwitch) switchBooking(s.start_time);
-									else book(s.start_time);
-								}}
-								disabled={saving || !$playerId || cannotSwitch || isOwnSlot}
-								aria-label={needSwitch ? 'Hierher wechseln' : 'Freier Platz'}
-								title={needSwitch ? 'Hierher wechseln' : 'Buchen'}
-							>
-								<span class="material-symbols-outlined tds-lane-plus">{needSwitch ? 'swap_horiz' : 'add'}</span>
-								<span class="tds-lane-name tds-lane-name--muted">{needSwitch ? 'Wechseln' : 'Frei'}</span>
-							</button>
+						{#each Array(s.capacity) as _, idx (idx)}
+							{@const lane = idx + 1}
+							{@const b = laneBooking(s.start_time, lane)}
+							{#if b}
+								{@const pl = getPlayer(b.player_id)}
+								{@const isMe = b.player_id === $playerId}
+								<button
+									class="tds-lane tds-lane--taken"
+									class:tds-lane--mine={isMe}
+									onclick={() => { if (isMe && !isSameDayOrPast) storno(b.id); }}
+									disabled={!isMe || isSameDayOrPast || saving}
+									title={isMe ? 'Storno' : shortName(pl?.name)}
+								>
+									<img class="tds-lane-img" src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
+									<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
+									{#if isMe}
+										<span class="tds-lane-badge tds-lane-badge--me">Du</span>
+									{/if}
+									<span class="tds-lane-name">Bahn {lane} · {shortName(pl?.name) ?? '—'}</span>
+								</button>
+							{:else}
+								{@const needSwitch   = (!!myAnyBooking || !!myAnyWait)}
+								{@const cannotSwitch = needSwitch && !!myAnyBooking && isSameDayOrPast}
+								<button
+									class="tds-lane tds-lane--free"
+									class:tds-lane--switch={needSwitch && !cannotSwitch}
+									onclick={() => {
+										if (cannotSwitch) return;
+										if (needSwitch) switchBooking(s.start_time, lane);
+										else book(s.start_time, lane);
+									}}
+									disabled={saving || !$playerId || cannotSwitch}
+									aria-label={needSwitch ? 'Zu Bahn ' + lane + ' wechseln' : 'Bahn ' + lane + ' buchen'}
+									title={needSwitch ? 'Zu Bahn ' + lane + ' wechseln' : 'Bahn ' + lane + ' buchen'}
+								>
+									<span class="material-symbols-outlined tds-lane-plus">{needSwitch ? 'swap_horiz' : 'add'}</span>
+									<span class="tds-lane-name tds-lane-name--muted">Bahn {lane}</span>
+								</button>
+							{/if}
 						{/each}
 					</div>
 
@@ -417,7 +433,7 @@
 									{@const switchToWait = !!myAnyBooking || !!myAnyWait}
 									<button
 										class="tds-wait-item tds-wait-item--add"
-										onclick={() => { if (switchToWait) switchBooking(s.start_time); else book(s.start_time); }}
+										onclick={() => { if (switchToWait) switchBooking(s.start_time, 1); else book(s.start_time, 1); }}
 										disabled={saving || !$playerId}
 										aria-label={switchToWait ? 'Zur Warteliste wechseln' : 'Auf die Warteliste'}
 										title={switchToWait ? 'Zur Warteliste wechseln' : 'Auf die Warteliste'}
@@ -633,7 +649,7 @@
 	.tds-lane-name {
 		font-size: 0.68rem; font-weight: 700;
 		color: var(--color-on-surface);
-		max-width: 64px;
+		max-width: 88px;
 		text-align: center;
 		white-space: nowrap;
 		overflow: hidden;
