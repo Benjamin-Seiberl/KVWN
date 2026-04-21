@@ -283,87 +283,126 @@
 
 		<!-- ── Selected slot body ────────────────────────────────────────── -->
 		{#if selectedSlot}
-			<div class="tds-slot-head">
-				<span class="tds-slot-time">
-					{String(selectedSlot.start_time).slice(0,5)} – {String(selectedSlot.end_time).slice(0,5)} Uhr
-				</span>
-				{#if selectedSlot.note}
-					<span class="tds-slot-note">{selectedSlot.note}</span>
-				{/if}
-			</div>
+			{@const slotBookings = bookingsForStart(selectedStart)}
+			{@const slotWait     = waitlistForStart(selectedStart)}
+			{@const freeSpots    = Math.max(0, selectedSlot.capacity - slotBookings.length)}
 
-			<!-- Bookings -->
-			<p class="tds-section-title tds-section-title--sub">Gebucht ({bookingsForStart(selectedStart).length}/{selectedSlot.capacity})</p>
-			{#if bookingsForStart(selectedStart).length === 0}
-				<p class="tds-empty-sub">Noch niemand gebucht</p>
-			{:else}
-				<div class="tds-player-list">
-					{#each bookingsForStart(selectedStart) as b}
-						{@const pl = getPlayer(b.player_id)}
-						<div class="tds-player-row" class:tds-player-row--me={b.player_id === $playerId}>
-							<img src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => e.currentTarget.style.display='none'} />
-							<span>{shortName(pl?.name)}</span>
-							{#if b.player_id === $playerId}<span class="tds-me-chip">Du</span>{/if}
-						</div>
-					{/each}
-				</div>
-			{/if}
-
-			<!-- Waitlist -->
-			{#if waitlistForStart(selectedStart).length > 0}
-				<p class="tds-section-title tds-section-title--sub">Warteliste</p>
-				<div class="tds-player-list">
-					{#each waitlistForStart(selectedStart) as w}
-						{@const pl = getPlayer(w.player_id)}
-						<div class="tds-player-row tds-player-row--wait" class:tds-player-row--me={w.player_id === $playerId}>
-							<span class="tds-wait-pos">{w.position}.</span>
-							<img src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => e.currentTarget.style.display='none'} />
-							<span>{shortName(pl?.name)}</span>
-							{#if w.player_id === $playerId}<span class="tds-me-chip">Du</span>{/if}
-						</div>
-					{/each}
-				</div>
-			{/if}
-
-			<!-- ── Action button ─────────────────────────────────────────── -->
-			<div class="tds-action-wrap">
-				{#if myBooking}
-					<button
-						class="mw-btn mw-btn--wide tds-btn-storno"
-						onclick={storno}
-						disabled={saving || isSameDayOrPast}
-					>
-						Storno
-					</button>
-					{#if isSameDayOrPast}
-						<p class="tds-hint">Storno am selben Tag nicht mehr möglich.</p>
+			<div class="tds-slot-card">
+				<div class="tds-slot-head">
+					<div class="tds-slot-head__left">
+						<span class="tds-slot-time">
+							{String(selectedSlot.start_time).slice(0,5)} – {String(selectedSlot.end_time).slice(0,5)} Uhr
+						</span>
+						<span class="tds-slot-stats">{slotBookings.length}/{selectedSlot.capacity} belegt{#if slotWait.length} · {slotWait.length} warten{/if}</span>
+					</div>
+					{#if selectedSlot.note}
+						<span class="tds-slot-note">{selectedSlot.note}</span>
 					{/if}
-				{:else if myWait}
-					<button
-						class="mw-btn mw-btn--wide mw-btn--ghost"
-						onclick={leaveWaitlist}
-						disabled={saving}
-					>
-						Von Warteliste abmelden
-					</button>
-					<p class="tds-hint">Du bist auf Position {myWait.position} der Warteliste.</p>
-				{:else if slotRatio >= 1}
-					<button
-						class="mw-btn mw-btn--wide tds-btn-waitlist"
-						onclick={book}
-						disabled={saving || !$playerId}
-					>
-						Auf die Warteliste
-					</button>
-				{:else}
-					<button
-						class="mw-btn mw-btn--wide mw-btn--primary"
-						onclick={book}
-						disabled={saving || !$playerId}
-					>
-						Buchen
-					</button>
+				</div>
+
+				<!-- ── Lane circles ─────────────────────────────────────── -->
+				<div class="tds-lanes">
+					{#each slotBookings as b (b.id)}
+						{@const pl = getPlayer(b.player_id)}
+						{@const isMe = b.player_id === $playerId}
+						<button
+							class="tds-lane tds-lane--taken"
+							class:tds-lane--mine={isMe}
+							onclick={() => { if (isMe && !isSameDayOrPast) storno(); }}
+							disabled={!isMe || isSameDayOrPast || saving}
+							title={isMe ? 'Storno' : shortName(pl?.name)}
+						>
+							<img class="tds-lane-img" src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
+							<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
+							{#if isMe}
+								<span class="tds-lane-badge tds-lane-badge--me">Du</span>
+							{/if}
+							<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
+						</button>
+					{/each}
+
+					{#each Array(freeSpots) as _, i (i)}
+						<button
+							class="tds-lane tds-lane--free"
+							onclick={() => { if (!myBooking && !myWait) book(); }}
+							disabled={saving || !$playerId || !!myBooking || !!myWait}
+							aria-label="Freier Platz"
+						>
+							<span class="material-symbols-outlined tds-lane-plus">add</span>
+							<span class="tds-lane-name tds-lane-name--muted">Frei</span>
+						</button>
+					{/each}
+				</div>
+
+				<!-- ── Waitlist strip ───────────────────────────────────── -->
+				{#if slotWait.length > 0}
+					<div class="tds-wait-row">
+						<span class="tds-wait-label">
+							<span class="material-symbols-outlined">hourglass_top</span>
+							Warteliste
+						</span>
+						<div class="tds-wait-circles">
+							{#each slotWait as w (w.id)}
+								{@const pl = getPlayer(w.player_id)}
+								{@const isMe = w.player_id === $playerId}
+								<div class="tds-wait-item" class:tds-wait-item--me={isMe} title="{shortName(pl?.name)} · Pos {w.position}">
+									<div class="tds-wait-circle">
+										<img src={imgPath(pl?.photo, pl?.name)} alt={pl?.name ?? ''} draggable="false" onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('tds-lane-initial--hidden'); }} />
+										<span class="tds-lane-initial tds-lane-initial--hidden">{(pl?.name ?? '?').slice(0,1).toUpperCase()}</span>
+										<span class="tds-wait-pos">{w.position}</span>
+									</div>
+									<span class="tds-lane-name">{shortName(pl?.name) ?? '—'}</span>
+								</div>
+							{/each}
+						</div>
+					</div>
 				{/if}
+
+				<!-- ── Action button ────────────────────────────────────── -->
+				<div class="tds-action-wrap">
+					{#if myBooking}
+						<button
+							class="mw-btn mw-btn--wide tds-btn-storno"
+							onclick={storno}
+							disabled={saving || isSameDayOrPast}
+						>
+							<span class="material-symbols-outlined">event_busy</span>
+							Storno
+						</button>
+						{#if isSameDayOrPast}
+							<p class="tds-hint">Storno am selben Tag nicht mehr möglich.</p>
+						{:else}
+							<p class="tds-hint tds-hint--ok">Du bist gebucht. Viel Spaß beim Training!</p>
+						{/if}
+					{:else if myWait}
+						<button
+							class="mw-btn mw-btn--wide mw-btn--ghost"
+							onclick={leaveWaitlist}
+							disabled={saving}
+						>
+							Von Warteliste abmelden
+						</button>
+						<p class="tds-hint">Du bist auf Position {myWait.position}. Du wirst automatisch benachrichtigt.</p>
+					{:else if slotRatio >= 1}
+						<button
+							class="mw-btn mw-btn--wide tds-btn-waitlist"
+							onclick={book}
+							disabled={saving || !$playerId}
+						>
+							<span class="material-symbols-outlined">hourglass_empty</span>
+							Auf die Warteliste
+						</button>
+					{:else}
+						<button
+							class="mw-btn mw-btn--wide mw-btn--primary"
+							onclick={book}
+							disabled={saving || !$playerId}
+						>
+							<span class="material-symbols-outlined">check</span>
+							Buchen
+						</button>
+					{/if}
+				</div>
 			</div>
 		{/if}
 	{/if}
@@ -466,57 +505,212 @@
 		text-transform: uppercase; letter-spacing: 0.05em;
 	}
 
-	/* Slot head */
-	.tds-slot-head {
-		display: flex; align-items: center; gap: var(--space-3);
-		padding: var(--space-3) 0;
-		border-top: 1px solid var(--color-outline-variant);
+	/* Slot card wrapper */
+	.tds-slot-card {
+		background: linear-gradient(180deg, var(--color-surface-container-lowest, #fff) 0%, color-mix(in srgb, var(--color-primary) 3%, var(--color-surface-container-lowest, #fff)) 100%);
+		border-radius: var(--radius-xl, 20px);
+		border: 1.5px solid var(--color-outline-variant);
+		padding: var(--space-4);
+		box-shadow: var(--shadow-card);
 	}
+
+	.tds-slot-head {
+		display: flex; align-items: flex-start; gap: var(--space-3);
+		margin-bottom: var(--space-4);
+	}
+	.tds-slot-head__left { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	.tds-slot-time {
 		font-family: var(--font-display);
 		font-size: var(--text-title-sm); font-weight: 800;
 		color: var(--color-on-surface);
 	}
+	.tds-slot-stats {
+		font-size: var(--text-label-sm); font-weight: 600;
+		color: var(--color-on-surface-variant);
+	}
 	.tds-slot-note {
+		flex-shrink: 0;
 		font-size: var(--text-label-sm); font-weight: 600;
 		background: rgba(204,0,0,0.08); color: var(--color-primary);
-		border-radius: 999px; padding: 2px 8px;
+		border-radius: 999px; padding: 2px 10px;
+		align-self: center;
 	}
 
-	/* Player list */
-	.tds-player-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0 0 var(--space-3); }
-	.tds-player-row {
-		display: flex; align-items: center; gap: var(--space-3);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
+	/* ── Lane circles ── */
+	.tds-lanes {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-4) var(--space-3);
+		justify-content: center;
+		padding: var(--space-3) 0 var(--space-4);
+	}
+
+	.tds-lane {
+		position: relative;
+		display: flex; flex-direction: column; align-items: center; gap: 6px;
+		width: 64px;
+		background: none; border: none; padding: 0;
+		font: inherit; color: inherit;
+		-webkit-tap-highlight-color: transparent;
+		cursor: pointer;
+	}
+	.tds-lane[disabled] { cursor: default; }
+
+	/* Circle base */
+	.tds-lane::before {
+		content: '';
+		position: absolute; top: 0; left: 50%;
+		transform: translateX(-50%);
+		width: 56px; height: 56px;
+		border-radius: 50%;
+		pointer-events: none;
+	}
+
+	/* Common shell for image/plus */
+	.tds-lane-img,
+	.tds-lane-plus,
+	.tds-lane-initial {
+		width: 56px; height: 56px;
+		border-radius: 50%;
+		display: flex; align-items: center; justify-content: center;
+		object-fit: cover; object-position: top center;
+		transition: transform 140ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 200ms ease, border-color 200ms ease;
+	}
+	.tds-lane-initial {
+		position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+		font-family: var(--font-display); font-weight: 800; font-size: 1.2rem;
+		color: var(--color-on-surface-variant);
 		background: var(--color-surface-container);
 	}
-	.tds-player-row--me { background: rgba(204,0,0,0.06); border: 1px solid rgba(204,0,0,0.15); }
-	.tds-player-row--wait { background: rgba(234,88,12,0.06); }
-	.tds-player-row img {
-		width: 32px; height: 32px; border-radius: 50%;
+	.tds-lane-initial--hidden { display: none; }
+
+	.tds-lane:not([disabled]):active .tds-lane-img,
+	.tds-lane:not([disabled]):active .tds-lane-plus { transform: scale(0.92); }
+
+	/* Free lane — dashed green, inviting pulse */
+	.tds-lane--free .tds-lane-plus {
+		border: 2.5px dashed rgba(34,197,94,0.55);
+		background: rgba(34,197,94,0.05);
+		color: rgba(34,197,94,0.8);
+		font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+		font-size: 1.5rem;
+	}
+	.tds-lane--free:not([disabled]) .tds-lane-plus {
+		animation: tds-pulse 2.4s ease-in-out infinite;
+	}
+	.tds-lane--free[disabled] .tds-lane-plus {
+		border-color: rgba(0,0,0,0.1);
+		background: rgba(0,0,0,0.03);
+		color: rgba(0,0,0,0.2);
+		animation: none;
+	}
+	@keyframes tds-pulse {
+		0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.25); }
+		50%       { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+	}
+
+	/* Taken by someone */
+	.tds-lane--taken .tds-lane-img,
+	.tds-lane--taken .tds-lane-initial {
+		border: 2.5px solid rgba(60,60,67,0.12);
+		background: var(--color-surface-container);
+	}
+
+	/* Taken by me — gold ring */
+	.tds-lane--mine .tds-lane-img,
+	.tds-lane--mine .tds-lane-initial {
+		border: 2.5px solid var(--color-secondary, #D4AF37);
+		box-shadow: 0 0 0 3px rgba(212,175,55,0.28), 0 2px 10px rgba(212,175,55,0.25);
+	}
+
+	.tds-lane-name {
+		font-size: 0.68rem; font-weight: 700;
+		color: var(--color-on-surface);
+		max-width: 64px;
+		text-align: center;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.tds-lane-name--muted { color: var(--color-outline); font-weight: 500; }
+
+	.tds-lane-badge {
+		position: absolute; top: -4px; right: -2px;
+		border-radius: 999px;
+		padding: 1px 7px;
+		font-size: 0.6rem; font-weight: 800;
+		text-transform: uppercase; letter-spacing: 0.04em;
+		box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+	}
+	.tds-lane-badge--me {
+		background: var(--color-primary); color: #fff;
+	}
+
+	/* ── Waitlist strip ── */
+	.tds-wait-row {
+		margin-top: var(--space-3);
+		padding-top: var(--space-3);
+		border-top: 1px dashed var(--color-outline-variant);
+	}
+	.tds-wait-label {
+		display: flex; align-items: center; gap: 4px;
+		font-family: var(--font-display);
+		font-size: var(--text-label-sm); font-weight: 800;
+		text-transform: uppercase; letter-spacing: 0.06em;
+		color: #ea580c;
+		margin-bottom: var(--space-3);
+	}
+	.tds-wait-label .material-symbols-outlined {
+		font-size: 1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+	.tds-wait-circles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		padding-bottom: 2px;
+	}
+	.tds-wait-item {
+		display: flex; flex-direction: column; align-items: center; gap: 6px;
+		width: 52px;
+	}
+	.tds-wait-circle {
+		position: relative;
+		width: 44px; height: 44px;
+		border-radius: 50%;
+		border: 2px solid rgba(234,88,12,0.4);
+		background: rgba(234,88,12,0.06);
+		display: flex; align-items: center; justify-content: center;
+		overflow: visible;
+	}
+	.tds-wait-circle img {
+		width: 100%; height: 100%;
+		border-radius: 50%;
 		object-fit: cover; object-position: top center;
 	}
-	.tds-player-row span { font-weight: 600; font-size: var(--text-label-md); }
 	.tds-wait-pos {
-		font-family: var(--font-display); font-weight: 800;
-		color: #ea580c; min-width: 20px;
+		position: absolute; bottom: -4px; right: -4px;
+		min-width: 18px; height: 18px; border-radius: 999px;
+		background: #ea580c; color: #fff;
+		font-family: var(--font-display);
+		font-size: 0.62rem; font-weight: 800;
+		display: flex; align-items: center; justify-content: center;
+		padding: 0 5px;
+		box-shadow: 0 1px 4px rgba(234,88,12,0.45);
 	}
-	.tds-me-chip {
-		margin-left: auto;
-		background: var(--color-primary); color: #fff;
-		border-radius: 999px; padding: 1px 8px;
-		font-size: 0.68rem !important; font-weight: 700 !important;
-		text-transform: uppercase; letter-spacing: 0.05em;
+	.tds-wait-item--me .tds-wait-circle {
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 2px rgba(204,0,0,0.12);
 	}
 
 	/* Action */
-	.tds-action-wrap { margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); }
+	.tds-action-wrap { margin-top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
 	.tds-btn-waitlist {
 		background: #ea580c;
 		color: #fff;
 		border: none;
 	}
+	.tds-btn-waitlist:hover:not(:disabled) { background: #c2410c; }
 	.tds-btn-storno {
 		background: transparent;
 		color: var(--color-primary);
@@ -533,5 +727,9 @@
 		color: var(--color-on-surface-variant);
 		text-align: center;
 		margin: 0;
+	}
+	.tds-hint--ok {
+		color: #16a34a;
+		font-weight: 600;
 	}
 </style>
