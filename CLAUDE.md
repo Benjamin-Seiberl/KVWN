@@ -211,7 +211,8 @@ Svelte 5 runes + SvelteKit 2, Supabase (Postgres + Google Auth), Vercel (Node 22
 /(app)/                     Auth-guarded shell
   +page.svelte              Dashboard       tabs: neuigkeiten · events
   kalender/                                 view-modes (local state): agenda · woche · monat
-  spielbetrieb/                             tabs: uebersicht · aufstellungen · spielbetrieb · statistiken · admin(kapitaen)
+  spielbetrieb/                             tabs: uebersicht · aufstellungen · statistiken · admin(kapitaen)
+                                            uebersicht hosts inline pill (?pill=spiele|turnier|landesbewerb) at the bottom
   profil/                                   tabs: uebersicht · einstellungen · admin(kapitaen)
 /api/push/notify            Web Push send endpoint
 ```

@@ -18,7 +18,6 @@ export const PAGE_CONFIG = {
 		tabs: [
 			{ key: 'uebersicht',    label: 'Übersicht',    icon: 'dashboard'                                  },
 			{ key: 'aufstellungen', label: 'Aufstellungen', icon: 'format_list_numbered'                      },
-			{ key: 'spielbetrieb',  label: 'Spielbetrieb', icon: 'emoji_events'                               },
 			{ key: 'statistiken',   label: 'Statistiken',  icon: 'bar_chart'                                  },
 			{ key: 'admin',         label: 'Admin',        icon: 'admin_panel_settings', adminOnly: true      },
 		],

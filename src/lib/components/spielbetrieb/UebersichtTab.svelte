@@ -1,9 +1,10 @@
 <script>
 	import { onMount }      from 'svelte';
+	import { get }          from 'svelte/store';
+	import { page }         from '$app/stores';
 	import { goto }         from '$app/navigation';
 	import { sb }           from '$lib/supabase';
 	import { playerId, playerRole } from '$lib/stores/auth';
-	import { setSubtab }    from '$lib/stores/subtab.js';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { fmtDate, fmtTime, toDateStr, daysUntil } from '$lib/utils/dates.js';
 	import { shortTime }                              from '$lib/utils/league.js';
@@ -13,7 +14,32 @@
 	import BottomSheet      from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard      from '$lib/components/spielbetrieb/CarpoolCard.svelte';
 	import OpenMatchesSheet from '$lib/components/spielbetrieb/OpenMatchesSheet.svelte';
+	import PillSwitcher     from '$lib/components/ui/PillSwitcher.svelte';
+	import SpielbetriebeTab from '$lib/components/spielbetrieb/SpielbetriebeTab.svelte';
+	import TurniereTab      from '$lib/components/spielbetrieb/TurniereTab.svelte';
+	import LandesbewerbeTab from '$lib/components/spielbetrieb/LandesbewerbeTab.svelte';
 	import { seasonStart }  from '$lib/utils/season.js';
+
+	// ── Inline pill-switcher (Spiele/Turnier/Landesbewerb) ────────────────────
+	const _VALID_PILLS = ['spiele', 'turnier', 'landesbewerb'];
+	const _initialPill = get(page).url.searchParams.get('pill');
+	let activePill = $state(_VALID_PILLS.includes(_initialPill) ? _initialPill : 'spiele');
+
+	$effect(() => {
+		const url = new URL($page.url);
+		if (url.searchParams.get('pill') !== activePill) {
+			url.searchParams.set('pill', activePill);
+			goto(url.pathname + url.search, { replaceState: true, keepFocus: true, noScroll: true });
+		}
+	});
+
+	function jumpToComp(pill) {
+		activePill = pill;
+		// Scroll to the section after the next tick so DOM updates first
+		setTimeout(() => {
+			document.getElementById('sp-comp-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		}, 50);
+	}
 
 	// ── State ─────────────────────────────────────────────────────────────────
 	let upcomingMatches = $state([]);          // matches in next 21 days
@@ -75,11 +101,6 @@
 
 	function heroSubtabFor(type) {
 		return ({ tournament: 'turnier', landesbewerb: 'landesbewerb' })[type] ?? 'spiele';
-	}
-
-	function goToComp(pill) {
-		setSubtab('/spielbetrieb', 'spielbetrieb');
-		goto(`/spielbetrieb?pill=${pill}`, { keepFocus: true, noScroll: true });
 	}
 
 	function teamTotal(m) {
@@ -308,8 +329,14 @@
 	}
 
 	function openResultEntry(matchId) {
-		setSubtab('/spielbetrieb', 'spielbetrieb');
-		goto(`/spielbetrieb?pill=spiele&match=${matchId}`);
+		activePill = 'spiele';
+		const url = new URL($page.url);
+		url.searchParams.set('pill', 'spiele');
+		if (matchId) url.searchParams.set('match', String(matchId));
+		goto(url.pathname + url.search, { keepFocus: true, noScroll: true });
+		setTimeout(() => {
+			document.getElementById('sp-comp-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		}, 50);
 	}
 </script>
 
@@ -331,7 +358,7 @@
 		{@const title  = heroType === 'tournament' || heroType === 'landesbewerb'
 			? (heroMatch.tournament_title ?? heroMatch.opponent)
 			: (isAway ? 'bei ' : 'vs. ') + heroMatch.opponent}
-		<button class="hero-card" onclick={() => goToComp(heroSubtabFor(heroType))}>
+		<button class="hero-card" onclick={() => jumpToComp(heroSubtabFor(heroType))}>
 			<span class="hero-eyebrow">{eyebrowFor(heroType)}</span>
 			<h2 class="hero-title">{title}</h2>
 			<div class="hero-meta">
@@ -356,7 +383,7 @@
 		<div class="action-cards">
 
 			{#if urgentTournament}
-				<button class="action-card action-card--gold" onclick={() => goToComp('turnier')}>
+				<button class="action-card action-card--gold" onclick={() => jumpToComp('turnier')}>
 					<span class="material-symbols-outlined action-icon">military_tech</span>
 					<div class="action-body">
 						<span class="action-title">Turnier-Abstimmung</span>
@@ -368,7 +395,7 @@
 			{/if}
 
 			{#if urgentLandesbewerb}
-				<button class="action-card action-card--gold" onclick={() => goToComp('landesbewerb')}>
+				<button class="action-card action-card--gold" onclick={() => jumpToComp('landesbewerb')}>
 					<span class="material-symbols-outlined action-icon">workspace_premium</span>
 					<div class="action-body">
 						<span class="action-title">Landesbewerb anmelden</span>
@@ -407,7 +434,7 @@
 	<!-- ── Hub Row ─────────────────────────────────────────────────────── -->
 	<div class="hub-row">
 
-		<button class="hub-card" onclick={() => goToComp('spiele')}>
+		<button class="hub-card" onclick={() => jumpToComp('spiele')}>
 			<span class="material-symbols-outlined hub-icon">sports</span>
 			<span class="hub-label">Spiele</span>
 			{#if nextLeagueMatch}
@@ -418,7 +445,7 @@
 			{/if}
 		</button>
 
-		<button class="hub-card" onclick={() => goToComp('turnier')}>
+		<button class="hub-card" onclick={() => jumpToComp('turnier')}>
 			<span class="material-symbols-outlined hub-icon">military_tech</span>
 			<span class="hub-label">Turnier</span>
 			{#if tournamentCount > 0}
@@ -432,7 +459,7 @@
 			{/if}
 		</button>
 
-		<button class="hub-card" onclick={() => goToComp('landesbewerb')}>
+		<button class="hub-card" onclick={() => jumpToComp('landesbewerb')}>
 			<span class="material-symbols-outlined hub-icon">workspace_premium</span>
 			<span class="hub-label">Landesb.</span>
 			{#if landesCount > 0}
@@ -475,9 +502,28 @@
 					</div>
 				{/each}
 			</div>
-			<button class="more-btn" onclick={() => goToComp('spiele')}>Alle Ergebnisse →</button>
+			<button class="more-btn" onclick={() => jumpToComp('spiele')}>Alle Ergebnisse →</button>
 		</div>
 	{/if}
+
+	<!-- ── Bewerbe (Spiele · Turnier · Landesbewerb) ──────────────────────── -->
+	<section class="sp-comp-section" id="sp-comp-section">
+		<div class="sp-comp-pillbar">
+			<PillSwitcher
+				items={[
+					{ key: 'spiele',       label: 'Spiele',       icon: 'sports'            },
+					{ key: 'turnier',      label: 'Turnier',      icon: 'military_tech'     },
+					{ key: 'landesbewerb', label: 'Landesbewerb', icon: 'workspace_premium' },
+				]}
+				value={activePill}
+				onSelect={(k) => (activePill = k)}
+			/>
+		</div>
+
+		{#if activePill === 'spiele'}<SpielbetriebeTab />{/if}
+		{#if activePill === 'turnier'}<TurniereTab />{/if}
+		{#if activePill === 'landesbewerb'}<LandesbewerbeTab />{/if}
+	</section>
 
 </div>
 {/if}
@@ -498,6 +544,21 @@
 
 <style>
 	.ueb-page { padding: var(--space-5) var(--space-5) var(--space-10); display: flex; flex-direction: column; gap: var(--space-5); }
+
+	/* ── Inline Bewerbe-Section (Spiele/Turnier/Landesbewerb) ───────────── */
+	.sp-comp-section {
+		margin-top: var(--space-6);
+		padding-top: var(--space-4);
+		border-top: 1px solid var(--color-outline-variant);
+	}
+	.sp-comp-pillbar {
+		position: sticky;
+		top: 0;
+		z-index: 5;
+		background: var(--color-surface-container-lowest);
+		padding: var(--space-2) 0;
+		margin-bottom: var(--space-3);
+	}
 
 	.ueb-loading { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
 	.ueb-skeleton { height: 80px; border-radius: var(--radius-lg); }

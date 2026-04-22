@@ -24,7 +24,7 @@
 	$effect(() => { if ($playerId) loadData($playerId); });
 
 	function goToComp(pill, extraParams = '') {
-		setSubtab('/spielbetrieb', 'spielbetrieb');
+		setSubtab('/spielbetrieb', 'uebersicht');
 		goto(`/spielbetrieb?pill=${pill}${extraParams}`, { keepFocus: true, noScroll: true });
 	}
 
