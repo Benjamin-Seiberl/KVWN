@@ -15,6 +15,7 @@
 	let landesSearch     = $state('');
 	let selectedLandes   = $state(null);
 	let landesCreateOpen = $state(false);
+	let detailOpen       = $state(false);
 
 	let landesTitle    = $state('');
 	let landesTyp      = $state('einzel_ak_herren');
@@ -65,14 +66,13 @@
 		landesTitle = ''; landesTyp = 'einzel_ak_herren'; landesDate = ''; landesTime = ''; landesLocation = ''; landesDeadline = '';
 		await loadLandesbewerbe();
 		selectedLandes = landesbewerbe.find(l => l.id === data.id) ?? data;
+		detailOpen = true;
 	}
 
 	onMount(() => loadLandesbewerbe());
 </script>
 
 <div class="sb-page">
-
-	{#if !selectedLandes}
 
 		<div class="mp-search-wrap">
 			<div class="tp-search-row">
@@ -121,7 +121,7 @@
 					{@const regCount = (t.landesbewerb_registrations ?? []).length}
 					{@const dl = t.registration_deadline ? new Date(t.registration_deadline) : null}
 					{@const regOpen = dl && dl > new Date()}
-					<button class="mp-card" class:mp-card--past={t.date && t.date < toDateStr(new Date())} onclick={() => selectedLandes = t}>
+					<button class="mp-card" class:mp-card--past={t.date && t.date < toDateStr(new Date())} onclick={() => { selectedLandes = t; detailOpen = true; }}>
 						<div class="mp-card-left">
 							<div class="tp-trophy-badge tp-trophy-badge--landes">
 								<span class="material-symbols-outlined">workspace_premium</span>
@@ -158,15 +158,6 @@
 				{/each}
 			</div>
 		{/if}
-
-	{:else}
-		<button class="md-back" onclick={() => { selectedLandes = null; }}>
-			<span class="material-symbols-outlined">arrow_back_ios</span>
-			Alle Landesbewerbe
-		</button>
-
-		<LandesbewerbCard lb={selectedLandes} onReload={loadLandesbewerbe} />
-	{/if}
 
 	<BottomSheet bind:open={landesCreateOpen} title="Landesbewerb erstellen">
 		<div class="tp-form">
@@ -206,6 +197,12 @@
 				{landesSaving ? 'Speichern…' : 'Landesbewerb anlegen'}
 			</button>
 		</div>
+	</BottomSheet>
+
+	<BottomSheet bind:open={detailOpen} title={selectedLandes?.title ?? 'Landesbewerb'}>
+		{#if selectedLandes}
+			<LandesbewerbCard lb={selectedLandes} onReload={loadLandesbewerbe} />
+		{/if}
 	</BottomSheet>
 
 </div>
@@ -438,19 +435,4 @@
 		margin-top: 2px;
 	}
 
-	.md-back {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: none;
-		border: none;
-		cursor: pointer;
-		font: inherit;
-		font-size: var(--text-label-md);
-		font-weight: 700;
-		color: var(--color-primary);
-		padding: 0;
-		-webkit-tap-highlight-color: transparent;
-	}
-	.md-back .material-symbols-outlined { font-size: 1rem; }
 </style>

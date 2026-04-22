@@ -13,6 +13,7 @@
 	let tourneySearch      = $state('');
 	let selectedTourney    = $state(null);
 	let createOpen         = $state(false);
+	let detailOpen         = $state(false);
 
 	let newTitle    = $state('');
 	let newDates    = $state(['']);
@@ -68,14 +69,13 @@
 		newTitle = ''; newDates = ['']; newLocation = ''; newDeadline = '';
 		await loadTournaments();
 		selectedTourney = tournaments.find(x => x.id === t.id) ?? t;
+		detailOpen = true;
 	}
 
 	onMount(() => loadTournaments());
 </script>
 
 <div class="sb-page">
-
-	{#if !selectedTourney}
 
 		<div class="mp-search-wrap">
 			<div class="tp-search-row">
@@ -124,7 +124,7 @@
 					{@const yesCount  = (t.tournament_votes ?? []).filter(v => v.wants_to_play).length}
 					{@const statusMap = { voting: 'Abstimmung läuft', voting_closed: 'Geschlossen', scheduling: 'Spielplan', confirmed: 'Bestätigt' }}
 					{@const statusKey = t.status ?? 'voting'}
-					<button class="mp-card tp-card" onclick={() => selectedTourney = t}>
+					<button class="mp-card tp-card" onclick={() => { selectedTourney = t; detailOpen = true; }}>
 						<div class="mp-card-left">
 							<div class="tp-trophy-badge">
 								<span class="material-symbols-outlined">military_tech</span>
@@ -153,15 +153,6 @@
 				{/each}
 			</div>
 		{/if}
-
-	{:else}
-		<button class="md-back" onclick={() => { selectedTourney = null; }}>
-			<span class="material-symbols-outlined">arrow_back_ios</span>
-			Alle Turniere
-		</button>
-
-		<TournamentMatchCard tournament={selectedTourney} onReload={loadTournaments} />
-	{/if}
 
 	<BottomSheet bind:open={createOpen} title="Turnier erstellen">
 		<div class="tp-form">
@@ -207,6 +198,12 @@
 				{saving ? 'Speichern…' : 'Turnier anlegen'}
 			</button>
 		</div>
+	</BottomSheet>
+
+	<BottomSheet bind:open={detailOpen} title={selectedTourney?.title ?? 'Turnier'}>
+		{#if selectedTourney}
+			<TournamentMatchCard tournament={selectedTourney} onReload={loadTournaments} />
+		{/if}
 	</BottomSheet>
 
 </div>
@@ -421,19 +418,4 @@
 		margin-top: 2px;
 	}
 
-	.md-back {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: none;
-		border: none;
-		cursor: pointer;
-		font: inherit;
-		font-size: var(--text-label-md);
-		font-weight: 700;
-		color: var(--color-primary);
-		padding: 0;
-		-webkit-tap-highlight-color: transparent;
-	}
-	.md-back .material-symbols-outlined { font-size: 1rem; }
 </style>

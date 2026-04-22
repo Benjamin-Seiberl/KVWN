@@ -10,20 +10,29 @@
 	import { shortTime }                              from '$lib/utils/league.js';
 	import { matchEnded }                             from '$lib/utils/matchTiming.js';
 	import { BEWERB_LABEL } from '$lib/constants/competitions.js';
-	import { shortName }    from '$lib/utils/players.js';
 	import BottomSheet      from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard      from '$lib/components/spielbetrieb/CarpoolCard.svelte';
-	import OpenMatchesSheet from '$lib/components/spielbetrieb/OpenMatchesSheet.svelte';
 	import PillSwitcher     from '$lib/components/ui/PillSwitcher.svelte';
 	import SpielbetriebeTab from '$lib/components/spielbetrieb/SpielbetriebeTab.svelte';
 	import TurniereTab      from '$lib/components/spielbetrieb/TurniereTab.svelte';
 	import LandesbewerbeTab from '$lib/components/spielbetrieb/LandesbewerbeTab.svelte';
-	import { seasonStart }  from '$lib/utils/season.js';
+	import ResultEntrySheet from '$lib/components/spielbetrieb/ResultEntrySheet.svelte';
 
 	// ── Inline pill-switcher (Spiele/Turnier/Landesbewerb) ────────────────────
 	const _VALID_PILLS = ['spiele', 'turnier', 'landesbewerb'];
-	const _initialPill = get(page).url.searchParams.get('pill');
-	let activePill = $state(_VALID_PILLS.includes(_initialPill) ? _initialPill : 'spiele');
+	const _urlPill     = get(page).url.searchParams.get('pill');
+	const _initialPill = _VALID_PILLS.includes(_urlPill) ? _urlPill : 'spiele';
+	let activePill = $state(_initialPill);
+
+	// Lazy keep-alive: mount each pill child on first visit, then keep it mounted
+	// (so it preserves its scroll/state when toggling pills).
+	let mountedPills = $state({ spiele: false, turnier: false, landesbewerb: false, [_initialPill]: true });
+
+	$effect(() => {
+		if (!mountedPills[activePill]) {
+			mountedPills = { ...mountedPills, [activePill]: true };
+		}
+	});
 
 	$effect(() => {
 		const url = new URL($page.url);
@@ -58,8 +67,8 @@
 	let carpoolSheetMeetup = $state(null);
 	let carpoolLoading     = $state(false);
 
-	let openMatchesCount     = $state(0);
-	let openMatchesSheetOpen = $state(false);
+	let resultEntrySheetOpen = $state(false);
+	let resultEntryMatchId   = $state(null);
 
 	// ── Date constants ────────────────────────────────────────────────────────
 	const today   = toDateStr(new Date());
@@ -76,11 +85,6 @@
 		if (d === 1) return 'Morgen';
 		if (d < 0)   return null;
 		return `in ${d} Tagen`;
-	}
-
-	function deadlineDays(iso) {
-		if (!iso) return null;
-		return daysUntilLabel(iso.slice(0, 10));
 	}
 
 	function matchTypeOf(m) {
@@ -179,13 +183,6 @@
 		return pastMatches.find(m => matchEnded(m) && !matchPublished(m)) ?? null;
 	});
 
-	// ── Hub row ───────────────────────────────────────────────────────────────
-	const nextLeagueMatch = $derived(upcomingMatches.find(m => matchTypeOf(m) === 'league') ?? null);
-	const tournamentCount = $derived(tournaments.length);
-	const nextTournament  = $derived(tournaments[0] ?? null);
-	const landesCount     = $derived(landesbewerbe.length);
-	const nextLandes      = $derived(landesbewerbe[0] ?? null);
-
 	// ── Letzte Ergebnisse ─────────────────────────────────────────────────────
 	const recentResults = $derived(pastMatches.filter(m => matchPublished(m) && matchHasScores(m)).slice(0, 3));
 
@@ -277,25 +274,7 @@
 			allCarpools = [];
 		}
 
-		loadOpenMatchesCount();
-
 		loading = false;
-	}
-
-	async function loadOpenMatchesCount() {
-		const { data, error } = await sb
-			.from('matches')
-			.select('id, opponent, game_plans(result_published_at)')
-			.not('league_id', 'is', null)
-			.eq('is_tournament', false)
-			.eq('is_landesbewerb', false)
-			.eq('is_friendly', false)
-			.gte('date', seasonStart());
-		if (error) { triggerToast('Fehler: ' + error.message); return; }
-		openMatchesCount = (data ?? []).filter(m =>
-			m.opponent !== 'spielfrei' &&
-			(m.game_plans ?? []).every(gp => !gp.result_published_at)
-		).length;
 	}
 
 	onMount(loadData);
@@ -329,14 +308,8 @@
 	}
 
 	function openResultEntry(matchId) {
-		activePill = 'spiele';
-		const url = new URL($page.url);
-		url.searchParams.set('pill', 'spiele');
-		if (matchId) url.searchParams.set('match', String(matchId));
-		goto(url.pathname + url.search, { keepFocus: true, noScroll: true });
-		setTimeout(() => {
-			document.getElementById('sp-comp-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-		}, 50);
+		resultEntryMatchId   = matchId;
+		resultEntrySheetOpen = true;
 	}
 </script>
 
@@ -431,58 +404,6 @@
 		</div>
 	{/if}
 
-	<!-- ── Hub Row ─────────────────────────────────────────────────────── -->
-	<div class="hub-row">
-
-		<button class="hub-card" onclick={() => jumpToComp('spiele')}>
-			<span class="material-symbols-outlined hub-icon">sports</span>
-			<span class="hub-label">Spiele</span>
-			{#if nextLeagueMatch}
-				<span class="hub-info">{nextLeagueMatch.home_away === 'HEIM' ? 'vs.' : 'bei'} {shortName(nextLeagueMatch.opponent)}</span>
-				<span class="hub-sub">{fmtDate(nextLeagueMatch.date)}</span>
-			{:else}
-				<span class="hub-info hub-info--muted">Kein Spiel</span>
-			{/if}
-		</button>
-
-		<button class="hub-card" onclick={() => jumpToComp('turnier')}>
-			<span class="material-symbols-outlined hub-icon">military_tech</span>
-			<span class="hub-label">Turnier</span>
-			{#if tournamentCount > 0}
-				<span class="hub-info">{tournamentCount} {tournamentCount === 1 ? 'aktiv' : 'aktive'}</span>
-				{#if nextTournament?.voting_deadline}
-					{@const dd = deadlineDays(nextTournament.voting_deadline)}
-					{#if dd}<span class="hub-sub">Frist {dd}</span>{/if}
-				{/if}
-			{:else}
-				<span class="hub-info hub-info--muted">Keine</span>
-			{/if}
-		</button>
-
-		<button class="hub-card" onclick={() => jumpToComp('landesbewerb')}>
-			<span class="material-symbols-outlined hub-icon">workspace_premium</span>
-			<span class="hub-label">Landesb.</span>
-			{#if landesCount > 0}
-				<span class="hub-info">{landesCount} {landesCount === 1 ? 'offen' : 'offen'}</span>
-				{#if nextLandes?.registration_deadline}
-					{@const dd = deadlineDays(nextLandes.registration_deadline)}
-					{#if dd}<span class="hub-sub">Frist {dd}</span>{/if}
-				{/if}
-			{:else}
-				<span class="hub-info hub-info--muted">Keine</span>
-			{/if}
-		</button>
-
-	</div>
-
-	{#if openMatchesCount > 0}
-		<button class="open-matches-pill" onclick={() => openMatchesSheetOpen = true}>
-			<span class="material-symbols-outlined">scoreboard</span>
-			<span>{openMatchesCount} {openMatchesCount === 1 ? 'offenes Spiel' : 'offene Spiele'} · alle anzeigen</span>
-			<span class="material-symbols-outlined">arrow_forward</span>
-		</button>
-	{/if}
-
 	<!-- ── Letzte Ergebnisse ───────────────────────────────────────────── -->
 	{#if recentResults.length > 0}
 		<div class="results-section">
@@ -520,9 +441,15 @@
 			/>
 		</div>
 
-		{#if activePill === 'spiele'}<SpielbetriebeTab />{/if}
-		{#if activePill === 'turnier'}<TurniereTab />{/if}
-		{#if activePill === 'landesbewerb'}<LandesbewerbeTab />{/if}
+		{#if mountedPills.spiele}
+			<div style:display={activePill === 'spiele' ? 'block' : 'none'}><SpielbetriebeTab /></div>
+		{/if}
+		{#if mountedPills.turnier}
+			<div style:display={activePill === 'turnier' ? 'block' : 'none'}><TurniereTab /></div>
+		{/if}
+		{#if mountedPills.landesbewerb}
+			<div style:display={activePill === 'landesbewerb' ? 'block' : 'none'}><LandesbewerbeTab /></div>
+		{/if}
 	</section>
 
 </div>
@@ -540,7 +467,11 @@
 	{/if}
 </BottomSheet>
 
-<OpenMatchesSheet bind:open={openMatchesSheetOpen} />
+<ResultEntrySheet
+	bind:open={resultEntrySheetOpen}
+	preselectedMatchId={resultEntryMatchId}
+	onPublished={loadData}
+/>
 
 <style>
 	.ueb-page { padding: var(--space-5) var(--space-5) var(--space-10); display: flex; flex-direction: column; gap: var(--space-5); }
@@ -604,16 +535,6 @@
 	.action-card--warn .action-cta, .action-card--gold .action-cta { color: #92400e; }
 	.action-card--blue .action-cta { color: #1d4ed8; }
 
-	/* ── Hub Row ─────────────────────────────────────────────────────── */
-	.hub-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
-	.hub-card { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: var(--space-4) var(--space-3); background: var(--color-surface-container-lowest, #fff); border-radius: var(--radius-lg); border: 1.5px solid var(--color-outline-variant); box-shadow: var(--shadow-card); cursor: pointer; -webkit-tap-highlight-color: transparent; text-align: left; transition: transform 100ms ease; overflow: hidden; }
-	.hub-card:active { transform: scale(0.96); }
-	.hub-icon  { font-size: 1.2rem; color: var(--color-primary); font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; margin-bottom: 2px; }
-	.hub-label { font-family: var(--font-display); font-size: var(--text-label-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-on-surface); }
-	.hub-info  { font-size: 0.7rem; font-weight: 700; color: var(--color-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-	.hub-info--muted { opacity: 0.5; }
-	.hub-sub   { font-size: 0.62rem; color: var(--color-outline); }
-
 	/* ── Section heading shared ──────────────────────────────────────── */
 	.section-heading { display: flex; align-items: center; gap: var(--space-2); font-family: var(--font-display); font-size: var(--text-title-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin: 0; color: var(--color-on-surface); }
 	.section-heading .material-symbols-outlined { font-size: 1.1rem; color: var(--color-primary); font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
@@ -667,28 +588,6 @@
 	.feed-chip--voting_closed    { background: rgba(0,0,0,0.10);       color: var(--color-on-surface-variant); }
 	.feed-chip--scheduling       { background: rgba(59,130,246,0.14);  color: #1d4ed8; }
 	.feed-chip--confirmed        { background: rgba(22,163,74,0.14);   color: #15803d; }
-
-	/* ── Open-Matches Pill ────────────────────────────────────────────── */
-	.open-matches-pill {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		width: 100%;
-		padding: var(--space-3) var(--space-4);
-		margin-top: var(--space-3);
-		background: var(--color-surface-container);
-		color: var(--color-on-surface);
-		border: none;
-		border-radius: var(--radius-full);
-		font: var(--text-label-md);
-		font-family: var(--font-body);
-		cursor: pointer;
-		-webkit-tap-highlight-color: transparent;
-		transition: background 150ms ease;
-	}
-	.open-matches-pill:hover { background: var(--color-surface-container-high, var(--color-surface-container)); }
-	.open-matches-pill .material-symbols-outlined { font-size: 18px; color: var(--color-primary); }
-	.open-matches-pill > span:nth-child(2) { flex: 1; text-align: left; }
 
 	/* ── Sheets ───────────────────────────────────────────────────────── */
 	.sheet-loading { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-10) var(--space-4); color: var(--color-outline); }

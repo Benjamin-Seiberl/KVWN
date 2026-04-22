@@ -7,7 +7,7 @@
 	import { shortTime } from '$lib/utils/league.js';
 	import { matchEnded } from '$lib/utils/matchTiming.js';
 
-	let { open = $bindable(false), onPublished = () => {} } = $props();
+	let { open = $bindable(false), onPublished = () => {}, preselectedMatchId = null } = $props();
 
 	let step       = $state('list');   // 'list' | 'edit'
 	let candidates = $state([]);
@@ -22,10 +22,30 @@
 		}
 	});
 
-	// Load candidates when sheet opens
+	// Load candidates when sheet opens (or jump straight to edit if preselected)
 	$effect(() => {
-		if (open) loadCandidates();
+		if (open) {
+			if (preselectedMatchId) pickPreselected();
+			else loadCandidates();
+		}
 	});
+
+	async function pickPreselected() {
+		if (!preselectedMatchId) return;
+		loading = true;
+		const { data: m, error } = await sb
+			.from('matches')
+			.select('id, date, time, opponent, home_away, cal_week, league_id, is_tournament, is_landesbewerb, is_friendly, leagues(name), game_plans(id, result_published_at, result_mode, lineup_published_at)')
+			.eq('id', preselectedMatchId)
+			.maybeSingle();
+		if (error || !m) {
+			triggerToast('Match nicht gefunden');
+			loading = false;
+			return;
+		}
+		await pickMatch(m);
+		loading = false;
+	}
 
 	async function loadCandidates() {
 		loading = true;
@@ -125,10 +145,12 @@
 	{/if}
 
 	{#if step === 'edit' && selected}
-		<button class="re-back" onclick={() => { step = 'list'; selected = null; }}>
-			<span class="material-symbols-outlined">arrow_back</span>
-			Zurück
-		</button>
+		{#if !preselectedMatchId}
+			<button class="re-back" onclick={() => { step = 'list'; selected = null; }}>
+				<span class="material-symbols-outlined">arrow_back</span>
+				Zurück
+			</button>
+		{/if}
 		<div class="re-edit-head">
 			<span class="re-row-title">
 				{selected.match.home_away === 'HEIM' ? 'vs. ' : 'bei '}{selected.match.opponent}

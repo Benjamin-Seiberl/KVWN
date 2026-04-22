@@ -28,8 +28,10 @@
 		gap: var(--space-1);
 		width: 100%;
 		padding: var(--space-1);
-		background: var(--color-surface-container-lowest);
+		background: var(--color-surface-container);
 		border-radius: var(--radius-full);
+		border-radius: 999px;
+		overflow: hidden;
 	}
 
 	.pill {
@@ -41,11 +43,12 @@
 		min-height: 40px;
 		padding: var(--space-2) var(--space-3);
 		border: none;
-		background: var(--color-surface-container-lowest);
+		background: transparent;
 		color: var(--color-on-surface-variant);
 		font-family: var(--font-body);
 		font: var(--text-label-md);
 		border-radius: var(--radius-full);
+		border-radius: 999px;
 		cursor: pointer;
 		transition: background-color 150ms ease, color 150ms ease;
 	}

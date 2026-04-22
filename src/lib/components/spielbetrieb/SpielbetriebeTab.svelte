@@ -8,9 +8,11 @@
 	import { matchEnded }                  from '$lib/utils/matchTiming.js';
 	import AdminAufstellung   from '../admin/AdminAufstellung.svelte';
 	import MatchResultEditor  from './MatchResultEditor.svelte';
+	import BottomSheet        from '$lib/components/BottomSheet.svelte';
 
 	let editOpen    = $state(false);
 	let editMatchId = $state(null);
+	let detailOpen  = $state(false);
 
 	function openLineupEdit(id) {
 		editMatchId = id;
@@ -71,6 +73,7 @@
 	}
 
 	async function selectMatch(match) {
+		detailOpen    = true;
 		selectedMatch = match;
 		selectedPlan  = null;
 		loadingDetail = true;
@@ -129,10 +132,7 @@
 		loadingDetail = false;
 	}
 
-	function goBack() {
-		selectedMatch = null;
-		selectedPlan  = null;
-	}
+	const sheetTitle = $derived(selectedMatch ? ((selectedMatch.home_away === 'HEIM' ? 'vs. ' : 'bei ') + selectedMatch.opponent) : '');
 
 	onMount(async () => {
 		await loadMatches();
@@ -145,8 +145,6 @@
 </script>
 
 <div class="sb-page">
-
-	{#if !selectedMatch}
 
 		<div class="mp-search-wrap">
 			<div class="mp-input-wrap">
@@ -203,13 +201,11 @@
 			</div>
 		{/if}
 
-	{:else}
-		{@const m = selectedMatch}
+	</div>
 
-		<button class="md-back" onclick={goBack}>
-			<span class="material-symbols-outlined">arrow_back_ios</span>
-			Alle Spiele
-		</button>
+<BottomSheet bind:open={detailOpen} title={sheetTitle}>
+	{#if selectedMatch}
+		{@const m = selectedMatch}
 
 		<div class="sb-match-header">
 			<p class="sb-league">{m.leagues?.name ?? ''}{m.is_tournament ? ' · ' + (m.tournament_title ?? 'Turnier') : ''}</p>
@@ -395,8 +391,7 @@
 			{/if}
 		{/if}
 	{/if}
-
-</div>
+</BottomSheet>
 
 <AdminAufstellung bind:open={editOpen} preselectedMatchId={editMatchId} />
 
@@ -532,22 +527,6 @@
 	}
 	:global(.chip--home)  { background: rgba(34,197,94,0.12);  color: #166534; }
 	:global(.chip--away)  { background: rgba(204,0,0,0.1);     color: var(--color-primary); }
-
-	.md-back {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: none;
-		border: none;
-		cursor: pointer;
-		font: inherit;
-		font-size: var(--text-label-md);
-		font-weight: 700;
-		color: var(--color-primary);
-		padding: 0;
-		-webkit-tap-highlight-color: transparent;
-	}
-	.md-back .material-symbols-outlined { font-size: 1rem; }
 
 	.md-section {
 		display: flex;
