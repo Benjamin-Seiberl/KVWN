@@ -1,0 +1,38 @@
+{
+  "enabledPlugins": {
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
+    "frontend-design@claude-plugins-official": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf 'KVWN orchestrator mode active. Delegate: research → researcher | plan → planner | design → designer | Svelte code → frontend-dev | SQL/RLS → db-dev | review → reviewer | compile → compile-checker | human-click-tests → browser-tester | commits → committer. Do not execute these phases inline unless the change is genuinely trivial (see CLAUDE.md thresholds).\\n'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/remind-delegate-edit.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '[hook] reminder: for codebase exploration, prefer the researcher agent (Agent tool, subagent_type: researcher).\\n' 1>&2"
+          }
+        ]
+      }
+    ]
+  }
+}
