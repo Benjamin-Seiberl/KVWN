@@ -11,6 +11,8 @@
 	import BottomSheet    from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard    from '$lib/components/spielbetrieb/CarpoolCard.svelte';
 	import TrainingDetailSheet from '$lib/components/kalender/TrainingDetailSheet.svelte';
+	import MatchDetailSheet    from '$lib/components/kalender/MatchDetailSheet.svelte';
+	import EventDetailSheet    from '$lib/components/kalender/EventDetailSheet.svelte';
 
 	// ── Date helpers ─────────────────────────────────────────────────────────
 	function daysUntilLabel(dateStr) {
@@ -36,7 +38,6 @@
 	let nextSpecials   = $state([]);
 	let nextBookings   = $state([]);
 	let keyDuties      = $state([]);
-	let pendingLineups = $state([]);
 	let allPlayers     = $state([]);
 	let loading        = $state(true);
 
@@ -58,6 +59,15 @@
 		trSheetDate = date;
 		trSheetOpen = true;
 	}
+
+	// Match + event detail sheets
+	let matchSheetOpen = $state(false);
+	let matchSheetData = $state(null);
+	function openMatchSheet(m) { matchSheetData = m; matchSheetOpen = true; }
+
+	let eventSheetOpen = $state(false);
+	let eventSheetData = $state(null);
+	function openEventSheet(e) { eventSheetData = e; eventSheetOpen = true; }
 
 	// ── Date range constants ──────────────────────────────────────────────────
 	const today  = toDateStr(new Date());
@@ -180,13 +190,6 @@
 	}
 
 	// ── Action card derived ───────────────────────────────────────────────────
-	const pendingLineup = $derived.by(() => {
-		return pendingLineups.find(p => {
-			const gp = p.game_plans;
-			return gp?.lineup_published_at && gp?.confirmation_deadline >= today;
-		}) ?? null;
-	});
-
 	const urgentTournament = $derived(
 		matches.find(m =>
 			m.registration_deadline &&
@@ -313,14 +316,6 @@
 			sb.from('training_key_duties').select('date, start_time, player_id, players(name)').gte('date', today).lte('date', plus14),
 			sb.from('players').select('id, name, photo, birth_date').not('birth_date', 'is', null),
 		];
-		if (pid) {
-			queries.push(
-				sb.from('game_plan_players')
-					.select('id, confirmed, game_plans!inner(lineup_published_at, confirmation_deadline, matches(id, date, time, opponent, leagues(name)))')
-					.eq('player_id', pid)
-					.is('confirmed', null)
-			);
-		}
 		const results = await Promise.all(queries);
 		heroEvent      = results[0].data?.[0] ?? null;
 		upcomingEvents = results[1].data ?? [];
@@ -332,7 +327,6 @@
 		nextBookings   = results[7].data ?? [];
 		keyDuties      = results[8].data ?? [];
 		allPlayers     = results[9].data ?? [];
-		pendingLineups = results[10]?.data ?? [];
 		loading        = false;
 	}
 
@@ -353,7 +347,7 @@
 	<!-- ── Section 1: Hero Event ────────────────────────────────────────────── -->
 	{#if heroEvent}
 		{@const du = daysUntilLabel(heroEvent.date)}
-		<button class="hero-card" onclick={() => setSubtab('/kalender', 'events')}>
+		<button class="hero-card" onclick={() => openEventSheet(heroEvent)}>
 			<span class="hero-eyebrow">Nächstes Event</span>
 			<h2 class="hero-title">{heroEvent.title}</h2>
 			<div class="hero-meta">
@@ -370,22 +364,8 @@
 	{/if}
 
 	<!-- ── Section 2: Action Cards ──────────────────────────────────────────── -->
-	{#if pendingLineup || urgentTournament || resultNudgeMatch}
+	{#if urgentTournament || resultNudgeMatch}
 		<div class="action-cards">
-
-			{#if pendingLineup}
-				{@const gp = pendingLineup.game_plans}
-				{@const m  = gp?.matches}
-				<button class="action-card action-card--warn" onclick={() => goto('/spielbetrieb')}>
-					<span class="material-symbols-outlined action-icon">warning</span>
-					<div class="action-body">
-						<span class="action-title">Aufstellung bestätigen</span>
-						{#if m}<span class="action-sub">{m.opponent} · {fmtDate(m.date)}</span>{/if}
-						{#if gp?.confirmation_deadline}<span class="action-sub">Frist: {fmtDate(gp.confirmation_deadline)}</span>{/if}
-					</div>
-					<span class="action-cta">Bestätigen →</span>
-				</button>
-			{/if}
 
 			{#if urgentTournament}
 				<button class="action-card action-card--gold" onclick={() => setSubtab('/spielbetrieb', 'turnier')}>
@@ -419,7 +399,7 @@
 	<!-- ── Section 3: Hub Cards ─────────────────────────────────────────────── -->
 	<div class="hub-row">
 
-		<button class="hub-card" onclick={() => setSubtab('/kalender', 'trainings')}>
+		<button class="hub-card" onclick={() => nextTrainingDay && openTrSheet(nextTrainingDay.date)} disabled={!nextTrainingDay}>
 			<span class="material-symbols-outlined hub-icon">fitness_center</span>
 			<span class="hub-label">Training</span>
 			{#if nextTrainingDay}
@@ -432,7 +412,7 @@
 			{/if}
 		</button>
 
-		<button class="hub-card" onclick={() => setSubtab('/kalender', 'events')}>
+		<button class="hub-card" onclick={() => heroEvent && openEventSheet(heroEvent)} disabled={!heroEvent}>
 			<span class="material-symbols-outlined hub-icon">calendar_month</span>
 			<span class="hub-label">Events</span>
 			{#if eventCount > 0}
@@ -443,7 +423,7 @@
 			{/if}
 		</button>
 
-		<button class="hub-card" onclick={() => goto('/spielbetrieb')}>
+		<button class="hub-card" onclick={() => nextMatch && openMatchSheet(nextMatch)} disabled={!nextMatch}>
 			<span class="material-symbols-outlined hub-icon">sports</span>
 			<span class="hub-label">Spiele</span>
 			{#if nextMatch}
@@ -480,7 +460,7 @@
 									{@const m = item.data}
 									{@const isAway   = m.home_away !== 'HEIM'}
 									{@const isTourney = m.is_tournament || m.is_landesbewerb}
-									<div class="feed-item feed-item--match" class:feed-item--tourney={isTourney}>
+									<button class="feed-item feed-item--match feed-item--btn" class:feed-item--tourney={isTourney} onclick={() => openMatchSheet(m)}>
 										<span class="feed-item-icon material-symbols-outlined"
 											style="color:{isTourney ? '#b45309' : '#1e3a5f'}"
 										>{isTourney ? 'military_tech' : 'sports'}</span>
@@ -497,12 +477,18 @@
 											</span>
 										</div>
 										{#if isAway && !isTourney}
-											<button class="feed-action-btn" onclick={() => openCarpoolSheet(m)}>
+											<span
+												class="feed-action-btn"
+												role="button"
+												tabindex="0"
+												onclick={(e) => { e.stopPropagation(); openCarpoolSheet(m); }}
+												onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openCarpoolSheet(m); } }}
+											>
 												<span class="material-symbols-outlined">directions_car</span>
 												Fahrt
-											</button>
+											</span>
 										{/if}
-									</div>
+									</button>
 
 								{:else if item.type === 'training'}
 									{@const day   = item.data}
@@ -553,7 +539,7 @@
 
 								{:else if item.type === 'event'}
 									{@const ev = item.data}
-									<button class="feed-item feed-item--event feed-item--btn" onclick={() => setSubtab('/kalender', 'events')}>
+									<button class="feed-item feed-item--event feed-item--btn" onclick={() => openEventSheet(ev)}>
 										<span class="feed-item-icon material-symbols-outlined" style="color:#14532d">event</span>
 										<div class="feed-item-body">
 											<span class="feed-item-title">{ev.title}</span>
@@ -608,6 +594,10 @@
 
 <!-- ── Training detail BottomSheet ─────────────────────────────────────────── -->
 <TrainingDetailSheet bind:open={trSheetOpen} date={trSheetDate} onReload={loadData} />
+
+<!-- ── Match + Event detail BottomSheets ───────────────────────────────────── -->
+<MatchDetailSheet bind:open={matchSheetOpen} match={matchSheetData} />
+<EventDetailSheet bind:open={eventSheetOpen} event={eventSheetData} />
 
 <!-- ── Key duty swap BottomSheet ────────────────────────────────────────────── -->
 <BottomSheet bind:open={keySheetOpen} title="Schlüssel-Dienst">

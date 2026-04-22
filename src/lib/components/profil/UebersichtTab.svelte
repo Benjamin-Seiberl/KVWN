@@ -474,7 +474,7 @@
 					<span class="material-symbols-outlined">event</span>
 					Vereinstermine
 				</h3>
-				<button class="data-card-edit" onclick={() => setSubtab('/kalender', 'events')}>
+				<button class="data-card-edit" onclick={() => goto('/kalender')}>
 					Alle →
 				</button>
 			</div>

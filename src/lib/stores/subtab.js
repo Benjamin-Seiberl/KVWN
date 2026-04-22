@@ -11,11 +11,7 @@ export const PAGE_CONFIG = {
 	},
 	'/kalender': {
 		title: 'Kalender',
-		tabs: [
-			{ key: 'uebersicht', label: 'Übersicht',  icon: 'dashboard'      },
-			{ key: 'events',     label: 'Events',     icon: 'calendar_month' },
-			{ key: 'trainings',  label: 'Trainings',  icon: 'fitness_center' },
-		],
+		tabs: [],
 	},
 	'/spielbetrieb': {
 		title: 'Spielbetrieb',
