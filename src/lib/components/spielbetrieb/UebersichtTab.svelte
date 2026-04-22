@@ -2,7 +2,6 @@
 	import { onMount }      from 'svelte';
 	import { get }          from 'svelte/store';
 	import { page }         from '$app/stores';
-	import { goto }         from '$app/navigation';
 	import { sb }           from '$lib/supabase';
 	import { playerId, playerRole } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
@@ -35,10 +34,11 @@
 	});
 
 	$effect(() => {
-		const url = new URL($page.url);
+		if (typeof window === 'undefined') return;
+		const url = new URL(window.location.href);
 		if (url.searchParams.get('pill') !== activePill) {
 			url.searchParams.set('pill', activePill);
-			goto(url.pathname + url.search, { replaceState: true, keepFocus: true, noScroll: true });
+			window.history.replaceState(window.history.state, '', url.pathname + url.search);
 		}
 	});
 
@@ -429,17 +429,15 @@
 
 	<!-- ── Bewerbe (Spiele · Turnier · Landesbewerb) ──────────────────────── -->
 	<section class="sp-comp-section" id="sp-comp-section">
-		<div class="sp-comp-pillbar">
-			<PillSwitcher
-				items={[
-					{ key: 'spiele',       label: 'Spiele',       icon: 'sports'            },
-					{ key: 'turnier',      label: 'Turnier',      icon: 'military_tech'     },
-					{ key: 'landesbewerb', label: 'Landesbewerb', icon: 'workspace_premium' },
-				]}
-				value={activePill}
-				onSelect={(k) => (activePill = k)}
-			/>
-		</div>
+		<PillSwitcher
+			items={[
+				{ key: 'spiele',       label: 'Spiele',       icon: 'sports'            },
+				{ key: 'turnier',      label: 'Turnier',      icon: 'military_tech'     },
+				{ key: 'landesbewerb', label: 'Landesbewerb', icon: 'workspace_premium' },
+			]}
+			value={activePill}
+			onSelect={(k) => (activePill = k)}
+		/>
 
 		{#if mountedPills.spiele}
 			<div style:display={activePill === 'spiele' ? 'block' : 'none'}><SpielbetriebeTab /></div>
@@ -481,14 +479,9 @@
 		margin-top: var(--space-6);
 		padding-top: var(--space-4);
 		border-top: 1px solid var(--color-outline-variant);
-	}
-	.sp-comp-pillbar {
-		position: sticky;
-		top: 0;
-		z-index: 5;
-		background: var(--color-surface-container-lowest);
-		padding: var(--space-2) 0;
-		margin-bottom: var(--space-3);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
 	}
 
 	.ueb-loading { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
