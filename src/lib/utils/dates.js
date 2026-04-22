@@ -30,3 +30,17 @@ export function daysUntil(dateStr) {
 	const diff = new Date(dateStr + 'T00:00') - new Date();
 	return Math.ceil(diff / 86_400_000);
 }
+
+/** 'YYYY-MM-DD' → '7 Jahre' / '1 Jahr' / '<1 Jahr'. null → null. */
+export function formatYearsSince(dateStr) {
+	if (!dateStr) return null;
+	const then = new Date(dateStr + 'T12:00');
+	if (Number.isNaN(then.getTime())) return null;
+	const now = new Date();
+	let years = now.getFullYear() - then.getFullYear();
+	const m = now.getMonth() - then.getMonth();
+	if (m < 0 || (m === 0 && now.getDate() < then.getDate())) years -= 1;
+	if (years < 1) return '<1 Jahr';
+	if (years === 1) return '1 Jahr';
+	return years + ' Jahre';
+}
