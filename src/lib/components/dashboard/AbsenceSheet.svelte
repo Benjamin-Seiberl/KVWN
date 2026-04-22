@@ -5,7 +5,7 @@
 	import BottomSheet from '../BottomSheet.svelte';
 	import { onMount } from 'svelte';
 
-	let { open = $bindable(false) } = $props();
+	let { open = $bindable(false), onReload } = $props();
 
 	const MONTHS = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 	const DAY_SHORT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
@@ -55,24 +55,77 @@
 		if (!pid) return;
 
 		busy = true;
+
+		// Check for lineup conflicts in the absence range
+		const { data: conflicts } = await sb
+			.from('game_plan_players')
+			.select('id, game_plans!inner(lineup_published_at, matches!inner(date, opponent, leagues(name)))')
+			.eq('player_id', pid)
+			.in('confirmed', [null, true])
+			.not('game_plans.lineup_published_at', 'is', null)
+			.gte('game_plans.matches.date', fromDate)
+			.lte('game_plans.matches.date', toDate);
+
+		if (conflicts?.length) {
+			const list = conflicts.map(c => `• ${c.game_plans.matches.opponent} (${fmtDate(c.game_plans.matches.date)})`).join('\n');
+			if (!confirm(`Du bist für ${conflicts.length} Spiel(e) aufgestellt:\n\n${list}\n\nDiese werden abgesagt. Fortfahren?`)) {
+				busy = false;
+				return;
+			}
+		}
+
 		const { error } = await sb.from('absences').insert({
 			player_id: pid,
 			from_date: fromDate,
 			to_date: toDate,
 			reason: reason.trim() || null,
 		});
-		busy = false;
 
 		if (error) {
+			busy = false;
 			triggerToast('Fehler beim Speichern');
 			return;
 		}
 
+		// Auto-decline conflicting lineups + notify captains
+		if (conflicts?.length) {
+			for (const c of conflicts) {
+				await sb.from('game_plan_players').update({ confirmed: false }).eq('id', c.id);
+			}
+			await notifyCaptainsOfDecline(conflicts, pid);
+		}
+
+		busy = false;
 		triggerToast('Abwesenheit gemeldet');
 		fromDate = '';
 		toDate = '';
 		reason = '';
 		await loadAbsences();
+		onReload?.();
+	}
+
+	async function notifyCaptainsOfDecline(conflicts, pid) {
+		try {
+			const { data: me } = await sb.from('players').select('name').eq('id', pid).maybeSingle();
+			const { data: captains } = await sb.from('players').select('id').in('role', ['kapitaen','admin']);
+			const captainIds = (captains ?? []).map(c => c.id);
+			if (!captainIds.length) return;
+			for (const c of conflicts) {
+				const m = c.game_plans?.matches;
+				if (!m) continue;
+				await fetch('/api/push/notify', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						player_ids: captainIds,
+						title: `Absage: ${me?.name ?? 'Spieler'}`,
+						body:  `${m.leagues?.name ?? ''} vs. ${m.opponent} – Ersatz wählen`,
+						url:   '/profil#admin-inbox-aufstellungen',
+						pref_key: 'lineup_decline',
+					}),
+				});
+			}
+		} catch {}
 	}
 
 	async function removeAbsence(id) {

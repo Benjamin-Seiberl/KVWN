@@ -2,11 +2,18 @@
 	import { sb } from '$lib/supabase';
 	import BottomSheet from '../BottomSheet.svelte';
 	import { triggerToast } from '$lib/stores/toast.js';
-	import { toDateStr, fmtDate } from '$lib/utils/dates.js';
+	import { toDateStr, fmtDate, daysUntil } from '$lib/utils/dates.js';
 	import { imgPath } from '$lib/utils/players.js';
 	import { classifyPlayer } from '$lib/utils/eligibility.js';
 
-	let { open = $bindable(false) } = $props();
+	const REASON_LABELS = {
+		availability: 'Verfügbarkeit/Krankheit',
+		tactical:     'Taktisch',
+		form:         'Form',
+		other:        'Sonstiges',
+	};
+
+	let { open = $bindable(false), preselectedMatchId = null } = $props();
 
 	let matches        = $state([]);
 	let loading        = $state(true);
@@ -20,6 +27,16 @@
 	let saving         = $state(false);
 	let publishing     = $state(false);
 	let starterCount   = $state(4);
+	let absences       = $state([]);         // for current match date
+	let playerStats    = $state({});         // player_id → { seasonAvg, form5 }
+
+	// Swap sheet
+	let swapOpen       = $state(false);
+	let swapSlotIdx    = $state(null);       // index in lineup[]
+	let swapSortMode   = $state('form5');    // 'form5' | 'seasonAvg'
+	let swapReasonCode = $state(null);
+	let swapReasonText = $state('');
+	let swapSaving     = $state(false);
 
 	const DAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
@@ -63,6 +80,39 @@
 			.eq('active', true)
 			.order('name');
 		allPlayers = pl ?? [];
+
+		// Abwesenheiten am Match-Tag laden
+		const { data: absenceRows } = await sb
+			.from('absences')
+			.select('player_id, from_date, to_date, reason')
+			.lte('from_date', m.date)
+			.gte('to_date',   m.date);
+		absences = absenceRows ?? [];
+
+		// Scores laden (Form-Trend + Saison-Schnitt für Swap-Pool)
+		const { data: scoreRows } = await sb
+			.from('game_plan_players')
+			.select('player_id, score, game_plans!inner(matches!inner(date))')
+			.eq('played', true)
+			.not('score', 'is', null);
+		const byPlayer = {};
+		for (const row of scoreRows ?? []) {
+			if (!row.player_id || row.score == null) continue;
+			const date = row.game_plans?.matches?.date;
+			if (!date) continue;
+			(byPlayer[row.player_id] ??= []).push({ score: Number(row.score), date });
+		}
+		const stats = {};
+		for (const [pid, arr] of Object.entries(byPlayer)) {
+			const sorted = arr.sort((a, b) => b.date.localeCompare(a.date));
+			const all   = sorted.map(x => x.score);
+			const last5 = all.slice(0, 5);
+			stats[pid] = {
+				seasonAvg: all.length   ? Math.round(all.reduce((a,b)=>a+b,0)   / all.length)   : null,
+				form5:     last5.length ? Math.round(last5.reduce((a,b)=>a+b,0) / last5.length) : null,
+			};
+		}
+		playerStats = stats;
 
 		// Nennlisten laden (für Positions-Sperrung)
 		const { data: rData } = await sb
@@ -123,10 +173,11 @@
 			team_id:     selectedMatch.league_id,
 			league_tier: selectedMatch.leagues?.tier ?? 99,
 			round_code:  selectedMatch.round_code ?? null,
+			date:        selectedMatch.date,
 		};
 		return allPlayers
 			.filter(p => !usedIds.has(p.id))
-			.map(p => ({ player: p, ...classifyPlayer({ player: p, match: matchCtx, rosters, lineupsByRound }) }));
+			.map(p => ({ player: p, ...classifyPlayer({ player: p, match: matchCtx, rosters, lineupsByRound, absences }) }));
 	});
 
 	let eligiblePool   = $derived(classifiedPool.filter(c => c.eligible));
@@ -221,6 +272,88 @@
 
 	let isPublished = $derived(!!gamePlan?.lineup_published_at);
 	let canPublish  = $derived(!isPublished && lineup.length >= starterCount && !!gamePlan);
+	let daysToMatch = $derived(selectedMatch?.date ? daysUntil(selectedMatch.date) : null);
+
+	// ─── Swap sheet ────────────────────────────────────────────────────────
+	function openSwapSheet(idx) {
+		swapSlotIdx    = idx;
+		swapSortMode   = 'form5';
+		swapReasonCode = null;
+		swapReasonText = '';
+		swapOpen       = true;
+	}
+
+	let sortedSwapPool = $derived.by(() => {
+		const key = swapSortMode;
+		return [...classifiedPool].filter(c => c.eligible).sort((a, b) => {
+			const va = playerStats[a.player.id]?.[key];
+			const vb = playerStats[b.player.id]?.[key];
+			if (va == null && vb == null) return 0;
+			if (va == null) return 1;
+			if (vb == null) return -1;
+			return vb - va;
+		});
+	});
+
+	async function doSwap(newPlayer) {
+		if (swapSaving || swapSlotIdx == null || !swapReasonCode) return;
+		if (swapReasonCode === 'other' && !swapReasonText.trim()) { triggerToast('Bitte Grund angeben'); return; }
+		swapSaving = true;
+
+		const old = lineup[swapSlotIdx];
+		if (!old) { swapSaving = false; return; }
+
+		const { error: delErr } = await sb.from('game_plan_players').delete().eq('id', old.id);
+		if (delErr) { triggerToast('Fehler: ' + delErr.message); swapSaving = false; return; }
+
+		const { data: newRow, error: insErr } = await sb
+			.from('game_plan_players')
+			.insert({
+				game_plan_id:        gamePlan.id,
+				position:            old.position,
+				player_id:           newPlayer.id,
+				player_name:         newPlayer.name,
+				replaced_from_id:    old.player_id,
+				replaced_at:         new Date().toISOString(),
+				replaced_reason_code: swapReasonCode,
+				replaced_reason_text: swapReasonText.trim() || null,
+			})
+			.select('id, position, player_id, player_name')
+			.single();
+		if (insErr) { triggerToast('Fehler: ' + insErr.message); swapSaving = false; return; }
+
+		lineup = lineup.map((l, i) => i === swapSlotIdx ? { ...newRow, players: newPlayer } : l);
+
+		const reasonLabel = swapReasonCode === 'other' ? (swapReasonText.trim() || 'Sonstiges') : REASON_LABELS[swapReasonCode];
+		const m = selectedMatch;
+
+		try {
+			await Promise.all([
+				fetch('/api/push/notify', { method:'POST', headers:{'Content-Type':'application/json'},
+					body: JSON.stringify({
+						player_ids: [newPlayer.id],
+						title: 'Du wurdest aufgestellt',
+						body:  `${m.leagues?.name ?? ''} vs. ${m.opponent} – bitte bestätigen`,
+						url:   '/#action-hub-lineup',
+						pref_key: 'lineup',
+					}),
+				}),
+				fetch('/api/push/notify', { method:'POST', headers:{'Content-Type':'application/json'},
+					body: JSON.stringify({
+						player_ids: [old.player_id],
+						title: 'Aufstellungs-Änderung',
+						body:  `Du wurdest aus Aufstellung gegen ${m.opponent} genommen — Grund: ${reasonLabel}`,
+						url:   '/spielbetrieb',
+						pref_key: 'lineup',
+					}),
+				}),
+			]);
+		} catch {}
+
+		triggerToast('Spieler getauscht');
+		swapOpen   = false;
+		swapSaving = false;
+	}
 
 	function back() {
 		selectedMatch  = null;
@@ -234,6 +367,13 @@
 		if (open) {
 			loadMatches();
 			back();
+		}
+	});
+
+	$effect(() => {
+		if (open && preselectedMatchId && !selectedMatch && matches.length > 0) {
+			const m = matches.find(x => x.id === preselectedMatchId);
+			if (m) selectMatch(m);
 		}
 	});
 </script>
@@ -299,16 +439,20 @@
 					{#if entry}
 						{@const name  = entry.players?.name ?? entry.player_name ?? '–'}
 						{@const photo = entry.players?.photo ?? null}
-						<button class="aa-slot aa-slot--filled" onclick={() => removePlayer(entry)} disabled={saving || isPublished}>
+						<button
+							class="aa-slot aa-slot--filled"
+							onclick={() => isPublished ? openSwapSheet(i) : removePlayer(entry)}
+							disabled={saving}
+						>
 							<span class="aa-slot-pos">{i + 1}</span>
 							<div class="aa-slot-avatar">
 								<img src={imgPath(photo, name)} alt={name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
 								<span class="aa-slot-initial">{name.slice(0, 1)}</span>
 							</div>
 							<span class="aa-slot-name">{name}</span>
-							{#if !isPublished}
-								<span class="material-symbols-outlined aa-slot-remove">close</span>
-							{/if}
+							<span class="material-symbols-outlined aa-slot-remove">
+								{isPublished ? 'swap_horiz' : 'close'}
+							</span>
 						</button>
 					{:else}
 						<div class="aa-slot aa-slot--empty">
@@ -329,6 +473,15 @@
 					Veröffentlicht · Frist: {fmtDate(gamePlan.confirmation_deadline)}
 				</div>
 			{:else if gamePlan}
+				{#if daysToMatch !== null && daysToMatch < 3 && daysToMatch >= 0}
+					<div class="aa-publish-warn">
+						<span class="material-symbols-outlined">warning</span>
+						<div>
+							<strong>Frist sehr kurz ({daysToMatch} {daysToMatch === 1 ? 'Tag' : 'Tage'})</strong>
+							<span>Spieler haben wenig Zeit zu antworten.</span>
+						</div>
+					</div>
+				{/if}
 				<button
 					class="mw-btn mw-btn--primary mw-btn--wide aa-publish-btn"
 					onclick={publishLineup}
@@ -391,6 +544,86 @@
 		{/if}
 	{/if}
 
+</BottomSheet>
+
+<!-- Swap-Sheet: Spieler ersetzen (Post-Publish) -->
+<BottomSheet bind:open={swapOpen} title="Spieler ersetzen">
+	{#if swapSlotIdx !== null && lineup[swapSlotIdx]}
+		{@const old = lineup[swapSlotIdx]}
+		{@const oldName = old.players?.name ?? old.player_name ?? '–'}
+		<p class="aa-swap-hint">
+			<strong>Position {old.position}:</strong> {oldName} durch neuen Spieler ersetzen.
+		</p>
+
+		<!-- Grund (Pflicht) -->
+		<p class="aa-section-title">Grund</p>
+		<div class="aa-reason-chips">
+			{#each [['availability','Verfügbarkeit'], ['tactical','Taktisch'], ['form','Form'], ['other','Sonstiges']] as [code, label]}
+				<button
+					type="button"
+					class="aa-chip"
+					class:aa-chip--active={swapReasonCode === code}
+					onclick={() => swapReasonCode = code}
+				>{label}</button>
+			{/each}
+		</div>
+		{#if swapReasonCode === 'other'}
+			<input
+				class="aa-reason-input"
+				type="text"
+				bind:value={swapReasonText}
+				placeholder="Grund angeben…"
+				maxlength="120"
+			/>
+		{/if}
+
+		<!-- Sortierung -->
+		<div class="aa-swap-sort">
+			<span class="aa-swap-sort-label">Sortierung</span>
+			<div class="aa-swap-sort-toggle">
+				<button
+					type="button"
+					class="aa-sort-btn"
+					class:aa-sort-btn--active={swapSortMode === 'form5'}
+					onclick={() => swapSortMode = 'form5'}
+				>Form (letzte 5)</button>
+				<button
+					type="button"
+					class="aa-sort-btn"
+					class:aa-sort-btn--active={swapSortMode === 'seasonAvg'}
+					onclick={() => swapSortMode = 'seasonAvg'}
+				>Saison-∅</button>
+			</div>
+		</div>
+
+		<!-- Pool -->
+		<p class="aa-section-title">Verfügbar ({sortedSwapPool.length})</p>
+		<div class="aa-swap-pool">
+			{#each sortedSwapPool as { player } (player.id)}
+				{@const st = playerStats[player.id] ?? {}}
+				<button
+					class="aa-swap-player"
+					onclick={() => doSwap(player)}
+					disabled={swapSaving || !swapReasonCode}
+				>
+					<div class="aa-pool-avatar">
+						<img src={imgPath(player.photo, player.name)} alt={player.name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
+						<span class="aa-pool-initial">{(player.name || '?').slice(0, 1)}</span>
+					</div>
+					<div class="aa-swap-info">
+						<span class="aa-swap-name">{player.name}</span>
+						<span class="aa-swap-stats">
+							∅ {st.seasonAvg ?? '–'} · F5 {st.form5 ?? '–'}
+						</span>
+					</div>
+					<span class="material-symbols-outlined aa-swap-arrow">swap_horiz</span>
+				</button>
+			{/each}
+			{#if sortedSwapPool.length === 0}
+				<p class="aa-empty">Keine verfügbaren Spieler.</p>
+			{/if}
+		</div>
+	{/if}
 </BottomSheet>
 
 <style>
@@ -563,4 +796,125 @@
 
 	.aa-ineligible-section { margin-bottom: var(--space-2); }
 	.aa-ineligible-section summary { margin-bottom: var(--space-2); }
+
+	/* Publish-Warnung */
+	.aa-publish-warn {
+		display: flex; align-items: center; gap: var(--space-2);
+		padding: var(--space-3);
+		background: rgba(180, 83, 9, 0.1);
+		border: 1px solid rgba(180, 83, 9, 0.35);
+		border-radius: var(--radius-md);
+		color: #b45309;
+		margin-bottom: var(--space-3);
+	}
+	.aa-publish-warn .material-symbols-outlined {
+		font-size: 1.2rem;
+		font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+		flex-shrink: 0;
+	}
+	.aa-publish-warn div { display: flex; flex-direction: column; gap: 2px; }
+	.aa-publish-warn strong { font-size: var(--text-body-sm); font-weight: 700; }
+	.aa-publish-warn span { font-size: var(--text-label-sm); }
+
+	/* Swap-Sheet */
+	.aa-swap-hint {
+		font-size: var(--text-body-sm);
+		color: var(--color-on-surface);
+		margin: 0 0 var(--space-3);
+	}
+	.aa-swap-hint strong { color: var(--color-primary); }
+
+	.aa-reason-chips {
+		display: flex; flex-wrap: wrap; gap: var(--space-2);
+		margin: 0 0 var(--space-3);
+	}
+	.aa-chip {
+		padding: 6px 12px;
+		border-radius: var(--radius-full);
+		border: 1.5px solid var(--color-outline-variant);
+		background: var(--color-surface-container-low);
+		color: var(--color-on-surface);
+		font-size: var(--text-body-sm);
+		font-weight: 600;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition: border-color 0.15s, background 0.15s;
+	}
+	.aa-chip--active {
+		border-color: var(--color-primary);
+		background: var(--color-primary);
+		color: #fff;
+	}
+	.aa-reason-input {
+		width: 100%;
+		padding: 10px 12px;
+		border: 1.5px solid var(--color-outline-variant);
+		border-radius: var(--radius-md);
+		font-size: var(--text-body-md);
+		font-family: inherit;
+		color: var(--color-on-surface);
+		background: var(--color-surface-container-low);
+		box-sizing: border-box;
+		margin-bottom: var(--space-3);
+	}
+	.aa-reason-input:focus { outline: none; border-color: var(--color-primary); }
+
+	.aa-swap-sort {
+		display: flex; align-items: center; justify-content: space-between;
+		gap: var(--space-3);
+		margin: 0 0 var(--space-3);
+	}
+	.aa-swap-sort-label {
+		font-size: var(--text-label-sm);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-on-surface-variant);
+	}
+	.aa-swap-sort-toggle {
+		display: flex;
+		border-radius: var(--radius-full);
+		background: var(--color-surface-container-low);
+		padding: 3px;
+		gap: 2px;
+	}
+	.aa-sort-btn {
+		padding: 6px 10px;
+		border: none;
+		background: transparent;
+		border-radius: var(--radius-full);
+		font-size: var(--text-label-sm);
+		font-weight: 600;
+		color: var(--color-on-surface-variant);
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.aa-sort-btn--active {
+		background: var(--color-primary);
+		color: #fff;
+	}
+
+	.aa-swap-pool {
+		display: flex; flex-direction: column;
+		gap: var(--space-2);
+	}
+	.aa-swap-player {
+		display: grid;
+		grid-template-columns: 32px 1fr 24px;
+		gap: var(--space-3);
+		align-items: center;
+		padding: var(--space-2) var(--space-3);
+		background: var(--color-surface-container-low);
+		border: 1px solid var(--color-outline-variant);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		text-align: left;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.aa-swap-player:active { background: var(--color-surface-container); }
+	.aa-swap-player:disabled { opacity: 0.45; pointer-events: none; }
+	.aa-swap-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+	.aa-swap-name { font-weight: 600; font-size: var(--text-body-sm); color: var(--color-on-surface); }
+	.aa-swap-stats { font-size: var(--text-label-sm); color: var(--color-on-surface-variant); font-variant-numeric: tabular-nums; }
+	.aa-swap-arrow { color: var(--color-primary); font-size: 1.1rem; }
 </style>

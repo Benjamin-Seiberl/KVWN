@@ -1,9 +1,31 @@
 <script>
 	import { onMount }  from 'svelte';
+	import { page }     from '$app/stores';
 	import { sb }       from '$lib/supabase';
-	import { playerId } from '$lib/stores/auth';
+	import { playerId, playerRole } from '$lib/stores/auth';
 	import { fmtDate, fmtTime, toDateStr } from '$lib/utils/dates.js';
 	import { imgPath, shortName }          from '$lib/utils/players.js';
+	import { matchEnded }                  from '$lib/utils/matchTiming.js';
+	import AdminAufstellung   from '../admin/AdminAufstellung.svelte';
+	import MatchResultEditor  from './MatchResultEditor.svelte';
+
+	let editOpen    = $state(false);
+	let editMatchId = $state(null);
+
+	function openLineupEdit(id) {
+		editMatchId = id;
+		editOpen    = true;
+	}
+
+	let wasEditOpen = false;
+	$effect(() => {
+		if (wasEditOpen && !editOpen) {
+			const id = editMatchId;
+			editMatchId = null;
+			if (selectedMatch?.id === id) selectMatch(selectedMatch);
+		}
+		wasEditOpen = editOpen;
+	});
 
 	let allMatches    = $state([]);
 	let loading       = $state(true);
@@ -56,14 +78,17 @@
 		let players     = [];
 		let playerStats = {};
 
+		let gpRow = null;
+
 		if (match.cal_week && match.league_id) {
 			const { data: gp } = await sb
 				.from('game_plans')
-				.select('id, game_plan_players(id, position, player_id, player_name, score, played, players(name, photo))')
+				.select('id, result_mode, result_published_at, game_plan_players(id, position, player_id, player_name, score, played, result_state, players(name, photo), game_plan_player_lanes(bahn, volle, abraeumen))')
 				.eq('cal_week', match.cal_week)
 				.eq('league_id', match.league_id)
 				.maybeSingle();
 
+			gpRow = gp ?? null;
 			players = (gp?.game_plan_players ?? [])
 				.sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
 
@@ -94,7 +119,13 @@
 			}
 		}
 
-		selectedPlan  = { players, playerStats };
+		selectedPlan  = {
+			id:                  gpRow?.id ?? null,
+			result_mode:         gpRow?.result_mode ?? 'gesamt',
+			result_published_at: gpRow?.result_published_at ?? null,
+			players,
+			playerStats,
+		};
 		loadingDetail = false;
 	}
 
@@ -103,7 +134,14 @@
 		selectedPlan  = null;
 	}
 
-	onMount(() => loadMatches());
+	onMount(async () => {
+		await loadMatches();
+		const deep = $page.url.searchParams.get('match');
+		if (deep && allMatches.length) {
+			const found = allMatches.find(x => x.id === deep);
+			if (found) selectMatch(found);
+		}
+	});
 </script>
 
 <div class="sb-page">
@@ -207,6 +245,15 @@
 					<div class="md-squad-header-rule"></div>
 				</div>
 
+				{#if $playerRole === 'kapitaen'}
+					<div class="md-squad-captain-actions">
+						<button class="mw-btn mw-btn--ghost mw-btn--wide" onclick={() => openLineupEdit(m.id)}>
+							<span class="material-symbols-outlined">edit</span>
+							Aufstellung bearbeiten
+						</button>
+					</div>
+				{/if}
+
 				{#if players.length === 0}
 					<div class="sb-empty md-squad-empty">
 						<span class="material-symbols-outlined sb-loading-icon">group_off</span>
@@ -220,7 +267,7 @@
 							{@const isMe     = p.player_id === $playerId}
 							{@const pStat    = stats[p.player_id] ?? null}
 							{@const trend    = formTrend(pStat?.avg5, pStat?.overallAvg)}
-							{@const hasScore = p.played && p.score != null}
+							{@const hasScore = p.played && p.score != null && !!selectedPlan?.result_published_at}
 
 							<div
 								class="md-squad-card"
@@ -273,7 +320,18 @@
 				{/if}
 			</div>
 
-			{#if played.length > 0}
+			{#if $playerRole === 'kapitaen' && matchEnded(m) && selectedPlan?.id}
+				<MatchResultEditor
+					gamePlanId={selectedPlan.id}
+					match={m}
+					players={selectedPlan.players}
+					initialMode={selectedPlan.result_mode}
+					initialPublishedAt={selectedPlan.result_published_at}
+					onPublished={() => selectMatch(m)}
+				/>
+			{/if}
+
+			{#if selectedPlan?.result_published_at && played.length > 0}
 				<div class="md-section">
 					<div class="md-sec-head">
 						<span class="material-symbols-outlined md-sec-icon">emoji_events</span>
@@ -284,6 +342,8 @@
 						{#each played as p}
 							{@const name  = p.players?.name ?? p.player_name ?? '–'}
 							{@const photo = p.players?.photo ?? null}
+							{@const lanes = (p.game_plan_player_lanes ?? []).sort((a, b) => a.bahn - b.bahn)}
+							{@const detail = selectedPlan?.result_mode === 'detailliert'}
 							<div class="md-result-row">
 								<span class="md-result-pos">{p.position ?? '–'}</span>
 								<img
@@ -297,6 +357,31 @@
 								<span class="md-result-score">{p.score}</span>
 								<span class="md-result-unit">Holz</span>
 							</div>
+							{#if detail && lanes.length > 0}
+								<div class="md-result-lanes">
+									<table class="md-lane-table">
+										<thead>
+											<tr>
+												<th>Bahn</th>
+												<th>Volle</th>
+												<th>Abräumen</th>
+												<th>Summe</th>
+											</tr>
+										</thead>
+										<tbody>
+											{#each lanes as l}
+												{@const lsum = (Number(l.volle) || 0) + (Number(l.abraeumen) || 0)}
+												<tr>
+													<td>{l.bahn}</td>
+													<td>{l.volle ?? '–'}</td>
+													<td>{l.abraeumen ?? '–'}</td>
+													<td>{lsum || '–'}</td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+								</div>
+							{/if}
 						{/each}
 						<div class="md-result-total">
 							<span class="md-result-total-label">Gesamt</span>
@@ -312,6 +397,8 @@
 	{/if}
 
 </div>
+
+<AdminAufstellung bind:open={editOpen} preselectedMatchId={editMatchId} />
 
 <style>
 	.mp-search-wrap { position: relative; }
@@ -356,6 +443,11 @@
 		align-items: center;
 	}
 	.mp-clear .material-symbols-outlined { font-size: 1.1rem; }
+
+	.md-squad-captain-actions {
+		display: flex; gap: var(--space-2);
+		padding: 0 var(--space-4) var(--space-3);
+	}
 
 	.mp-list {
 		display: flex;
@@ -556,4 +648,28 @@
 		font-weight: 800;
 		color: var(--color-secondary, #D4AF37);
 	}
+	.md-result-lanes {
+		padding: 0 var(--space-4) var(--space-3);
+		background: color-mix(in srgb, var(--color-secondary) 5%, transparent);
+		border-bottom: 1px solid var(--color-surface-container);
+	}
+	.md-lane-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--text-label-sm);
+	}
+	.md-lane-table th {
+		text-align: right;
+		font-weight: 700;
+		color: var(--color-on-surface-variant);
+		padding: 4px 6px;
+		border-bottom: 1px solid var(--color-outline-variant);
+	}
+	.md-lane-table th:first-child { text-align: left; }
+	.md-lane-table td {
+		text-align: right;
+		padding: 4px 6px;
+		color: var(--color-on-surface);
+	}
+	.md-lane-table td:first-child { text-align: left; font-weight: 600; }
 </style>

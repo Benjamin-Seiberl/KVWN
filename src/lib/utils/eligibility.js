@@ -18,9 +18,28 @@
 //     lineupsByRound: { [round_code]: Array<{ team_id, league_tier, league_name, player_ids: string[] }> }
 //   }
 
+import { fmtDate } from './dates.js';
+
 export const LOCKED_POS_MAX = 4;
 
 // ─── Regeln ────────────────────────────────────────────────────────────────
+
+/**
+ * Regel 0: Spieler ist am Match-Tag abwesend.
+ */
+export function ruleAbsentOnDate({ player, match, absences }) {
+  if (!match?.date) return null;
+  const hit = (absences ?? []).find(a =>
+    a.player_id === player.id &&
+    a.from_date <= match.date &&
+    a.to_date   >= match.date,
+  );
+  if (hit) return {
+    eligible: false,
+    reason: `Abwesend ${fmtDate(hit.from_date)}–${fmtDate(hit.to_date)}${hit.reason ? ': ' + hit.reason : ''}`,
+  };
+  return null;
+}
 
 /**
  * Regel 1: Spieler bereits in dieser Runde für eine andere Mannschaft aufgestellt.
@@ -86,6 +105,7 @@ export function ruleRosterPositionOneTierDown({ player, match, rosters }) {
 // Neue Regeln hier anhängen. Reihenfolge = Priorität (erste Entscheidung gewinnt).
 
 export const ELIGIBILITY_RULES = [
+  ruleAbsentOnDate,
   ruleAlreadyPlayedInRound,
   ruleRosterPositionLocked,
   ruleRosterPositionOneTierDown,
@@ -109,9 +129,9 @@ export function classifyPlayer(context) {
  * Klassifiziert alle Spieler auf einmal.
  * @returns Array<{ player, eligible, reason? }>
  */
-export function eligiblePlayers({ match, allPlayers, rosters, lineupsByRound }) {
+export function eligiblePlayers({ match, allPlayers, rosters, lineupsByRound, absences }) {
   return (allPlayers ?? []).map(player => ({
     player,
-    ...classifyPlayer({ player, match, rosters, lineupsByRound }),
+    ...classifyPlayer({ player, match, rosters, lineupsByRound, absences }),
   }));
 }

@@ -3,6 +3,9 @@
 	import { user } from '$lib/stores/auth';
 	import { DAY_SHORT, toDateStr } from '$lib/utils/dates.js';
 	import { imgPath } from '$lib/utils/players.js';
+	import { triggerToast } from '$lib/stores/toast.js';
+	import { matchEnded } from '$lib/utils/matchTiming.js';
+	import FeedbackCard from './spielbetrieb/FeedbackCard.svelte';
 
 	// --- State ---
 	let loadingLineup = $state(true);
@@ -11,6 +14,9 @@
 	let busy          = $state(false);
 	let lineupDone    = $state(false);
 	let expandedIdx   = $state(0);    // welches pending item ist aufgeklappt
+
+	let openFeedback   = $state([]);
+	let fbQuestions    = $state([]);
 
 	function dateLabel(m) {
 		const d = new Date(m.date + 'T12:00');
@@ -72,12 +78,68 @@
 
 		pendingItems = items;
 		loadingLineup = false;
+
+		await loadFeedback(player.id);
+	}
+
+	async function loadFeedback(pid) {
+		const weekAgo = toDateStr(new Date(Date.now() - 7 * 86_400_000));
+		const { data: ownEntries } = await sb
+			.from('game_plan_players')
+			.select('game_plans!inner(matches!inner(id, date, time, opponent, leagues(name)))')
+			.eq('player_id', pid)
+			.eq('played', true)
+			.gte('game_plans.matches.date', weekAgo);
+
+		const ended = (ownEntries ?? [])
+			.map(e => e.game_plans?.matches)
+			.filter(m => m && matchEnded(m));
+		if (!ended.length) { openFeedback = []; return; }
+
+		const { data: existing } = await sb
+			.from('match_feedback')
+			.select('match_id')
+			.eq('player_id', pid)
+			.in('match_id', ended.map(m => m.id));
+		const done = new Set((existing ?? []).map(e => e.match_id));
+
+		openFeedback = ended.filter(m => !done.has(m.id));
+
+		if (openFeedback.length && !fbQuestions.length) {
+			const { data: q } = await sb.from('feedback_questions').select('id, prompt').eq('active', true);
+			fbQuestions = q ?? [];
+		}
 	}
 
 	async function respond(item, confirmed) {
 		if (busy) return;
 		busy = true;
 		await sb.from('game_plan_players').update({ confirmed }).eq('id', item.entry.id);
+
+		if (confirmed === true && item.match?.home_away && item.match.home_away !== 'HEIM') {
+			triggerToast('Auswärtsfahrt – Mitfahrgelegenheit prüfen');
+		}
+
+		if (confirmed === false) {
+			try {
+				const { data: captains } = await sb.from('players').select('id').in('role', ['kapitaen','admin']);
+				const captainIds = (captains ?? []).map(c => c.id);
+				if (captainIds.length) {
+					await fetch('/api/push/notify', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							player_ids: captainIds,
+							title: `Absage: ${myPlayer?.name ?? 'Spieler'}`,
+							body:  `${item.match.leagues?.name ?? ''} vs. ${item.match.opponent} – Ersatz wählen`,
+							url:   '/profil#admin-inbox-aufstellungen',
+							pref_key: 'lineup_decline',
+						}),
+					});
+				}
+			} catch {}
+		}
+
 		pendingItems = pendingItems.filter(i => i.entry.id !== item.entry.id);
 		if (pendingItems.length === 0) lineupDone = true;
 		expandedIdx = 0;
@@ -102,7 +164,7 @@
 	});
 </script>
 
-<div class="widget widget--card ah">
+<div class="widget widget--card ah" id="action-hub-lineup">
 	<!-- Aufstellungsbestätigung -->
 	<div
 		class="ah-item"
@@ -248,6 +310,19 @@
 	</div>
 </div>
 
+<!-- Feedback-Sektion -->
+{#if openFeedback.length > 0}
+	<section id="action-hub-feedback" class="ah-feedback">
+		{#each openFeedback as m (m.id)}
+			<FeedbackCard
+				match={m}
+				questions={fbQuestions}
+				onSaved={() => openFeedback = openFeedback.filter(x => x.id !== m.id)}
+			/>
+		{/each}
+	</section>
+{/if}
+
 <style>
 	.ah { gap: 0; }
 
@@ -364,4 +439,11 @@
 	.ah-you { font-family: var(--font-display); font-size: 0.58rem; font-weight: 800; color: var(--color-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
 
 	.ah-lineup-actions { display: flex; gap: var(--space-3); padding: 0 var(--space-4) var(--space-4); }
+
+	/* Feedback section */
+	.ah-feedback {
+		display: flex; flex-direction: column;
+		gap: var(--space-3);
+		margin-top: var(--space-3);
+	}
 </style>

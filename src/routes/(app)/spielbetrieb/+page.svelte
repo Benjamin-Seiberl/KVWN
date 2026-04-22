@@ -1,25 +1,27 @@
 <script>
-	import { currentSubtab } from '$lib/stores/subtab.js';
-	import UebersichtTab     from '$lib/components/spielbetrieb/UebersichtTab.svelte';
-	import AufstellungenTab  from '$lib/components/spielbetrieb/AufstellungenTab.svelte';
-	import StatsView         from '$lib/components/statistiken/StatsView.svelte';
-	import SpielbetriebeTab  from '$lib/components/spielbetrieb/SpielbetriebeTab.svelte';
-	import TurniereTab       from '$lib/components/spielbetrieb/TurniereTab.svelte';
-	import LandesbewerbeTab  from '$lib/components/spielbetrieb/LandesbewerbeTab.svelte';
+  import { currentSubtab } from '$lib/stores/subtab.js';
+  import { playerRole } from '$lib/stores/auth.js';
+  import UebersichtTab           from '$lib/components/spielbetrieb/UebersichtTab.svelte';
+  import AufstellungenTab        from '$lib/components/spielbetrieb/AufstellungenTab.svelte';
+  import SpielbetriebTab         from '$lib/components/spielbetrieb/SpielbetriebTab.svelte';
+  import StatsView               from '$lib/components/statistiken/StatsView.svelte';
+  import AdminSpielbetriebTab    from '$lib/components/spielbetrieb/AdminSpielbetriebTab.svelte';
 </script>
 
 <div class="page active">
-	{#if $currentSubtab === 'uebersicht' || !$currentSubtab}
-		<UebersichtTab />
-	{:else if $currentSubtab === 'aufstellungen'}
-		<AufstellungenTab />
-	{:else if $currentSubtab === 'statistiken'}
-		<StatsView />
-	{:else if $currentSubtab === 'turnier'}
-		<TurniereTab />
-	{:else if $currentSubtab === 'landesbewerb'}
-		<LandesbewerbeTab />
-	{:else}
-		<SpielbetriebeTab />
-	{/if}
+  {#if $currentSubtab === 'uebersicht' || !$currentSubtab}
+    <UebersichtTab />
+  {/if}
+  {#if $currentSubtab === 'aufstellungen'}
+    <AufstellungenTab />
+  {/if}
+  {#if $currentSubtab === 'spielbetrieb'}
+    <SpielbetriebTab />
+  {/if}
+  {#if $currentSubtab === 'statistiken'}
+    <StatsView />
+  {/if}
+  {#if $currentSubtab === 'admin' && $playerRole === 'kapitaen'}
+    <AdminSpielbetriebTab />
+  {/if}
 </div>

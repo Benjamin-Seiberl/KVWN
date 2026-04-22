@@ -28,6 +28,11 @@
 		return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 	}
 
+	function goToComp(pill, extraParams = '') {
+		setSubtab('/spielbetrieb', 'spielbetrieb');
+		goto(`/spielbetrieb?pill=${pill}${extraParams}`, { keepFocus: true, noScroll: true });
+	}
+
 	// ── State ─────────────────────────────────────────────────────────────────
 	let heroEvent      = $state(null);
 	let upcomingEvents = $state([]);
@@ -368,7 +373,7 @@
 		<div class="action-cards">
 
 			{#if urgentTournament}
-				<button class="action-card action-card--gold" onclick={() => setSubtab('/spielbetrieb', 'turnier')}>
+				<button class="action-card action-card--gold" onclick={() => goToComp('turnier')}>
 					<span class="material-symbols-outlined action-icon">military_tech</span>
 					<div class="action-body">
 						<span class="action-title">Anmeldefrist läuft ab</span>

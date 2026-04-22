@@ -1,10 +1,31 @@
 <script>
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
-	import { playerId } from '$lib/stores/auth';
+	import { playerId, playerRole } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { toDateStr, fmtDate, fmtTime, DAY_SHORT } from '$lib/utils/dates.js';
 	import { imgPath } from '$lib/utils/players.js';
+	import AdminAufstellung from '../admin/AdminAufstellung.svelte';
+	import AbsenceSheet from '../dashboard/AbsenceSheet.svelte';
+
+	let absenceOpen = $state(false);
+
+	let editOpen    = $state(false);
+	let editMatchId = $state(null);
+
+	function openEdit(matchId) {
+		editMatchId = matchId;
+		editOpen    = true;
+	}
+
+	let wasEditOpen = false;
+	$effect(() => {
+		if (wasEditOpen && !editOpen) {
+			editMatchId = null;
+			load();
+		}
+		wasEditOpen = editOpen;
+	});
 
 	// Wochenbereich berechnen (Mo–So)
 	function weekRange(offsetWeeks = 0) {
@@ -94,6 +115,41 @@
 					e.id === entry.id ? { ...e, confirmed: null } : e
 				),
 			}));
+			confirming = null;
+			return;
+		}
+
+		// Auswärts-Hinweis: Mitfahrgelegenheit prüfen
+		if (confirmed === true) {
+			const plan  = plans.find(p => p.game_plan_players.some(e => e.id === entry.id));
+			const match = plan ? matches.find(m => m.cal_week === plan.cal_week && m.league_id === plan.league_id) : null;
+			if (match && match.home_away !== 'HEIM') {
+				triggerToast('Auswärtsfahrt – Mitfahrgelegenheit prüfen');
+			}
+		}
+
+		// Absage → Captains benachrichtigen
+		if (confirmed === false) {
+			try {
+				const plan = plans.find(p => p.game_plan_players.some(e => e.id === entry.id));
+				const match = plan ? matches.find(m => m.cal_week === plan.cal_week && m.league_id === plan.league_id) : null;
+				const { data: me } = await sb.from('players').select('name').eq('id', $playerId).maybeSingle();
+				const { data: captains } = await sb.from('players').select('id').in('role', ['kapitaen','admin']);
+				const captainIds = (captains ?? []).map(c => c.id);
+				if (captainIds.length && match) {
+					await fetch('/api/push/notify', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							player_ids: captainIds,
+							title: `Absage: ${me?.name ?? 'Spieler'}`,
+							body:  `${match.leagues?.name ?? ''} vs. ${match.opponent} – Ersatz wählen`,
+							url:   '/profil#admin-inbox-aufstellungen',
+							pref_key: 'lineup_decline',
+						}),
+					});
+				}
+			} catch {}
 		}
 		confirming = null;
 	}
@@ -111,6 +167,35 @@
 	}
 
 	onMount(load);
+
+	// 30s poll für live-Fortschritt
+	$effect(() => {
+		const id = setInterval(() => { if (!editOpen && !absenceOpen) load(); }, 30_000);
+		return () => clearInterval(id);
+	});
+
+	function statsFor(plan) {
+		const entries = plan?.game_plan_players ?? [];
+		let yes = 0, no = 0, pending = 0;
+		for (const e of entries) {
+			if (e.confirmed === true) yes++;
+			else if (e.confirmed === false) no++;
+			else pending++;
+		}
+		return { yes, no, pending };
+	}
+
+	function matchStartMs(m) {
+		if (!m?.date || !m?.time) return null;
+		return new Date(`${m.date}T${m.time}`).getTime();
+	}
+	function isShortNotice(m, plan) {
+		if (!plan?.confirmation_deadline) return false;
+		if (plan.confirmation_deadline >= todayStr()) return false;
+		const startMs = matchStartMs(m);
+		if (!startMs) return false;
+		return Date.now() < startMs;
+	}
 </script>
 
 <div class="at-wrap">
@@ -144,7 +229,9 @@
 				{@const published = !!plan?.lineup_published_at}
 				{@const deadlinePassed = plan?.confirmation_deadline ? plan.confirmation_deadline < todayStr() : false}
 				{@const myEntry = plan?.game_plan_players?.find(e => e.player_id === $playerId) ?? null}
-				{@const canRespond = myEntry && myEntry.confirmed === null && published && !deadlinePassed}
+				{@const shortNotice = published && isShortNotice(m, plan)}
+				{@const canRespond = myEntry && published && (!deadlinePassed || shortNotice)}
+				{@const captainStats = statsFor(plan)}
 
 				<div class="at-card" class:at-card--unpublished={!published}>
 					<!-- Card header -->
@@ -162,11 +249,36 @@
 					</div>
 					<p class="at-opponent">vs. {m.opponent}</p>
 
+					{#if $playerRole === 'kapitaen'}
+						<div class="at-captain-actions">
+							<button class="mw-btn mw-btn--primary mw-btn--wide" onclick={() => openEdit(m.id)}>
+								<span class="material-symbols-outlined">{plan ? 'edit' : 'add'}</span>
+								{plan ? 'Aufstellung bearbeiten' : 'Aufstellung erstellen'}
+							</button>
+						</div>
+						{#if published}
+							<div class="at-captain-strip">
+								<span class="at-stat at-stat--yes">
+									<span class="material-symbols-outlined">check_circle</span>
+									{captainStats.yes} zugesagt
+								</span>
+								<span class="at-stat at-stat--no">
+									<span class="material-symbols-outlined">cancel</span>
+									{captainStats.no} abgesagt
+								</span>
+								<span class="at-stat at-stat--pending">
+									<span class="material-symbols-outlined">schedule</span>
+									{captainStats.pending} offen
+								</span>
+							</div>
+						{/if}
+					{/if}
+
 					{#if !plan || !published}
 						<!-- Nicht veröffentlicht -->
 						<div class="at-not-published">
 							<span class="material-symbols-outlined">schedule</span>
-							Aufstellung noch nicht veröffentlicht
+							Aufstellung folgt
 						</div>
 					{:else}
 						<!-- Spielerliste -->
@@ -196,11 +308,29 @@
 							{/each}
 						</div>
 
+						<!-- My status -->
+						{#if !myEntry}
+							<p class="at-my-status at-my-status--out">Du bist nicht dabei</p>
+						{:else if myEntry.confirmed === true}
+							<p class="at-my-status at-my-status--yes">Du bist dabei</p>
+						{:else if myEntry.confirmed === false}
+							<p class="at-my-status at-my-status--no">Du hast abgesagt</p>
+						{:else}
+							<p class="at-my-status at-my-status--pending">Bestätigung offen</p>
+						{/if}
+
 						<!-- Frist -->
 						{#if plan.confirmation_deadline}
 							<p class="at-deadline" class:at-deadline--passed={deadlinePassed}>
 								{deadlinePassed ? 'Frist abgelaufen:' : 'Bestätigen bis'} {fmtDate(plan.confirmation_deadline)}
 							</p>
+						{/if}
+
+						{#if shortNotice}
+							<div class="at-urgent-warn">
+								<span class="material-symbols-outlined">notifications_active</span>
+								Kurzfristige Änderung — Kapitän wird sofort informiert
+							</div>
 						{/if}
 
 						<!-- Confirm/Decline nur für eigenen Eintrag -->
@@ -229,7 +359,15 @@
 			{/each}
 		</div>
 	{/if}
+
+	<button class="at-absence-link" onclick={() => absenceOpen = true}>
+		<span class="material-symbols-outlined">event_busy</span>
+		Nicht verfügbar? Abwesenheit eintragen
+	</button>
 </div>
+
+<AdminAufstellung bind:open={editOpen} preselectedMatchId={editMatchId} />
+<AbsenceSheet bind:open={absenceOpen} onReload={load} />
 
 <style>
 	.at-wrap {
@@ -364,4 +502,82 @@
 		display: flex; gap: var(--space-3);
 		padding: var(--space-3) var(--space-4) var(--space-4);
 	}
+
+	/* Captain actions */
+	.at-captain-actions {
+		padding: 0 var(--space-4) var(--space-3);
+	}
+
+	/* My status */
+	.at-my-status {
+		margin: var(--space-3) var(--space-4) 0;
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+		font-size: var(--text-label-md);
+		font-weight: 600;
+		text-align: center;
+	}
+	.at-my-status--yes { background: rgba(45,122,58,0.12); color: #2D7A3A; }
+	.at-my-status--no { background: rgba(176,0,32,0.12); color: var(--color-error, #b00020); }
+	.at-my-status--pending { background: var(--color-surface-container-low); color: var(--color-on-surface-variant); }
+	.at-my-status--out { background: var(--color-surface-container-low); color: var(--color-on-surface-variant); }
+
+	/* Captain progress-strip */
+	.at-captain-strip {
+		display: flex; gap: var(--space-2);
+		padding: 0 var(--space-4) var(--space-3);
+		flex-wrap: wrap;
+	}
+	.at-stat {
+		display: inline-flex; align-items: center; gap: 4px;
+		padding: 4px 10px;
+		background: var(--color-surface-container-low);
+		border-radius: var(--radius-full);
+		font-size: var(--text-label-md);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	.at-stat .material-symbols-outlined { font-size: 0.9rem; }
+	.at-stat--yes     { color: #2D7A3A; }
+	.at-stat--no      { color: var(--color-error, #b00020); }
+	.at-stat--pending { color: var(--color-on-surface-variant); }
+
+	/* Kurzfristig-Banner */
+	.at-urgent-warn {
+		display: flex; align-items: center; gap: var(--space-2);
+		margin: var(--space-2) var(--space-4) 0;
+		padding: var(--space-2) var(--space-3);
+		background: rgba(180, 83, 9, 0.1);
+		border: 1px solid rgba(180, 83, 9, 0.35);
+		border-radius: var(--radius-md);
+		color: #b45309;
+		font-size: var(--text-label-md);
+		font-weight: 600;
+	}
+	.at-urgent-warn .material-symbols-outlined {
+		font-size: 1.1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+	}
+
+	/* Abwesenheits-Link */
+	.at-absence-link {
+		display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+		padding: var(--space-3);
+		border: 1.5px dashed var(--color-outline-variant);
+		border-radius: var(--radius-md);
+		background: transparent;
+		color: var(--color-on-surface-variant);
+		font-family: inherit;
+		font-size: var(--text-body-sm);
+		font-weight: 600;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		margin-top: var(--space-2);
+	}
+	.at-absence-link:active {
+		background: var(--color-surface-container-low);
+		color: var(--color-primary);
+		border-color: var(--color-primary);
+	}
+	.at-absence-link .material-symbols-outlined { font-size: 1.1rem; }
 </style>

@@ -46,10 +46,13 @@
 	</button>
 	<div class="prefs">
 		{#each [
-			{ k: 'lineup', label: 'Aufstellung' },
-			{ k: 'meetup', label: 'Treffpunkt'  },
-			{ k: 'news',   label: 'News'        },
-			{ k: 'poll',   label: 'Umfragen'    },
+			{ k: 'lineup',          label: 'Aufstellung veröffentlicht' },
+			{ k: 'lineup_reminder', label: 'Erinnerung (24h vor Frist)' },
+			{ k: 'lineup_decline',  label: 'Absagen (nur Kapitäne)' },
+			{ k: 'feedback',        label: 'Feedback-Anfrage nach Spiel' },
+			{ k: 'meetup',          label: 'Treffpunkt'  },
+			{ k: 'news',            label: 'News'        },
+			{ k: 'poll',            label: 'Umfragen'    },
 		] as p}
 			<label class="toggle">
 				<span>{p.label}</span>

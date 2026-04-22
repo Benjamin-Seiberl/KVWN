@@ -71,6 +71,10 @@
 			autocapitalize="sentences"
 			inputmode="text"
 		></textarea>
+		<p class="mw-feedback__hint">
+			<span class="material-symbols-outlined">visibility_off</span>
+			Anonym — Kapitän sieht deine Antwort ohne Name.
+		</p>
 		<button
 			class="mw-btn mw-btn--primary mw-btn--wide"
 			style="margin-top: var(--space-3);"
@@ -82,3 +86,13 @@
 		</button>
 	{/if}
 </section>
+
+<style>
+	.mw-feedback__hint {
+		display: flex; align-items: center; gap: var(--space-2);
+		font-size: var(--text-label-sm);
+		color: var(--color-on-surface-variant);
+		margin: var(--space-2) 0 var(--space-2);
+	}
+	.mw-feedback__hint .material-symbols-outlined { font-size: 1rem; }
+</style>

@@ -6,18 +6,20 @@
 	import { setSubtab }    from '$lib/stores/subtab.js';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { fmtDate, fmtTime, toDateStr, daysUntil } from '$lib/utils/dates.js';
-	import { leagueTiming, offsetTime, shortTime }    from '$lib/utils/league.js';
+	import { shortTime }                              from '$lib/utils/league.js';
+	import { matchEnded }                             from '$lib/utils/matchTiming.js';
 	import { BEWERB_LABEL } from '$lib/constants/competitions.js';
 	import { shortName }    from '$lib/utils/players.js';
 	import BottomSheet      from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard      from '$lib/components/spielbetrieb/CarpoolCard.svelte';
+	import OpenMatchesSheet from '$lib/components/spielbetrieb/OpenMatchesSheet.svelte';
+	import { seasonStart }  from '$lib/utils/season.js';
 
 	// ── State ─────────────────────────────────────────────────────────────────
 	let upcomingMatches = $state([]);          // matches in next 21 days
 	let pastMatches     = $state([]);          // league matches in last 14 days (for results + nudge)
 	let tournaments     = $state([]);          // active turniere
 	let landesbewerbe   = $state([]);          // open registrations / upcoming
-	let pendingLineups  = $state([]);          // own game_plan_players with confirmed=null
 	let myCarpoolSeats  = $state([]);          // [{ match_carpools: { match_id } }]
 	let myDriving       = $state([]);          // [{ match_id }]
 	let allCarpools     = $state([]);          // carpools for upcoming away matches (count + driver flags)
@@ -30,8 +32,8 @@
 	let carpoolSheetMeetup = $state(null);
 	let carpoolLoading     = $state(false);
 
-	let lineupSheetOpen  = $state(false);
-	let lineupSheetEntry = $state(null);
+	let openMatchesCount     = $state(0);
+	let openMatchesSheetOpen = $state(false);
 
 	// ── Date constants ────────────────────────────────────────────────────────
 	const today   = toDateStr(new Date());
@@ -75,15 +77,9 @@
 		return ({ tournament: 'turnier', landesbewerb: 'landesbewerb' })[type] ?? 'spiele';
 	}
 
-	function matchEnded(m) {
-		if (!m?.time) return false;
-		const timing = leagueTiming(m.leagues?.name ?? '');
-		const endStr = offsetTime(m.time, timing.matchDurationMin);
-		if (!endStr) return false;
-		const [eh, em] = endStr.split(':').map(Number);
-		const end = new Date(m.date + 'T00:00:00');
-		end.setHours(eh, em + 10, 0, 0);
-		return new Date() >= end;
+	function goToComp(pill) {
+		setSubtab('/spielbetrieb', 'spielbetrieb');
+		goto(`/spielbetrieb?pill=${pill}`, { keepFocus: true, noScroll: true });
 	}
 
 	function teamTotal(m) {
@@ -103,7 +99,7 @@
 		if (!lu) return null;
 		if (!lu.published) return { kind: 'pending',  label: 'Aufstellung folgt' };
 		const me = lu.players.find(p => p.player_id === $playerId);
-		if (!me)                       return { kind: 'out',      label: 'Du fehlst' };
+		if (!me)                       return { kind: 'out',      label: 'Du bist nicht dabei' };
 		if (me.confirmed === true)     return { kind: 'in',       label: 'Du bist dabei' };
 		if (me.confirmed === false)    return { kind: 'declined', label: 'Du hast abgesagt' };
 		return                                { kind: 'await',    label: 'Bestätigung offen' };
@@ -125,13 +121,6 @@
 	const heroType  = $derived(heroMatch ? matchTypeOf(heroMatch) : null);
 
 	// ── Action cards ──────────────────────────────────────────────────────────
-	const pendingLineup = $derived.by(() =>
-		pendingLineups.find(p => {
-			const gp = p.game_plans;
-			return gp?.lineup_published_at && (gp?.confirmation_deadline ?? '0') >= today;
-		}) ?? null
-	);
-
 	const urgentTournament = $derived.by(() =>
 		tournaments.find(t =>
 			t.voting_deadline && t.voting_deadline.slice(0, 10) <= plus14 &&
@@ -160,9 +149,13 @@
 		}) ?? null;
 	});
 
+	function matchPublished(m) {
+		return (m.game_plans ?? []).some(gp => gp.result_published_at);
+	}
+
 	const resultNudgeMatch = $derived.by(() => {
 		if ($playerRole !== 'kapitaen') return null;
-		return pastMatches.find(m => matchEnded(m) && !matchHasScores(m)) ?? null;
+		return pastMatches.find(m => matchEnded(m) && !matchPublished(m)) ?? null;
 	});
 
 	// ── Hub row ───────────────────────────────────────────────────────────────
@@ -173,57 +166,7 @@
 	const nextLandes      = $derived(landesbewerbe[0] ?? null);
 
 	// ── Letzte Ergebnisse ─────────────────────────────────────────────────────
-	const recentResults = $derived(pastMatches.filter(m => matchHasScores(m)).slice(0, 3));
-
-	// ── 21-day feed ───────────────────────────────────────────────────────────
-	const feedItems = $derived.by(() => {
-		const items = [];
-		for (const m of upcomingMatches) {
-			const t = matchTypeOf(m);
-			items.push({
-				type:    t === 'league' ? 'league-match' : t === 'friendly' ? 'friendly-match' : t === 'tournament' ? 'tournament-match' : 'landesbewerb-match',
-				sortKey: m.date + 'T' + (m.time ?? '23:59'),
-				data:    m,
-			});
-		}
-		for (const tourn of tournaments) {
-			const date = tourn.confirmed_date ?? tourn.voting_deadline?.slice(0, 10) ?? null;
-			if (!date || date < today || date > plus21) continue;
-			items.push({
-				type:    'tournament-event',
-				sortKey: date + 'T' + (tourn.confirmed_time ?? '23:59'),
-				data:    tourn,
-			});
-		}
-		for (const lb of landesbewerbe) {
-			const date = lb.date ?? lb.registration_deadline?.slice(0, 10) ?? null;
-			if (!date || date < today || date > plus21) continue;
-			items.push({
-				type:    'landesbewerb-event',
-				sortKey: date + 'T' + (lb.time ?? '23:59'),
-				data:    lb,
-			});
-		}
-		if ($playerRole === 'kapitaen') {
-			for (const m of pastMatches) {
-				if (matchEnded(m) && !matchHasScores(m)) {
-					items.push({ type: 'result-nudge', sortKey: m.date + 'T' + (m.time ?? '23:59'), data: m });
-				}
-			}
-		}
-		items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-		return items;
-	});
-
-	const feedByDate = $derived.by(() => {
-		const map = new Map();
-		for (const item of feedItems) {
-			const d = item.sortKey.slice(0, 10);
-			if (!map.has(d)) map.set(d, []);
-			map.get(d).push(item);
-		}
-		return [...map.entries()].map(([date, items]) => ({ date, items }));
-	});
+	const recentResults = $derived(pastMatches.filter(m => matchPublished(m) && matchHasScores(m)).slice(0, 3));
 
 	// ── Loading ───────────────────────────────────────────────────────────────
 	async function loadData() {
@@ -240,7 +183,7 @@
 
 			// 1: past league matches (last 14d) with scores
 			sb.from('matches')
-				.select('id, date, time, opponent, home_away, league_id, cal_week, leagues(name), game_plans(id, game_plan_players(score, played))')
+				.select('id, date, time, opponent, home_away, league_id, cal_week, leagues(name), game_plans(id, result_published_at, game_plan_players(score, played))')
 				.gte('date', minus14).lt('date', today)
 				.not('league_id', 'is', null)
 				.order('date', { ascending: false }),
@@ -257,20 +200,13 @@
 				.or(`registration_deadline.gt.${new Date().toISOString()},date.gte.${today}`)
 				.order('registration_deadline', { ascending: true, nullsFirst: false }),
 
-			// 4: own pending lineup confirmations
-			pid ? sb.from('game_plan_players')
-				.select('id, position, confirmed, player_name, players(name, photo), game_plans!inner(id, lineup_published_at, confirmation_deadline, cal_week, league_id, matches(id, date, time, opponent, home_away, league_id, leagues(name)))')
-				.eq('player_id', pid)
-				.is('confirmed', null)
-				: Promise.resolve({ data: [] }),
-
-			// 5: own carpool seats
+			// 4: own carpool seats
 			pid ? sb.from('match_carpool_seats')
 				.select('carpool_id, match_carpools!inner(match_id)')
 				.eq('passenger_id', pid)
 				: Promise.resolve({ data: [] }),
 
-			// 6: own driving
+			// 5: own driving
 			pid ? sb.from('match_carpools')
 				.select('id, match_id')
 				.eq('driver_id', pid)
@@ -282,9 +218,8 @@
 		pastMatches     = results[1].data ?? [];
 		tournaments     = results[2].data ?? [];
 		landesbewerbe   = results[3].data ?? [];
-		pendingLineups  = results[4].data ?? [];
-		myCarpoolSeats  = results[5].data ?? [];
-		myDriving       = results[6].data ?? [];
+		myCarpoolSeats  = results[4].data ?? [];
+		myDriving       = results[5].data ?? [];
 
 		// Lineups for upcoming league matches (eager fetch via cal_week + league_id)
 		const leagueMatches = upcomingMatches.filter(m => m.cal_week && m.league_id && !m.is_tournament && !m.is_landesbewerb);
@@ -321,7 +256,25 @@
 			allCarpools = [];
 		}
 
+		loadOpenMatchesCount();
+
 		loading = false;
+	}
+
+	async function loadOpenMatchesCount() {
+		const { data, error } = await sb
+			.from('matches')
+			.select('id, opponent, game_plans(result_published_at)')
+			.not('league_id', 'is', null)
+			.eq('is_tournament', false)
+			.eq('is_landesbewerb', false)
+			.eq('is_friendly', false)
+			.gte('date', seasonStart());
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
+		openMatchesCount = (data ?? []).filter(m =>
+			m.opponent !== 'spielfrei' &&
+			(m.game_plans ?? []).every(gp => !gp.result_published_at)
+		).length;
 	}
 
 	onMount(loadData);
@@ -350,33 +303,13 @@
 		await loadData();
 	}
 
-	// ── Lineup confirm sheet ──────────────────────────────────────────────────
-	function openLineupSheet(entry) {
-		lineupSheetEntry = entry;
-		lineupSheetOpen  = true;
-	}
-
-	async function respondLineup(confirmed) {
-		if (!lineupSheetEntry) return;
-		const id = lineupSheetEntry.id;
-		const { error } = await sb.from('game_plan_players').update({ confirmed }).eq('id', id);
-		if (error) { triggerToast('Fehler: ' + error.message); return; }
-		triggerToast(confirmed ? 'Aufstellung bestätigt' : 'Absage registriert');
-		pendingLineups   = pendingLineups.filter(p => p.id !== id);
-		lineupSheetOpen  = false;
-		lineupSheetEntry = null;
-	}
-
-	// quick-confirm from feed item
-	async function quickConfirm(entryId, confirmed) {
-		const { error } = await sb.from('game_plan_players').update({ confirmed }).eq('id', entryId);
-		if (error) { triggerToast('Fehler: ' + error.message); return; }
-		triggerToast(confirmed ? 'Bestätigt' : 'Abgesagt');
-		pendingLineups = pendingLineups.filter(p => p.id !== entryId);
-	}
-
 	function statusLabel(s) {
 		return ({ voting: 'Abstimmung', voting_closed: 'Geschlossen', scheduling: 'Terminplanung', confirmed: 'Bestätigt' })[s] ?? s;
+	}
+
+	function openResultEntry(matchId) {
+		setSubtab('/spielbetrieb', 'spielbetrieb');
+		goto(`/spielbetrieb?pill=spiele&match=${matchId}`);
 	}
 </script>
 
@@ -398,7 +331,7 @@
 		{@const title  = heroType === 'tournament' || heroType === 'landesbewerb'
 			? (heroMatch.tournament_title ?? heroMatch.opponent)
 			: (isAway ? 'bei ' : 'vs. ') + heroMatch.opponent}
-		<button class="hero-card" onclick={() => setSubtab('/spielbetrieb', heroSubtabFor(heroType))}>
+		<button class="hero-card" onclick={() => goToComp(heroSubtabFor(heroType))}>
 			<span class="hero-eyebrow">{eyebrowFor(heroType)}</span>
 			<h2 class="hero-title">{title}</h2>
 			<div class="hero-meta">
@@ -419,25 +352,11 @@
 	{/if}
 
 	<!-- ── Action Cards — urgency only ──────────────────────────────────── -->
-	{#if pendingLineup || urgentTournament || urgentLandesbewerb || resultNudgeMatch || carpoolNeededMatch}
+	{#if urgentTournament || urgentLandesbewerb || resultNudgeMatch || carpoolNeededMatch}
 		<div class="action-cards">
 
-			{#if pendingLineup}
-				{@const gp = pendingLineup.game_plans}
-				{@const m  = gp?.matches}
-				<button class="action-card action-card--warn" onclick={() => openLineupSheet(pendingLineup)}>
-					<span class="material-symbols-outlined action-icon">warning</span>
-					<div class="action-body">
-						<span class="action-title">Aufstellung bestätigen</span>
-						{#if m}<span class="action-sub">{(m.home_away === 'HEIM' ? 'vs. ' : 'bei ')}{m.opponent} · {fmtDate(m.date)}</span>{/if}
-						{#if gp?.confirmation_deadline}<span class="action-sub">Frist: {fmtDate(gp.confirmation_deadline)}</span>{/if}
-					</div>
-					<span class="action-cta">Antworten →</span>
-				</button>
-			{/if}
-
 			{#if urgentTournament}
-				<button class="action-card action-card--gold" onclick={() => setSubtab('/spielbetrieb', 'turnier')}>
+				<button class="action-card action-card--gold" onclick={() => goToComp('turnier')}>
 					<span class="material-symbols-outlined action-icon">military_tech</span>
 					<div class="action-body">
 						<span class="action-title">Turnier-Abstimmung</span>
@@ -449,7 +368,7 @@
 			{/if}
 
 			{#if urgentLandesbewerb}
-				<button class="action-card action-card--gold" onclick={() => setSubtab('/spielbetrieb', 'landesbewerb')}>
+				<button class="action-card action-card--gold" onclick={() => goToComp('landesbewerb')}>
 					<span class="material-symbols-outlined action-icon">workspace_premium</span>
 					<div class="action-body">
 						<span class="action-title">Landesbewerb anmelden</span>
@@ -472,7 +391,7 @@
 			{/if}
 
 			{#if resultNudgeMatch}
-				<button class="action-card action-card--blue" onclick={() => { goto('/profil'); setSubtab('/profil', 'admin'); }}>
+				<button class="action-card action-card--blue" onclick={() => openResultEntry(resultNudgeMatch.id)}>
 					<span class="material-symbols-outlined action-icon">edit_note</span>
 					<div class="action-body">
 						<span class="action-title">Ergebnis eintragen</span>
@@ -488,7 +407,7 @@
 	<!-- ── Hub Row ─────────────────────────────────────────────────────── -->
 	<div class="hub-row">
 
-		<button class="hub-card" onclick={() => setSubtab('/spielbetrieb', 'spiele')}>
+		<button class="hub-card" onclick={() => goToComp('spiele')}>
 			<span class="material-symbols-outlined hub-icon">sports</span>
 			<span class="hub-label">Spiele</span>
 			{#if nextLeagueMatch}
@@ -499,7 +418,7 @@
 			{/if}
 		</button>
 
-		<button class="hub-card" onclick={() => setSubtab('/spielbetrieb', 'turnier')}>
+		<button class="hub-card" onclick={() => goToComp('turnier')}>
 			<span class="material-symbols-outlined hub-icon">military_tech</span>
 			<span class="hub-label">Turnier</span>
 			{#if tournamentCount > 0}
@@ -513,7 +432,7 @@
 			{/if}
 		</button>
 
-		<button class="hub-card" onclick={() => setSubtab('/spielbetrieb', 'landesbewerb')}>
+		<button class="hub-card" onclick={() => goToComp('landesbewerb')}>
 			<span class="material-symbols-outlined hub-icon">workspace_premium</span>
 			<span class="hub-label">Landesb.</span>
 			{#if landesCount > 0}
@@ -528,6 +447,14 @@
 		</button>
 
 	</div>
+
+	{#if openMatchesCount > 0}
+		<button class="open-matches-pill" onclick={() => openMatchesSheetOpen = true}>
+			<span class="material-symbols-outlined">scoreboard</span>
+			<span>{openMatchesCount} {openMatchesCount === 1 ? 'offenes Spiel' : 'offene Spiele'} · alle anzeigen</span>
+			<span class="material-symbols-outlined">arrow_forward</span>
+		</button>
+	{/if}
 
 	<!-- ── Letzte Ergebnisse ───────────────────────────────────────────── -->
 	{#if recentResults.length > 0}
@@ -548,150 +475,9 @@
 					</div>
 				{/each}
 			</div>
-			<button class="more-btn" onclick={() => setSubtab('/spielbetrieb', 'spiele')}>Alle Ergebnisse →</button>
+			<button class="more-btn" onclick={() => goToComp('spiele')}>Alle Ergebnisse →</button>
 		</div>
 	{/if}
-
-	<!-- ── 21-day Spielfeed ────────────────────────────────────────────── -->
-	<div class="feed-section">
-		<h3 class="section-heading">
-			<span class="material-symbols-outlined">date_range</span>
-			Nächste 21 Tage
-		</h3>
-
-		{#if feedByDate.length === 0}
-			<div class="feed-empty">
-				<span class="material-symbols-outlined">event_available</span>
-				<p>Keine Termine in den nächsten 21 Tagen</p>
-			</div>
-		{:else}
-			<div class="feed-list">
-				{#each feedByDate as group}
-					<div class="feed-date-group">
-						<span class="feed-date-chip">{fmtDate(group.date)}</span>
-						<div class="feed-group-items">
-							{#each group.items as item}
-
-								{#if item.type === 'league-match'}
-									{@const m       = item.data}
-									{@const isAway  = m.home_away !== 'HEIM'}
-									{@const ls      = lineupStatusFor(m.id)}
-									{@const cs      = isAway ? carpoolStatusFor(m.id) : null}
-									{@const myEntry = pendingLineups.find(p => p.game_plans?.matches?.id === m.id)}
-									<div class="feed-item feed-item--league">
-										<span class="feed-item-icon material-symbols-outlined" style="color:#1e3a5f">sports</span>
-										<div class="feed-item-body">
-											<span class="feed-item-title">{(isAway ? 'bei ' : 'vs. ') + m.opponent}</span>
-											<span class="feed-item-sub">
-												{#if m.time}{shortTime(m.time)} Uhr{/if}
-												<span class="feed-chip feed-chip--home-away" class:feed-chip--away={isAway}>{isAway ? 'Auswärts' : 'Heim'}</span>
-												{#if m.leagues?.name}<span class="feed-chip feed-chip--neutral">{m.leagues.name}</span>{/if}
-												{#if ls}<span class="feed-chip feed-chip--lineup feed-chip--{ls.kind}">{ls.label}</span>{/if}
-												{#if cs && cs.kind !== 'none'}<span class="feed-chip feed-chip--carpool feed-chip--cp-{cs.kind}">{cs.label}</span>{/if}
-											</span>
-										</div>
-										<div class="feed-actions">
-											{#if myEntry}
-												<button class="quick-btn quick-btn--yes" aria-label="Bestätigen" onclick={(e) => { e.stopPropagation(); quickConfirm(myEntry.id, true); }}>
-													<span class="material-symbols-outlined">check</span>
-												</button>
-												<button class="quick-btn quick-btn--no" aria-label="Absagen" onclick={(e) => { e.stopPropagation(); quickConfirm(myEntry.id, false); }}>
-													<span class="material-symbols-outlined">close</span>
-												</button>
-											{:else if isAway}
-												<button class="feed-action-btn" onclick={() => openCarpoolSheet(m)}>
-													<span class="material-symbols-outlined">directions_car</span>
-													Fahrt
-												</button>
-											{/if}
-										</div>
-									</div>
-
-								{:else if item.type === 'friendly-match'}
-									{@const m      = item.data}
-									{@const isAway = m.home_away !== 'HEIM'}
-									<div class="feed-item feed-item--friendly">
-										<span class="feed-item-icon material-symbols-outlined" style="color:#15803d">handshake</span>
-										<div class="feed-item-body">
-											<span class="feed-item-title">{(isAway ? 'bei ' : 'vs. ') + m.opponent}</span>
-											<span class="feed-item-sub">
-												{#if m.time}{shortTime(m.time)} Uhr{/if}
-												<span class="feed-chip feed-chip--neutral">Freundschaft</span>
-												<span class="feed-chip feed-chip--home-away" class:feed-chip--away={isAway}>{isAway ? 'Auswärts' : 'Heim'}</span>
-											</span>
-										</div>
-										{#if isAway}
-											<button class="feed-action-btn" onclick={() => openCarpoolSheet(m)}>
-												<span class="material-symbols-outlined">directions_car</span>
-												Fahrt
-											</button>
-										{/if}
-									</div>
-
-								{:else if item.type === 'tournament-match' || item.type === 'landesbewerb-match'}
-									{@const m      = item.data}
-									{@const isLB   = item.type === 'landesbewerb-match'}
-									<button class="feed-item feed-item--tourney feed-item--btn" onclick={() => setSubtab('/spielbetrieb', isLB ? 'landesbewerb' : 'turnier')}>
-										<span class="feed-item-icon material-symbols-outlined" style="color:#b45309">{isLB ? 'workspace_premium' : 'military_tech'}</span>
-										<div class="feed-item-body">
-											<span class="feed-item-title">{m.tournament_title ?? m.opponent ?? (isLB ? 'Landesbewerb' : 'Turnier')}</span>
-											<span class="feed-item-sub">
-												{#if m.time}{shortTime(m.time)} Uhr{/if}
-												{#if m.tournament_location}<span class="feed-item-loc"><span class="material-symbols-outlined">location_on</span>{m.tournament_location}</span>{/if}
-											</span>
-										</div>
-									</button>
-
-								{:else if item.type === 'tournament-event'}
-									{@const t  = item.data}
-									{@const dd = deadlineDays(t.voting_deadline)}
-									<button class="feed-item feed-item--tourney feed-item--btn" onclick={() => setSubtab('/spielbetrieb', 'turnier')}>
-										<span class="feed-item-icon material-symbols-outlined" style="color:#b45309">military_tech</span>
-										<div class="feed-item-body">
-											<span class="feed-item-title">{t.title}</span>
-											<span class="feed-item-sub">
-												<span class="feed-chip feed-chip--status feed-chip--{t.status}">{statusLabel(t.status)}</span>
-												{#if dd}<span class="feed-chip feed-chip--neutral">Frist {dd}</span>{/if}
-												{#if t.location}<span class="feed-item-loc"><span class="material-symbols-outlined">location_on</span>{t.location}</span>{/if}
-											</span>
-										</div>
-									</button>
-
-								{:else if item.type === 'landesbewerb-event'}
-									{@const lb = item.data}
-									{@const dd = deadlineDays(lb.registration_deadline)}
-									{@const registered = (lb.landesbewerb_registrations ?? []).some(r => r.player_id === $playerId)}
-									<button class="feed-item feed-item--tourney feed-item--btn" onclick={() => setSubtab('/spielbetrieb', 'landesbewerb')}>
-										<span class="feed-item-icon material-symbols-outlined" style="color:#b45309">workspace_premium</span>
-										<div class="feed-item-body">
-											<span class="feed-item-title">{lb.title}</span>
-											<span class="feed-item-sub">
-												<span class="feed-chip feed-chip--neutral">{BEWERB_LABEL[lb.typ] ?? lb.typ ?? 'Bewerb'}</span>
-												{#if dd}<span class="feed-chip feed-chip--lineup feed-chip--{registered ? 'in' : 'await'}">{registered ? 'Angemeldet' : 'Frist ' + dd}</span>{/if}
-												{#if lb.location}<span class="feed-item-loc"><span class="material-symbols-outlined">location_on</span>{lb.location}</span>{/if}
-											</span>
-										</div>
-									</button>
-
-								{:else if item.type === 'result-nudge'}
-									{@const m = item.data}
-									<button class="feed-item feed-item--result-nudge feed-item--btn" onclick={() => { goto('/profil'); setSubtab('/profil', 'admin'); }}>
-										<span class="feed-item-icon material-symbols-outlined" style="color:#1d4ed8">edit_note</span>
-										<div class="feed-item-body">
-											<span class="feed-item-title">Ergebnis eintragen →</span>
-											<span class="feed-item-sub">{m.opponent} · {fmtDate(m.date)}</span>
-										</div>
-									</button>
-
-								{/if}
-
-							{/each}
-						</div>
-					</div>
-				{/each}
-			</div>
-		{/if}
-	</div>
 
 </div>
 {/if}
@@ -708,39 +494,7 @@
 	{/if}
 </BottomSheet>
 
-<!-- ── Lineup-Confirm BottomSheet ──────────────────────────────────────── -->
-<BottomSheet bind:open={lineupSheetOpen} title="Aufstellungsbestätigung">
-	{#if lineupSheetEntry}
-		{@const gp = lineupSheetEntry.game_plans}
-		{@const m  = gp?.matches}
-		<div class="lineup-sheet">
-			{#if m}
-				<div class="lineup-sheet-head">
-					<span class="lineup-sheet-league">{m.leagues?.name ?? ''}</span>
-					<h4 class="lineup-sheet-opp">{m.home_away === 'HEIM' ? 'vs. ' : 'bei '}{m.opponent}</h4>
-					<p class="lineup-sheet-meta">{fmtDate(m.date)}{m.time ? ' · ' + shortTime(m.time) + ' Uhr' : ''}</p>
-				</div>
-			{/if}
-			{#if gp?.confirmation_deadline}
-				<p class="lineup-sheet-deadline">
-					<span class="material-symbols-outlined">schedule</span>
-					Frist: {fmtDate(gp.confirmation_deadline)}
-				</p>
-			{/if}
-			<p class="lineup-sheet-pos">
-				Deine Position: <strong>{lineupSheetEntry.position ?? '?'}</strong>
-			</p>
-			<div class="lineup-sheet-actions">
-				<button class="lineup-sheet-btn lineup-sheet-btn--decline" onclick={() => respondLineup(false)}>
-					<span class="material-symbols-outlined">close</span>Ablehnen
-				</button>
-				<button class="lineup-sheet-btn lineup-sheet-btn--confirm" onclick={() => respondLineup(true)}>
-					<span class="material-symbols-outlined">check</span>Bestätigen
-				</button>
-			</div>
-		</div>
-	{/if}
-</BottomSheet>
+<OpenMatchesSheet bind:open={openMatchesSheetOpen} />
 
 <style>
 	.ueb-page { padding: var(--space-5) var(--space-5) var(--space-10); display: flex; flex-direction: column; gap: var(--space-5); }
@@ -814,16 +568,7 @@
 	.result-score { font-family: var(--font-display); font-size: 1.1rem; font-weight: 800; color: var(--color-primary); flex-shrink: 0; }
 	.more-btn { align-self: flex-start; background: none; border: none; padding: 0; font-size: var(--text-label-sm); font-weight: 700; color: var(--color-primary); cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent; }
 
-	/* ── Feed ────────────────────────────────────────────────────────── */
-	.feed-section { display: flex; flex-direction: column; gap: var(--space-4); }
-	.feed-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-10) var(--space-4); color: var(--color-outline); }
-	.feed-empty .material-symbols-outlined { font-size: 2.5rem; opacity: 0.5; }
-	.feed-empty p { margin: 0; font-size: var(--text-label-md); }
-	.feed-list { display: flex; flex-direction: column; gap: var(--space-4); }
-	.feed-date-group { display: flex; flex-direction: column; gap: var(--space-2); }
-	.feed-date-chip { display: inline-flex; align-self: flex-start; background: var(--color-surface-container); border-radius: 999px; padding: 3px 10px; font-size: var(--text-label-sm); font-weight: 700; color: var(--color-on-surface-variant); text-transform: uppercase; letter-spacing: 0.06em; }
-	.feed-group-items { display: flex; flex-direction: column; gap: var(--space-2); }
-
+	/* ── Feed item primitives (still used by result-nudge action card) ─── */
 	.feed-item { display: flex; align-items: center; gap: var(--space-3); background: var(--color-surface-container-lowest, #fff); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); box-shadow: var(--shadow-card); border: 1.5px solid transparent; }
 	.feed-item--btn { width: 100%; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 100ms ease; }
 	.feed-item--btn:active { transform: scale(0.98); }
@@ -862,32 +607,29 @@
 	.feed-chip--scheduling       { background: rgba(59,130,246,0.14);  color: #1d4ed8; }
 	.feed-chip--confirmed        { background: rgba(22,163,74,0.14);   color: #15803d; }
 
-	.feed-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
-	.feed-action-btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: var(--radius-md); background: #dbeafe; color: #1d4ed8; border: none; font-size: var(--text-label-sm); font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 100ms ease; }
-	.feed-action-btn:active { transform: scale(0.94); }
-	.feed-action-btn .material-symbols-outlined { font-size: 0.95rem; font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20; }
-
-	.quick-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: none; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 100ms ease; }
-	.quick-btn:active { transform: scale(0.92); }
-	.quick-btn .material-symbols-outlined { font-size: 1.1rem; font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24; }
-	.quick-btn--yes { background: rgba(22,163,74,0.14);  color: #15803d; }
-	.quick-btn--no  { background: rgba(204,0,0,0.10);    color: var(--color-primary); }
+	/* ── Open-Matches Pill ────────────────────────────────────────────── */
+	.open-matches-pill {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		width: 100%;
+		padding: var(--space-3) var(--space-4);
+		margin-top: var(--space-3);
+		background: var(--color-surface-container);
+		color: var(--color-on-surface);
+		border: none;
+		border-radius: var(--radius-full);
+		font: var(--text-label-md);
+		font-family: var(--font-body);
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition: background 150ms ease;
+	}
+	.open-matches-pill:hover { background: var(--color-surface-container-high, var(--color-surface-container)); }
+	.open-matches-pill .material-symbols-outlined { font-size: 18px; color: var(--color-primary); }
+	.open-matches-pill > span:nth-child(2) { flex: 1; text-align: left; }
 
 	/* ── Sheets ───────────────────────────────────────────────────────── */
 	.sheet-loading { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-10) var(--space-4); color: var(--color-outline); }
 	.sheet-loading-icon { font-size: 2rem; opacity: 0.4; }
-
-	.lineup-sheet { padding: var(--space-2) 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
-	.lineup-sheet-head { text-align: center; display: flex; flex-direction: column; gap: 4px; }
-	.lineup-sheet-league { font-size: var(--text-label-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-on-surface-variant); }
-	.lineup-sheet-opp { font-family: var(--font-display); font-size: 1.2rem; font-weight: 800; margin: 0; color: var(--color-on-surface); }
-	.lineup-sheet-meta { font-size: var(--text-label-md); color: var(--color-on-surface-variant); margin: 0; }
-	.lineup-sheet-deadline { display: flex; align-items: center; justify-content: center; gap: var(--space-2); font-size: var(--text-label-md); color: var(--color-primary); margin: 0; }
-	.lineup-sheet-deadline .material-symbols-outlined { font-size: 1rem; }
-	.lineup-sheet-pos { text-align: center; font-size: var(--text-body-md); color: var(--color-on-surface); margin: 0; }
-	.lineup-sheet-actions { display: flex; gap: var(--space-3); }
-	.lineup-sheet-btn { flex: 1; padding: var(--space-3); border-radius: var(--radius-lg); font-size: var(--text-label-md); font-weight: 700; cursor: pointer; border: none; -webkit-tap-highlight-color: transparent; display: flex; align-items: center; justify-content: center; gap: var(--space-2); transition: transform 100ms ease; }
-	.lineup-sheet-btn:active { transform: scale(0.97); }
-	.lineup-sheet-btn--decline { background: var(--color-surface-container); color: var(--color-on-surface); }
-	.lineup-sheet-btn--confirm { background: var(--color-primary);            color: #fff; }
 </style>

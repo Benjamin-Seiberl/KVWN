@@ -15,11 +15,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	webpush.setVapidDetails('mailto:admin@kvwn.at', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-	const { player_ids, title, body, url = '/spielbetrieb' } = await request.json() as {
+	const { player_ids, title, body, url = '/spielbetrieb', pref_key = 'lineup' } = await request.json() as {
 		player_ids: string[];
 		title: string;
 		body: string;
 		url?: string;
+		pref_key?: string;
 	};
 
 	if (!player_ids?.length) {
@@ -29,24 +30,24 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Service-Role-Client umgeht RLS (liest alle Subscriptions)
 	const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-	// Subscriptions für die Spieler laden, aber nur wenn push_prefs.lineup !== false
+	// Subscriptions für die Spieler laden, aber nur wenn push_prefs[pref_key] !== false
 	const { data: players } = await admin
 		.from('players')
 		.select('id, push_prefs')
 		.in('id', player_ids);
 
-	const lineupOptedIn = (players ?? [])
-		.filter(p => (p.push_prefs?.lineup ?? true) !== false)
+	const optedIn = (players ?? [])
+		.filter(p => (p.push_prefs?.[pref_key] ?? true) !== false)
 		.map(p => p.id);
 
-	if (!lineupOptedIn.length) {
+	if (!optedIn.length) {
 		return new Response(JSON.stringify({ sent: 0 }));
 	}
 
 	const { data: subs } = await admin
 		.from('push_subscriptions')
 		.select('endpoint, p256dh, auth')
-		.in('player_id', lineupOptedIn);
+		.in('player_id', optedIn);
 
 	const payload = JSON.stringify({ title, body, link: url });
 	let sent = 0;

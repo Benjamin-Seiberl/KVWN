@@ -16,12 +16,11 @@ export const PAGE_CONFIG = {
 	'/spielbetrieb': {
 		title: 'Spielbetrieb',
 		tabs: [
-			{ key: 'uebersicht',    label: 'Übersicht',     icon: 'dashboard'            },
-			{ key: 'aufstellungen', label: 'Aufstellungen',  icon: 'format_list_numbered' },
-			{ key: 'spiele',        label: 'Spiele',         icon: 'emoji_events'         },
-			{ key: 'turnier',       label: 'Turnier',        icon: 'military_tech'        },
-			{ key: 'landesbewerb',  label: 'Landesbewerb',   icon: 'workspace_premium'    },
-			{ key: 'statistiken',   label: 'Statistiken',    icon: 'bar_chart'            },
+			{ key: 'uebersicht',    label: 'Übersicht',    icon: 'dashboard'                                  },
+			{ key: 'aufstellungen', label: 'Aufstellungen', icon: 'format_list_numbered'                      },
+			{ key: 'spielbetrieb',  label: 'Spielbetrieb', icon: 'emoji_events'                               },
+			{ key: 'statistiken',   label: 'Statistiken',  icon: 'bar_chart'                                  },
+			{ key: 'admin',         label: 'Admin',        icon: 'admin_panel_settings', adminOnly: true      },
 		],
 	},
 	'/profil': {

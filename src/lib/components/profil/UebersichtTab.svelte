@@ -23,6 +23,11 @@
 
 	$effect(() => { if ($playerId) loadData($playerId); });
 
+	function goToComp(pill, extraParams = '') {
+		setSubtab('/spielbetrieb', 'spielbetrieb');
+		goto(`/spielbetrieb?pill=${pill}${extraParams}`, { keepFocus: true, noScroll: true });
+	}
+
 	async function loadData(pid) {
 		loading = true;
 		try {
@@ -439,7 +444,7 @@
 	<!-- ── Nächstes Spiel ────────────────────────────────── -->
 	{#if nextMatch}
 		{@const badge = daysUntilLabel(nextMatch.date)}
-		<button class="next-match-card" onclick={() => { goto('/spielbetrieb'); setSubtab('/spielbetrieb', 'spiele'); }}>
+		<button class="next-match-card" onclick={() => goToComp('spiele')}>
 			<div class="next-match-head">
 				<h3 class="section-title">
 					<span class="material-symbols-outlined">emoji_events</span>

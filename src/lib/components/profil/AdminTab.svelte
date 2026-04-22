@@ -3,26 +3,34 @@
 	import { sb }        from '$lib/supabase';
 	import { setSubtab } from '$lib/stores/subtab.js';
 	import { goto }      from '$app/navigation';
-	import { triggerToast } from '$lib/stores/toast.js';
 	import { fmtDate, toDateStr, daysUntil } from '$lib/utils/dates.js';
-	import { leagueTiming, offsetTime } from '$lib/utils/league.js';
+	import { matchEnded }   from '$lib/utils/matchTiming.js';
 	import AdminRollen      from '$lib/components/admin/AdminRollen.svelte';
 	import AdminTraining    from '$lib/components/admin/AdminTraining.svelte';
-	import AdminErgebnis    from '$lib/components/admin/AdminErgebnis.svelte';
 	import AdminAufstellung from '$lib/components/admin/AdminAufstellung.svelte';
+	import AdminFeedback    from '$lib/components/profil/AdminFeedback.svelte';
 
-	let rollenOpen      = $state(false);
-	let trainingOpen    = $state(false);
-	let ergebnisOpen    = $state(false);
-	let aufstellungOpen = $state(false);
-	let attestExpanded  = $state(false);
+	let rollenOpen            = $state(false);
+	let trainingOpen          = $state(false);
+	let aufstellungOpen       = $state(false);
+	let aufstellungMatchId    = $state(null);
+	let feedbackOpen          = $state(false);
+	let attestExpanded        = $state(false);
 
-	let openLineups      = $state([]);
-	let missingResults   = $state([]);
-	let pendingVotes     = $state([]);
-	let urgentLbs        = $state([]);
-	let expiringAtteste  = $state([]);
-	let loading          = $state(true);
+	let openLineups        = $state([]);
+	let declinedEntries    = $state([]);
+	let unconfirmedToday   = $state([]);
+	let newFeedbackCount   = $state(0);
+	let missingResults     = $state([]);
+	let pendingVotes       = $state([]);
+	let urgentLbs          = $state([]);
+	let expiringAtteste    = $state([]);
+	let loading            = $state(true);
+
+	function openAufstellung(matchId) {
+		aufstellungMatchId = matchId ?? null;
+		aufstellungOpen    = true;
+	}
 
 	onMount(loadData);
 
@@ -34,12 +42,17 @@
 		const plus30d = toDateStr(new Date(Date.now() + 30 * 86400000));
 		const minus30 = toDateStr(new Date(Date.now() - 30 * 86400000));
 
+		const minus14 = toDateStr(new Date(Date.now() - 14 * 86400000));
+
 		const [
 			{ data: lineups },
 			{ data: pastMatches },
 			{ data: tournaments },
 			{ data: lbs },
 			{ data: atteste },
+			{ data: declined },
+			{ data: unconf },
+			{ data: fbRows },
 		] = await Promise.all([
 			sb.from('game_plans')
 				.select('id, cal_week, league_id, lineup_published_at, matches!inner(id, date, opponent, home_away, leagues(name))')
@@ -47,7 +60,7 @@
 				.gte('matches.date', today)
 				.order('date', { referencedTable: 'matches' }),
 			sb.from('matches')
-				.select('id, date, time, opponent, home_away, leagues(name), game_plans(id, game_plan_players(score))')
+				.select('id, date, time, opponent, home_away, leagues(name), game_plans(id, result_published_at, game_plan_players(score))')
 				.gte('date', minus30).lt('date', today)
 				.not('league_id', 'is', null)
 				.order('date', { ascending: false }),
@@ -67,45 +80,81 @@
 				.lte('medical_exam_expiry', plus30d)
 				.eq('active', true)
 				.order('medical_exam_expiry'),
+			sb.from('game_plan_players')
+				.select('id, player_name, game_plans!inner(id, cal_week, league_id, lineup_published_at, matches!inner(id, date, opponent, leagues(name)))')
+				.eq('confirmed', false)
+				.not('game_plans.lineup_published_at', 'is', null)
+				.gte('game_plans.matches.date', today),
+			sb.from('game_plan_players')
+				.select('id, player_name, game_plans!inner(confirmation_deadline, lineup_published_at, matches!inner(date, opponent, leagues(name)))')
+				.is('confirmed', null)
+				.not('game_plans.lineup_published_at', 'is', null)
+				.eq('game_plans.confirmation_deadline', today),
+			sb.from('match_feedback')
+				.select('id, match_id, created_at')
+				.gte('created_at', minus14 + 'T00:00:00'),
 		]);
 
-		openLineups     = lineups ?? [];
-		pendingVotes    = tournaments ?? [];
-		urgentLbs       = lbs ?? [];
-		expiringAtteste = atteste ?? [];
+		openLineups      = lineups ?? [];
+		pendingVotes     = tournaments ?? [];
+		urgentLbs        = lbs ?? [];
+		expiringAtteste  = atteste ?? [];
+		declinedEntries  = declined ?? [];
+		unconfirmedToday = unconf ?? [];
+		newFeedbackCount = (fbRows ?? []).length;
 
-		// Filter past matches: ended + at least one score missing
+		// Filter past matches: ended + not yet published
 		missingResults = (pastMatches ?? []).filter(m => {
 			if (!matchEnded(m)) return false;
 			const gps = m.game_plans ?? [];
 			if (!gps.length) return true;
-			return gps.some(gp =>
-				!gp.game_plan_players?.length ||
-				gp.game_plan_players.some(p => p.score == null)
-			);
+			return gps.every(gp => !gp.result_published_at);
 		});
 
 		loading = false;
 	}
 
-	function matchEnded(m) {
-		if (!m?.time) return false;
-		const timing = leagueTiming(m.leagues?.name ?? '');
-		const endStr = offsetTime(m.time, timing.matchDurationMin);
-		if (!endStr) return false;
-		const [eh, em] = endStr.split(':').map(Number);
-		const end = new Date(m.date + 'T00:00:00');
-		end.setHours(eh, em + 10, 0, 0);
-		return new Date() >= end;
+	function goToComp(pill, extraParams = '') {
+		setSubtab('/spielbetrieb', 'spielbetrieb');
+		goto(`/spielbetrieb?pill=${pill}${extraParams}`, { keepFocus: true, noScroll: true });
+	}
+
+	function openResultEntry(matchId) {
+		goToComp('spiele', matchId ? `&match=${matchId}` : '');
 	}
 
 	const totalPending = $derived(
-		openLineups.length + missingResults.length + pendingVotes.length + urgentLbs.length + expiringAtteste.length,
+		openLineups.length + missingResults.length + pendingVotes.length + urgentLbs.length + expiringAtteste.length
+		+ declinedEntries.length + unconfirmedToday.length + newFeedbackCount,
 	);
 
 	// ── Inbox cards ───────────────────────────────────────────────────────────
 	const inboxCards = $derived.by(() => {
 		const cards = [];
+		if (declinedEntries.length > 0) {
+			const n = declinedEntries.length;
+			const next = declinedEntries[0]?.game_plans?.matches;
+			const nextMatchId = declinedEntries[0]?.game_plans?.matches?.id;
+			cards.push({
+				id: 'admin-inbox-aufstellungen',
+				icon: 'person_off',
+				title: `${n} ${n === 1 ? 'Absage' : 'Absagen'} – Ersatz wählen`,
+				sub: next ? `${next.opponent} · ${fmtDate(next.date)}` : '',
+				color: '#CC0000', bg: 'rgba(204,0,0,0.12)',
+				action: () => openAufstellung(nextMatchId),
+			});
+		}
+		if (unconfirmedToday.length > 0) {
+			const n = unconfirmedToday.length;
+			const next = unconfirmedToday[0]?.game_plans?.matches;
+			cards.push({
+				icon: 'schedule',
+				title: `${n} Spieler nicht rückgemeldet`,
+				sub: next ? `Frist heute: ${next.opponent}` : 'Frist läuft heute ab',
+				color: '#b45309', bg: 'rgba(180,83,9,0.1)',
+				action: () => aufstellungOpen = true,
+			});
+		}
 		if (openLineups.length > 0) {
 			const n = openLineups.length;
 			const next = openLineups[0]?.matches;
@@ -114,7 +163,16 @@
 				title: `${n} ${n === 1 ? 'Aufstellung' : 'Aufstellungen'} offen`,
 				sub: next ? `Nächstes: ${next.opponent} · ${fmtDate(next.date)}` : 'Aufstellung erstellen',
 				color: '#CC0000', bg: 'rgba(204,0,0,0.08)',
-				action: () => aufstellungOpen = true,
+				action: () => openAufstellung(next?.id),
+			});
+		}
+		if (newFeedbackCount > 0) {
+			cards.push({
+				icon: 'rate_review',
+				title: `${newFeedbackCount} ${newFeedbackCount === 1 ? 'neue Rückmeldung' : 'neue Rückmeldungen'}`,
+				sub: 'Anonymes Feedback ansehen',
+				color: '#0891b2', bg: 'rgba(8,145,178,0.1)',
+				action: () => feedbackOpen = true,
 			});
 		}
 		if (missingResults.length > 0) {
@@ -125,7 +183,7 @@
 				title: `${n} ${n === 1 ? 'Ergebnis fehlt' : 'Ergebnisse fehlen'}`,
 				sub: next ? `Zuletzt: ${next.opponent} · ${fmtDate(next.date)}` : '',
 				color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)',
-				action: () => ergebnisOpen = true,
+				action: () => openResultEntry(next?.id),
 			});
 		}
 		if (pendingVotes.length > 0) {
@@ -136,7 +194,7 @@
 				title: `${n} ${n === 1 ? 'Turnier-Abstimmung' : 'Turnier-Abstimmungen'}`,
 				sub: next?.title ? `${next.title} · Frist: ${fmtDate(String(next.voting_deadline).slice(0,10))}` : '',
 				color: '#b45309', bg: 'rgba(180,83,9,0.1)',
-				action: () => { goto('/spielbetrieb'); setSubtab('/spielbetrieb', 'turnier'); },
+				action: () => goToComp('turnier'),
 			});
 		}
 		if (urgentLbs.length > 0) {
@@ -147,7 +205,7 @@
 				title: `${n} ${n === 1 ? 'Landesbewerb' : 'Landesbewerbe'} ausstehend`,
 				sub: next?.title ? `${next.title} · Frist: ${fmtDate(String(next.registration_deadline).slice(0,10))}` : '',
 				color: '#b45309', bg: 'rgba(180,83,9,0.1)',
-				action: () => { goto('/spielbetrieb'); setSubtab('/spielbetrieb', 'landesbewerb'); },
+				action: () => goToComp('landesbewerb'),
 			});
 		}
 		if (expiringAtteste.length > 0) {
@@ -171,8 +229,8 @@
 			icon: 'emoji_events',
 			color: '#CC0000',
 			actions: [
-				{ icon: 'edit_calendar', label: 'Aufstellung erstellen', live: true, count: openLineups.length,    countLabel: 'offen',  open: () => aufstellungOpen = true },
-				{ icon: 'sports_score',  label: 'Ergebnis eintragen',    live: true, count: missingResults.length, countLabel: 'fehlen', open: () => ergebnisOpen = true },
+				{ icon: 'edit_calendar', label: 'Aufstellung erstellen', live: true, count: openLineups.length,    countLabel: 'offen',  open: () => openAufstellung() },
+				{ icon: 'sports_score',  label: 'Ergebnis eintragen',    live: true, count: missingResults.length, countLabel: 'fehlen', open: () => openResultEntry(missingResults[0]?.id) },
 				{ icon: 'leaderboard',   label: 'Tabelle pflegen' },
 			],
 		},
@@ -264,6 +322,7 @@
 		<div class="inbox">
 			{#each inboxCards as card}
 				<button
+					id={card.id ?? undefined}
 					class="inbox-card"
 					style="--ic-color:{card.color}; --ic-bg:{card.bg}"
 					onclick={card.action}
@@ -346,8 +405,8 @@
 
 <AdminRollen      bind:open={rollenOpen} />
 <AdminTraining    bind:open={trainingOpen} />
-<AdminErgebnis    bind:open={ergebnisOpen} />
-<AdminAufstellung bind:open={aufstellungOpen} />
+<AdminAufstellung bind:open={aufstellungOpen} preselectedMatchId={aufstellungMatchId} />
+<AdminFeedback    bind:open={feedbackOpen} />
 
 <style>
 	.admin-wrap { padding: var(--space-5) var(--space-5) var(--space-10); display: flex; flex-direction: column; gap: var(--space-4); }
