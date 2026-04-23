@@ -93,6 +93,7 @@ async function handle(request) {
 	let upserted = 0;
 	let deleted  = 0;
 	let skipped_match_dates = 0;
+	let first_error = null;
 
 	for (const ev of items) {
 		if (ev.status === 'cancelled') {
@@ -101,6 +102,7 @@ async function handle(request) {
 				.delete()
 				.eq('external_id', ev.id);
 			if (!error) deleted++;
+			else if (!first_error) first_error = `delete: ${error.message}`;
 			continue;
 		}
 
@@ -117,6 +119,7 @@ async function handle(request) {
 			.from('events')
 			.upsert(row, { onConflict: 'external_id' });
 		if (!error) upserted++;
+		else if (!first_error) first_error = `upsert: ${error.message} (code=${error.code ?? '?'} details=${error.details ?? '?'})`;
 	}
 
 	// ── Sync-State schreiben ─────────────────────────────────────────────────
@@ -140,6 +143,7 @@ async function handle(request) {
 				gsa_email_len: GSA_EMAIL.length,
 				gsa_key_len: GSA_KEY.length,
 				items_received: items.length,
+				first_error,
 			},
 		}),
 		{ headers: { 'Content-Type': 'application/json' } },
