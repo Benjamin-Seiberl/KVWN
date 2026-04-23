@@ -12,6 +12,7 @@
 	import ProfilDatenSheet         from './ProfilDatenSheet.svelte';
 	import ProfilEinwilligungenCard from './ProfilEinwilligungenCard.svelte';
 	import ProfilTermineCard        from './ProfilTermineCard.svelte';
+	import ProfilAbwesenheitCard    from './ProfilAbwesenheitCard.svelte';
 	import ProfilMeilensteineCard   from './ProfilMeilensteineCard.svelte';
 
 	// All player columns this tab reads — explicit to tolerate pending migration.
@@ -378,6 +379,8 @@
 			bind:rsvps
 			onReload={() => loadData($playerId)}
 		/>
+
+		<ProfilAbwesenheitCard />
 
 		<ProfilMeilensteineCard {milestones} />
 	</div>

@@ -66,35 +66,67 @@
 </script>
 
 {#if loading}
-	<div class="nmc nmc--skeleton">
-		<div class="nmc-icon-wrap shimmer-box"></div>
-		<div class="nmc-body">
-			<div class="skel-bar shimmer-box" style="width:50%;height:10px;border-radius:4px"></div>
-			<div class="skel-bar shimmer-box" style="width:80%;height:16px;border-radius:6px;margin-top:6px"></div>
-			<div class="skel-bar shimmer-box" style="width:60%;height:10px;border-radius:4px;margin-top:6px"></div>
+	<div class="nmc-wrap">
+		<div class="nmc nmc--skeleton">
+			<div class="nmc-icon-wrap shimmer-box"></div>
+			<div class="nmc-body">
+				<div class="skel-bar shimmer-box" style="width:50%;height:10px;border-radius:4px"></div>
+				<div class="skel-bar shimmer-box" style="width:80%;height:16px;border-radius:6px;margin-top:6px"></div>
+				<div class="skel-bar shimmer-box" style="width:60%;height:10px;border-radius:4px;margin-top:6px"></div>
+			</div>
 		</div>
 	</div>
 {:else if match}
 	{@const days = daysUntil(match.date)}
-	<button class="nmc" onclick={() => goto('/spielbetrieb')} aria-label="Mein nächstes Match">
-		<div class="nmc-icon-wrap">
-			<span class="nmc-days">{days}</span>
-			<span class="nmc-days-label">{days === 1 ? 'Tag' : 'Tage'}</span>
+	<div class="nmc-wrap">
+		<div class="sec-head">
+			<span class="material-symbols-outlined sec-icon">emoji_events</span>
+			<h3 class="sec-title">Mein nächstes Spiel</h3>
 		</div>
-		<div class="nmc-body">
-			<span class="nmc-label">Dein nächster Einsatz</span>
-			<span class="nmc-opponent">vs. {match.opponent}</span>
-			<span class="nmc-meta">
-				{dateLabel(match)} · {formatTime(match.time)} Uhr
-				{#if position} · Pos. {position}{/if}
-			</span>
-			<span class="nmc-league">{match.leagues?.name ?? ''}</span>
-		</div>
-		<span class="material-symbols-outlined nmc-chevron">chevron_right</span>
-	</button>
+		<button class="nmc" onclick={() => goto('/spielbetrieb')} aria-label="Mein nächstes Match">
+			<div class="nmc-icon-wrap">
+				<span class="nmc-days">{days}</span>
+				<span class="nmc-days-label">{days === 1 ? 'Tag' : 'Tage'}</span>
+			</div>
+			<div class="nmc-body">
+				<span class="nmc-label">Dein nächster Einsatz</span>
+				<span class="nmc-opponent">vs. {match.opponent}</span>
+				<span class="nmc-meta">
+					{dateLabel(match)} · {formatTime(match.time)} Uhr
+					{#if position} · Pos. {position}{/if}
+				</span>
+				<span class="nmc-league">{match.leagues?.name ?? ''}</span>
+			</div>
+			<span class="material-symbols-outlined nmc-chevron">chevron_right</span>
+		</button>
+	</div>
 {/if}
 
 <style>
+	.nmc-wrap {
+		padding: 0 var(--space-5);
+	}
+
+	/* Section-head — local copy of the page-level pattern (Svelte scoped CSS). */
+	.sec-head {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		margin-bottom: var(--space-3);
+	}
+	.sec-icon {
+		font-size: 1.1rem;
+		color: var(--color-primary);
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.sec-title {
+		margin: 0;
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: 1rem;
+		color: var(--color-on-surface);
+	}
+
 	.nmc {
 		display: flex;
 		align-items: center;

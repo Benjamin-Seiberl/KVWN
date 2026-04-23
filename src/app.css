@@ -40,6 +40,12 @@
   --color-error:           #BA1A1A;
   --color-error-container: #FFDAD6;
 
+  /* --- Success --- */
+  --color-success:              #2D7A3A;
+  --color-on-success:           #FFFFFF;
+  --color-success-container:    #D7F0DC;
+  --color-on-success-container: #1A4521;
+
   /* --- Typografie --- */
   --font-display: 'Lexend', sans-serif;
   --font-body:    'Public Sans', sans-serif;

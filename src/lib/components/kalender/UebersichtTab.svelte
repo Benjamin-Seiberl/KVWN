@@ -14,6 +14,7 @@
 	import MatchDetailSheet    from '$lib/components/kalender/MatchDetailSheet.svelte';
 	import EventDetailSheet    from '$lib/components/kalender/EventDetailSheet.svelte';
 	import EventCreateSheet    from '$lib/components/kalender/EventCreateSheet.svelte';
+	import AbsenceSheet        from '$lib/components/dashboard/AbsenceSheet.svelte';
 
 	// ── Date helpers ─────────────────────────────────────────────────────────
 	function daysUntilLabel(dateStr) {
@@ -75,8 +76,10 @@
 	let eventSheetData = $state(null);
 	function openEventSheet(e) { eventSheetData = e; eventSheetOpen = true; }
 
-	// Create-Sheet für neue Events (Kapitän-gated)
-	let createOpen = $state(false);
+	// Create-Sheet für neue Events (Kapitän-gated) + Abwesenheit
+	let createOpen    = $state(false);
+	let absenceOpen   = $state(false);
+	let createMenu    = $state(false);   // Popover für "+ Eintrag" (Event | Abwesenheit)
 
 	// ── Date range constants ──────────────────────────────────────────────────
 	const today  = toDateStr(new Date());
@@ -446,12 +449,50 @@
 	</div>
 
 	<!-- ── Captain: Termin anlegen ──────────────────────────────────────────── -->
-	{#if $playerRole === 'kapitaen'}
-		<button class="mw-btn mw-btn--primary mw-btn--wide" onclick={() => createOpen = true}>
+	<div class="create-wrap">
+		<button
+			class="mw-btn mw-btn--primary mw-btn--wide"
+			onclick={() => createMenu = !createMenu}
+			aria-haspopup="menu"
+			aria-expanded={createMenu}
+		>
 			<span class="material-symbols-outlined">add</span>
-			Termin anlegen
+			Eintrag
 		</button>
-	{/if}
+		{#if createMenu}
+			<div
+				class="create-menu"
+				role="menu"
+				tabindex="-1"
+				onkeydown={(e) => { if (e.key === 'Escape') createMenu = false; }}
+			>
+				{#if $playerRole === 'kapitaen'}
+					<button
+						class="create-menu-item"
+						role="menuitem"
+						onclick={() => { createMenu = false; createOpen = true; }}
+					>
+						<span class="material-symbols-outlined">event</span>
+						<div class="create-menu-body">
+							<span class="create-menu-title">Termin</span>
+							<span class="create-menu-sub">Event für alle anlegen</span>
+						</div>
+					</button>
+				{/if}
+				<button
+					class="create-menu-item"
+					role="menuitem"
+					onclick={() => { createMenu = false; absenceOpen = true; }}
+				>
+					<span class="material-symbols-outlined">event_busy</span>
+					<div class="create-menu-body">
+						<span class="create-menu-title">Abwesenheit</span>
+						<span class="create-menu-sub">Zeitraum melden</span>
+					</div>
+				</button>
+			</div>
+		{/if}
+	</div>
 
 	<!-- ── Section 4: 14-day Feed ────────────────────────────────────────────── -->
 	<div class="feed-section">
@@ -624,6 +665,9 @@
 <!-- ── Event-Anlegen BottomSheet ────────────────────────────────────────────── -->
 <EventCreateSheet bind:open={createOpen} onCreated={loadData} />
 
+<!-- ── Abwesenheit-BottomSheet ─────────────────────────────────────────────── -->
+<AbsenceSheet bind:open={absenceOpen} onReload={loadData} />
+
 <!-- ── Key duty swap BottomSheet ────────────────────────────────────────────── -->
 <BottomSheet bind:open={keySheetOpen} title="Schlüssel-Dienst">
 	{#if keySheetItem}
@@ -749,4 +793,72 @@
 	.key-sheet-btn { width: 100%; padding: var(--space-4); border-radius: var(--radius-lg); font-size: var(--text-label-md); font-weight: 700; cursor: pointer; border: none; margin-bottom: var(--space-3); -webkit-tap-highlight-color: transparent; display: flex; align-items: center; justify-content: center; gap: var(--space-2); }
 	.key-sheet-btn--swap   { background: var(--color-primary); color: #fff; }
 	.key-sheet-btn--cancel { background: var(--color-surface-container); color: var(--color-on-surface-variant); }
+
+	/* ── + Eintrag Popover ───────────────────────────────────────────────── */
+	.create-wrap {
+		position: relative;
+	}
+	.create-menu {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: calc(100% + var(--space-2));
+		z-index: 20;
+		background: var(--color-surface-container-lowest);
+		border: 1.5px solid var(--color-outline-variant);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-float);
+		padding: var(--space-2);
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		animation: cm-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+	}
+	@keyframes cm-in {
+		from { opacity: 0; transform: translateY(-4px); }
+		to   { opacity: 1; transform: translateY(0); }
+	}
+	.create-menu-item {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		width: 100%;
+		padding: var(--space-3);
+		background: transparent;
+		border: none;
+		border-radius: var(--radius-md);
+		text-align: left;
+		cursor: pointer;
+		font: inherit;
+		color: var(--color-on-surface);
+		-webkit-tap-highlight-color: transparent;
+	}
+	.create-menu-item:active {
+		background: var(--color-surface-container);
+	}
+	.create-menu-item .material-symbols-outlined {
+		font-size: 1.2rem;
+		color: var(--color-primary);
+		flex-shrink: 0;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.create-menu-body {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+	.create-menu-title {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: var(--text-title-sm);
+		color: var(--color-on-surface);
+	}
+	.create-menu-sub {
+		font-size: var(--text-label-sm);
+		color: var(--color-on-surface-variant);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.create-menu { animation: none; }
+	}
 </style>

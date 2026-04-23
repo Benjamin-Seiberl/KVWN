@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
+	import { triggerToast } from '$lib/stores/toast.js';
 	import NewsCard from './NewsCard.svelte';
 	import PollCard from './PollCard.svelte';
 
@@ -8,17 +9,31 @@
 	let polls = $state([]);
 
 	async function load() {
-		const [{ data: n }, { data: p }] = await Promise.all([
+		const [nRes, pRes] = await Promise.all([
 			sb.from('announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(10),
 			sb.from('polls').select('*, poll_options(id, label, order_index)').order('created_at', { ascending: false }).limit(5),
 		]);
-		news  = n ?? [];
-		polls = p ?? [];
+		if (nRes.error) { triggerToast('Fehler: ' + nRes.error.message); return; }
+		if (pRes.error) { triggerToast('Fehler: ' + pRes.error.message); return; }
+		news  = nRes.data ?? [];
+		polls = pRes.data ?? [];
 	}
 
 	onMount(load);
 
-	const hasContent = $derived(news.length > 0 || polls.length > 0);
+	// Mixed feed: Pinned-Announcements first, dann News + Polls chronologisch gemischt.
+	const feed = $derived.by(() => {
+		const items = [];
+		for (const n of news)  items.push({ kind: 'news',  id: n.id, createdAt: n.created_at, pinned: !!n.pinned, data: n });
+		for (const p of polls) items.push({ kind: 'poll',  id: p.id, createdAt: p.created_at, pinned: false,        data: p });
+		items.sort((a, b) => {
+			if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+			return (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
+		});
+		return items.slice(0, 6);
+	});
+
+	const hasContent = $derived(feed.length > 0);
 </script>
 
 {#if hasContent}
@@ -26,20 +41,18 @@
 		<div class="feed-head">
 			<div class="feed-head-left">
 				<span class="feed-icon material-symbols-outlined">campaign</span>
-				<h3 class="feed-title">News & Umfragen</h3>
+				<h3 class="feed-title">Neuigkeiten</h3>
 			</div>
-			<span class="feed-count">{news.length + polls.length}</span>
 		</div>
 
-		<div class="feed-scroll">
-			{#each news as n, i}
+		<div class="feed-list">
+			{#each feed as item, i (item.kind + item.id)}
 				<div class="feed-item" style="--fi:{i}">
-					<NewsCard news={n} onUpdated={load} />
-				</div>
-			{/each}
-			{#each polls as p, i}
-				<div class="feed-item" style="--fi:{news.length + i}">
-					<PollCard poll={p} onVoted={load} />
+					{#if item.kind === 'news'}
+						<NewsCard news={item.data} onUpdated={load} />
+					{:else}
+						<PollCard poll={item.data} onVoted={load} />
+					{/if}
 				</div>
 			{/each}
 		</div>
@@ -49,6 +62,7 @@
 <style>
 	.feed {
 		margin: var(--space-2) 0 var(--space-3);
+		padding: 0 var(--space-5);
 	}
 
 	/* Section header */
@@ -56,7 +70,6 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0 var(--space-5);
 		margin-bottom: var(--space-3);
 	}
 	.feed-head-left {
@@ -66,48 +79,34 @@
 	}
 	.feed-icon {
 		font-size: 1.1rem;
-		color: var(--color-primary, #CC0000);
+		color: var(--color-primary);
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 	}
 	.feed-title {
 		margin: 0;
-		font-family: 'Lexend', sans-serif;
+		font-family: var(--font-display);
 		font-weight: 700;
 		font-size: 1rem;
-		color: var(--color-text, #1a1a1a);
-	}
-	.feed-count {
-		font-size: 0.72rem;
-		font-weight: 700;
-		background: var(--color-primary, #CC0000);
-		color: #fff;
-		border-radius: 999px;
-		padding: 2px 8px;
-		line-height: 1.4;
+		color: var(--color-on-surface);
 	}
 
-	/* Horizontal scroll */
-	.feed-scroll {
+	/* Vertical list */
+	.feed-list {
 		display: flex;
+		flex-direction: column;
 		gap: var(--space-3);
-		overflow-x: auto;
-		scroll-snap-type: x mandatory;
-		padding: 4px var(--space-5) 8px;
-		scrollbar-width: none;
-		-webkit-overflow-scrolling: touch;
 	}
-	.feed-scroll::-webkit-scrollbar { display: none; }
 
-	/* Individual card wrapper */
 	.feed-item {
-		scroll-snap-align: start;
-		flex: 0 0 82%;
-		max-width: 340px;
-		animation: feed-pop 440ms cubic-bezier(0.22, 1, 0.36, 1) both;
+		animation: feed-up 440ms cubic-bezier(0.22, 1, 0.36, 1) both;
 		animation-delay: calc(var(--fi) * 55ms + 80ms);
 	}
+	@keyframes feed-up {
+		from { opacity: 0; transform: translateY(10px); }
+		to   { opacity: 1; transform: translateY(0); }
+	}
 
-	@keyframes feed-pop {
-		from { opacity: 0; transform: translateY(12px) scale(0.97); }
-		to   { opacity: 1; transform: translateY(0) scale(1); }
+	@media (prefers-reduced-motion: reduce) {
+		.feed-item { animation: none; }
 	}
 </style>

@@ -4,10 +4,7 @@ import { page } from '$app/stores';
 export const PAGE_CONFIG = {
 	'/': {
 		title: 'Dashboard',
-		tabs: [
-			{ key: 'neuigkeiten', label: 'Neuigkeiten', icon: 'newspaper' },
-			{ key: 'events',      label: 'Events',      icon: 'celebration' },
-		],
+		tabs: [],
 	},
 	'/kalender': {
 		title: 'Kalender',

@@ -2,21 +2,23 @@
 	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { goto } from '$app/navigation';
+	import { triggerToast } from '$lib/stores/toast.js';
 
-	import { fmtDate } from '$lib/utils/dates.js';
+	import { DAY_SHORT, MONTH_SHORT, fmtDate } from '$lib/utils/dates.js';
 
 	let events  = $state([]);
 	let loading = $state(true);
 
 	onMount(async () => {
 		const todayStr = new Date().toISOString().split('T')[0];
-		const { data } = await sb
+		const { data, error } = await sb
 			.from('events')
 			.select('id, title, date, time, location, external_id')
 			.gte('date', todayStr)
 			.order('date')
 			.order('time')
 			.limit(3);
+		if (error) { triggerToast('Fehler: ' + error.message); loading = false; return; }
 		events = data ?? [];
 		loading = false;
 	});
@@ -61,7 +63,7 @@
 					<div class="ue-item-date-col">
 						<span class="ue-day">{DAY_SHORT[d.getDay()]}</span>
 						<span class="ue-num">{d.getDate()}</span>
-						<span class="ue-mon">{MONTHS[d.getMonth()]}</span>
+						<span class="ue-mon">{MONTH_SHORT[d.getMonth()]}</span>
 					</div>
 					<div class="ue-item-body">
 						<span class="ue-item-title">{ev.title}</span>
@@ -130,10 +132,10 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-3);
-		padding: var(--space-3);
+		padding: var(--space-3) var(--space-4);
 		background: var(--color-surface-container-lowest);
 		border-radius: var(--radius-lg);
-		box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+		box-shadow: var(--shadow-card);
 	}
 	.ue-item--skel {
 		pointer-events: none;
