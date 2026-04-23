@@ -4,6 +4,8 @@ import { toDateStr } from '$lib/utils/dates.js';
 
 const CRON_SECRET = process.env.CRON_SECRET    ?? '';
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID ?? '';
+const GSA_EMAIL   = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? '';
+const GSA_KEY     = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ?? '';
 
 async function handle(request) {
 	const auth = request.headers.get('authorization') ?? '';
@@ -133,6 +135,12 @@ async function handle(request) {
 			deleted,
 			skipped_match_dates,
 			next_sync_token: nextSyncToken ?? null,
+			_debug: {
+				calendar_id: CALENDAR_ID,
+				gsa_email_len: GSA_EMAIL.length,
+				gsa_key_len: GSA_KEY.length,
+				items_received: items.length,
+			},
 		}),
 		{ headers: { 'Content-Type': 'application/json' } },
 	);
