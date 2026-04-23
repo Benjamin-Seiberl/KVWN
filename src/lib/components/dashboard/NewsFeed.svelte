@@ -11,7 +11,7 @@
 	async function load() {
 		const [nRes, pRes] = await Promise.all([
 			sb.from('announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(10),
-			sb.from('polls').select('*, poll_options(id, label, order_index)').order('created_at', { ascending: false }).limit(5),
+			sb.from('polls').select('*, poll_options!poll_options_poll_id_fkey(id, label, order_index)').order('created_at', { ascending: false }).limit(5),
 		]);
 		if (nRes.error) { triggerToast('Fehler: ' + nRes.error.message); return; }
 		if (pRes.error) { triggerToast('Fehler: ' + pRes.error.message); return; }
