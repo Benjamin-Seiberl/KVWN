@@ -4,8 +4,6 @@ import { toDateStr } from '$lib/utils/dates.js';
 
 const CRON_SECRET = process.env.CRON_SECRET    ?? '';
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID ?? '';
-const GSA_EMAIL   = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? '';
-const GSA_KEY     = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ?? '';
 
 async function handle(request) {
 	const auth = request.headers.get('authorization') ?? '';
@@ -93,7 +91,6 @@ async function handle(request) {
 	let upserted = 0;
 	let deleted  = 0;
 	let skipped_match_dates = 0;
-	let first_error = null;
 
 	for (const ev of items) {
 		if (ev.status === 'cancelled') {
@@ -102,7 +99,6 @@ async function handle(request) {
 				.delete()
 				.eq('external_id', ev.id);
 			if (!error) deleted++;
-			else if (!first_error) first_error = `delete: ${error.message}`;
 			continue;
 		}
 
@@ -119,7 +115,6 @@ async function handle(request) {
 			.from('events')
 			.upsert(row, { onConflict: 'external_id' });
 		if (!error) upserted++;
-		else if (!first_error) first_error = `upsert: ${error.message} (code=${error.code ?? '?'} details=${error.details ?? '?'})`;
 	}
 
 	// ── Sync-State schreiben ─────────────────────────────────────────────────
@@ -138,13 +133,6 @@ async function handle(request) {
 			deleted,
 			skipped_match_dates,
 			next_sync_token: nextSyncToken ?? null,
-			_debug: {
-				calendar_id: CALENDAR_ID,
-				gsa_email_len: GSA_EMAIL.length,
-				gsa_key_len: GSA_KEY.length,
-				items_received: items.length,
-				first_error,
-			},
 		}),
 		{ headers: { 'Content-Type': 'application/json' } },
 	);

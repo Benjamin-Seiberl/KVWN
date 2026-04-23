@@ -44,7 +44,7 @@ export async function listEvents({ timeMin, timeMax, syncToken } = {}) {
 			if (timeMin) params.timeMin = timeMin;
 			if (timeMax) params.timeMax = timeMax;
 			params.timeZone = TIME_ZONE;
-			params.orderBy  = 'startTime';
+			// Kein orderBy: Google liefert sonst keinen nextSyncToken.
 		}
 
 		const res = await cal.events.list(params);
