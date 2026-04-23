@@ -38,7 +38,7 @@
 			// Aufstellungen im Fenster (published).
 			const { data: plans, error: pErr } = calWeeks.length
 				? await sb.from('game_plans')
-					.select('id, cal_week, league_id, lineup_published_at, game_plan_players(id, confirmed, player_id, players(name))')
+					.select('id, cal_week, league_id, lineup_published_at, game_plan_players(id, confirmed, player_id, players!game_plan_players_player_id_fkey(name))')
 					.in('cal_week', calWeeks)
 				: { data: [], error: null };
 			if (pErr) { triggerToast('Fehler: ' + pErr.message); return; }

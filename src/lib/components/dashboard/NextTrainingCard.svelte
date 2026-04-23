@@ -2,16 +2,15 @@
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
-	import { goto } from '$app/navigation';
 	import { DAY_SHORT, MONTH_SHORT, toDateStr, daysUntil } from '$lib/utils/dates.js';
+	import TrainingBookingSheet from '$lib/components/dashboard/TrainingBookingSheet.svelte';
 
 	// Nächster Trainings-Slot (chronologisch). Enthält Datum + Zeitfenster.
 	let slot     = $state(null);    // { date, start_time, end_time, capacity, isSpecial, note }
 	let bookings = $state([]);      // bookings des gefundenen Slots (inkl. lane_number)
 	let waitlist = $state([]);      // waitlist-Einträge des gefundenen Slots
 	let loading  = $state(true);
-	let busy     = $state(false);
-	let state    = $state(null);    // null | 'booked' | 'cancelled' | 'waitlisted'
+	let bookingOpen = $state(false);
 
 	function timeLabel(t) { return t ? t.slice(0, 5) : ''; }
 
@@ -132,7 +131,7 @@
 		}
 	});
 
-	// ── Derived ──
+	// ── Derived (nur für Display) ──
 	const myBooking  = $derived(bookings.find(b => b.player_id === $playerId) ?? null);
 	const myWait     = $derived(waitlist.find(w => w.player_id === $playerId) ?? null);
 	const freeSpots  = $derived(slot ? Math.max(0, slot.capacity - bookings.length) : 0);
@@ -149,109 +148,17 @@
 		};
 	});
 
-	// ── Aktionen ──
-	async function book() {
-		if (!slot || busy || !$playerId) return;
-		// Erste freie Bahn finden.
-		const takenLanes = new Set(bookings.map(b => b.lane_number));
-		let lane = 1;
-		for (let i = 1; i <= slot.capacity; i++) {
-			if (!takenLanes.has(i)) { lane = i; break; }
-		}
-		busy = true;
-		const { data, error } = await sb.rpc('book_training_lane', {
-			p_date:  slot.date,
-			p_start: slot.start_time,
-			p_lane:  lane,
-		});
-		if (error) {
-			triggerToast('Fehler: ' + error.message);
-			busy = false;
-			return;
-		}
-		if (data?.status === 'booked') {
-			state = 'booked';
-			triggerToast('Gebucht (Bahn ' + data.lane + ')');
-		} else if (data?.status === 'waitlisted') {
-			state = 'waitlisted';
-			triggerToast('Auf Warteliste (Position ' + data.position + ')');
-		} else if (data?.status === 'already_booked') {
-			triggerToast('Bereits gebucht');
-		} else if (data?.status === 'already_waitlisted') {
-			triggerToast('Bereits auf Warteliste');
-		} else if (data?.status === 'lane_taken') {
-			triggerToast('Bahn war schon belegt — bitte nochmal probieren');
-		}
-		busy = false;
-		setTimeout(() => { state = null; load(); }, 1400);
+	function openSheet() {
+		if (!slot) return;
+		bookingOpen = true;
 	}
 
-	async function joinWaitlist() {
-		if (!slot || busy || !$playerId) return;
-		busy = true;
-		// RPC mit Bahn 1 — bei voller Auslastung routet die RPC automatisch auf die Warteliste.
-		const { data, error } = await sb.rpc('book_training_lane', {
-			p_date:  slot.date,
-			p_start: slot.start_time,
-			p_lane:  1,
-		});
-		if (error) {
-			triggerToast('Fehler: ' + error.message);
-			busy = false;
-			return;
+	function onKeydownCard(e) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			openSheet();
 		}
-		if (data?.status === 'waitlisted') {
-			state = 'waitlisted';
-			triggerToast('Auf Warteliste (Position ' + data.position + ')');
-		} else if (data?.status === 'booked') {
-			// Kann passieren, wenn zwischenzeitlich ein Platz frei wurde.
-			state = 'booked';
-			triggerToast('Gebucht (Bahn ' + data.lane + ')');
-		} else if (data?.status === 'already_waitlisted') {
-			triggerToast('Bereits auf Warteliste');
-		} else if (data?.status === 'already_booked') {
-			triggerToast('Bereits gebucht');
-		}
-		busy = false;
-		setTimeout(() => { state = null; load(); }, 1400);
 	}
-
-	async function cancel() {
-		if (!myBooking || busy) return;
-		busy = true;
-		const { error } = await sb.rpc('cancel_training_booking', { p_booking_id: myBooking.id });
-		if (error) {
-			if (error.message.includes('same_day_storno_forbidden')) {
-				triggerToast('Storno am selben Tag nicht mehr möglich');
-			} else {
-				triggerToast('Fehler: ' + error.message);
-			}
-			busy = false;
-			return;
-		}
-		state = 'cancelled';
-		triggerToast('Storniert');
-		busy = false;
-		setTimeout(() => { state = null; load(); }, 1400);
-	}
-
-	async function leaveWaitlist() {
-		if (!myWait || busy) return;
-		busy = true;
-		const { error } = await sb.from('training_waitlist').delete().eq('id', myWait.id);
-		if (error) {
-			triggerToast('Fehler: ' + error.message);
-			busy = false;
-			return;
-		}
-		state = 'cancelled';
-		triggerToast('Von Warteliste abgemeldet');
-		busy = false;
-		setTimeout(() => { state = null; load(); }, 1400);
-	}
-
-	// Same-day lock: Storno am selben Tag nicht mehr möglich.
-	const isSameDayOrPast = $derived(!!slot && slot.date <= toDateStr(new Date()));
 </script>
 
 <div class="ntc-wrap">
@@ -275,103 +182,56 @@
 			<span class="ntc-empty-text">Kein Training geplant</span>
 		</div>
 	{:else}
-		<div class="ntc">
-			<button
-				class="ntc-main"
-				onclick={() => goto('/kalender?date=' + slot.date)}
-				aria-label="Zum Training im Kalender"
-			>
-				<div class="ntc-date">
-					<span class="ntc-date-dow">{dateBadge.dow}</span>
-					<span class="ntc-date-day">{dateBadge.day}</span>
-					<span class="ntc-date-month">{dateBadge.month}</span>
-				</div>
-				<div class="ntc-body">
-					<span class="ntc-label">
-						{#if dateBadge.days === 0}
-							Heute
-						{:else if dateBadge.days === 1}
-							Morgen
-						{:else}
-							In {dateBadge.days} Tagen
-						{/if}
-						{#if slot.isSpecial} · Sondertraining{/if}
-					</span>
-					<span class="ntc-time">{timeLabel(slot.start_time)} – {timeLabel(slot.end_time)} Uhr</span>
-					<span class="ntc-meta">
-						{#if myBooking}
-							Gebucht · Bahn {myBooking.lane_number}
-						{:else if myWait}
-							Warteliste · Position {myWait.position}
-						{:else if isFull}
-							Voll belegt · {waitlist.length} auf Warteliste
-						{:else}
-							{freeSpots} von {slot.capacity} {freeSpots === 1 ? 'Platz' : 'Plätzen'} frei
-						{/if}
-					</span>
-					{#if slot.note}
-						<span class="ntc-note">{slot.note}</span>
+		<button
+			class="ntc"
+			onclick={openSheet}
+			onkeydown={onKeydownCard}
+			aria-label="Training buchen"
+		>
+			<div class="ntc-date">
+				<span class="ntc-date-dow">{dateBadge.dow}</span>
+				<span class="ntc-date-day">{dateBadge.day}</span>
+				<span class="ntc-date-month">{dateBadge.month}</span>
+			</div>
+			<div class="ntc-body">
+				<span class="ntc-label">
+					{#if dateBadge.days === 0}
+						Heute
+					{:else if dateBadge.days === 1}
+						Morgen
+					{:else}
+						In {dateBadge.days} Tagen
 					{/if}
-				</div>
-			</button>
-
-			<div class="ntc-cta">
-				{#if state === 'booked'}
-					<div class="ntc-result ntc-result--ok">
-						<span class="material-symbols-outlined">check_circle</span>
-						Gebucht
-					</div>
-				{:else if state === 'waitlisted'}
-					<div class="ntc-result ntc-result--wait">
-						<span class="material-symbols-outlined">hourglass_top</span>
-						Auf Warteliste
-					</div>
-				{:else if state === 'cancelled'}
-					<div class="ntc-result ntc-result--off">
-						<span class="material-symbols-outlined">cancel</span>
-						Storniert
-					</div>
-				{:else if myBooking}
-					<button
-						class="mw-btn mw-btn--ghost mw-btn--wide"
-						onclick={cancel}
-						disabled={busy || isSameDayOrPast}
-					>
-						<span class="material-symbols-outlined">close</span>
-						Stornieren
-					</button>
-				{:else if myWait}
-					<button
-						class="mw-btn mw-btn--ghost mw-btn--wide"
-						onclick={leaveWaitlist}
-						disabled={busy}
-					>
-						<span class="material-symbols-outlined">close</span>
-						Warteliste verlassen
-					</button>
-				{:else if isFull}
-					<button
-						class="mw-btn mw-btn--soft mw-btn--wide"
-						onclick={joinWaitlist}
-						disabled={busy || !$playerId}
-					>
-						<span class="material-symbols-outlined">hourglass_top</span>
-						Warteliste
-					</button>
-				{:else}
-					<button
-						class="mw-btn mw-btn--primary mw-btn--wide"
-						onclick={book}
-						disabled={busy || !$playerId}
-					>
-						<span class="material-symbols-outlined">add</span>
-						Buchen
-					</button>
+					{#if slot.isSpecial} · Sondertraining{/if}
+				</span>
+				<span class="ntc-time">{timeLabel(slot.start_time)} – {timeLabel(slot.end_time)} Uhr</span>
+				<span class="ntc-meta">
+					{#if myBooking}
+						Gebucht · Bahn {myBooking.lane_number}
+					{:else if myWait}
+						Warteliste · Position {myWait.position}
+					{:else if isFull}
+						Voll belegt · {waitlist.length} auf Warteliste
+					{:else}
+						{freeSpots} von {slot.capacity} {freeSpots === 1 ? 'Platz' : 'Plätzen'} frei
+					{/if}
+				</span>
+				{#if slot.note}
+					<span class="ntc-note">{slot.note}</span>
 				{/if}
 			</div>
-		</div>
+			<span class="material-symbols-outlined ntc-chevron" aria-hidden="true">chevron_right</span>
+		</button>
 	{/if}
 </div>
+
+<TrainingBookingSheet
+	bind:open={bookingOpen}
+	{slot}
+	{bookings}
+	{waitlist}
+	onReload={load}
+/>
 
 <style>
 	.ntc-wrap {
@@ -400,19 +260,34 @@
 
 	.ntc {
 		display: flex;
-		flex-direction: column;
+		align-items: center;
 		gap: var(--space-3);
 		background: var(--color-surface-container-lowest);
 		border-radius: var(--radius-xl);
 		box-shadow: var(--shadow-card);
 		padding: var(--space-4);
 		border-left: 4px solid var(--color-primary);
+		text-align: left;
+		font: inherit;
+		color: inherit;
+		border-top: none;
+		border-right: none;
+		border-bottom: none;
+		width: 100%;
+		cursor: pointer;
+		transition: transform 120ms ease;
+		-webkit-tap-highlight-color: transparent;
 	}
+	.ntc:active { transform: scale(0.99); }
 
-	.ntc--skeleton {
+	.ntc--skeleton,
+	.ntc--empty {
 		flex-direction: row;
 		align-items: center;
 		border-left-color: var(--color-outline-variant);
+	}
+	.ntc--skeleton {
+		cursor: default;
 	}
 	.ntc--skeleton .ntc-date {
 		width: 62px;
@@ -423,11 +298,9 @@
 	}
 
 	.ntc--empty {
-		flex-direction: row;
-		align-items: center;
 		gap: var(--space-3);
-		border-left-color: var(--color-outline-variant);
 		color: var(--color-on-surface-variant);
+		cursor: default;
 	}
 	.ntc-empty-icon {
 		font-size: 1.5rem;
@@ -436,21 +309,6 @@
 	.ntc-empty-text {
 		font-size: var(--text-body-md);
 	}
-
-	.ntc-main {
-		display: flex;
-		align-items: center;
-		gap: var(--space-3);
-		background: none;
-		border: none;
-		padding: 0;
-		text-align: left;
-		width: 100%;
-		cursor: pointer;
-		font: inherit;
-		color: inherit;
-	}
-	.ntc-main:active { opacity: 0.8; }
 
 	.ntc-date {
 		flex-shrink: 0;
@@ -523,39 +381,9 @@
 		align-self: flex-start;
 		margin-top: 2px;
 	}
-
-	.ntc-cta {
-		display: flex;
-		justify-content: stretch;
-	}
-	.ntc-cta > * { flex: 1; }
-
-	.ntc-result {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		padding: 10px 14px;
-		border-radius: var(--radius-md);
-		font-family: var(--font-display);
-		font-size: 0.85rem;
-		font-weight: 800;
-		width: 100%;
-	}
-	.ntc-result .material-symbols-outlined {
-		font-size: 1.05rem;
-		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-	}
-	.ntc-result--ok {
-		background: rgba(45, 122, 58, 0.12);
-		color: var(--color-success);
-	}
-	.ntc-result--wait {
-		background: rgba(234, 88, 12, 0.1);
-		color: #ea580c;
-	}
-	.ntc-result--off {
-		background: rgba(204, 0, 0, 0.1);
-		color: var(--color-primary);
+	.ntc-chevron {
+		font-size: 1.2rem;
+		color: var(--color-outline);
+		flex-shrink: 0;
 	}
 </style>

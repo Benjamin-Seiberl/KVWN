@@ -81,7 +81,7 @@
 
 		const { data: gp } = await sb
 			.from('game_plans')
-			.select('id, game_plan_players(id, position, player_id, player_name, confirmed, players(name, photo))')
+			.select('id, game_plan_players(id, position, player_id, player_name, confirmed, players!game_plan_players_player_id_fkey(name, photo))')
 			.eq('cal_week', m.cal_week)
 			.eq('league_id', m.league_id)
 			.maybeSingle();

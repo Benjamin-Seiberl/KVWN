@@ -40,7 +40,7 @@
 			lineupItems = lineupRes;
 
 			const dismissed = new Set((dismissRes.data ?? []).map(d => d.task_ref_id));
-			landesItems = landesRes.filter(m => !dismissed.has(m.id));
+			landesItems = landesRes.filter(lb => !dismissed.has(lb.id));
 		} finally {
 			loading = false;
 		}
@@ -63,7 +63,7 @@
 		if (!calWeeks.length) return [];
 
 		const { data: plans, error: planErr } = await sb.from('game_plans')
-			.select('id, cal_week, league_id, confirmation_deadline, game_plan_players(id, confirmed, position, player_id, player_name, players(name, photo))')
+			.select('id, cal_week, league_id, confirmation_deadline, game_plan_players(id, confirmed, position, player_id, player_name, players!game_plan_players_player_id_fkey(name, photo))')
 			.in('cal_week', calWeeks)
 			.not('lineup_published_at', 'is', null)
 			.gte('confirmation_deadline', todayStr);
@@ -94,15 +94,14 @@
 
 	async function loadLandesbewerb(pid, todayStr) {
 		const nowIso = new Date().toISOString();
-		const { data, error } = await sb.from('matches')
-			.select('id, date, time, tournament_title, tournament_location, registration_deadline, tournament_votes(player_id, wants_to_play)')
-			.eq('is_landesbewerb', true)
+		const { data, error } = await sb.from('landesbewerbe')
+			.select('id, title, typ, location, date, time, registration_deadline, landesbewerb_registrations(player_id)')
 			.gte('date', todayStr)
 			.gt('registration_deadline', nowIso)
 			.order('registration_deadline', { ascending: true });
 		if (error) { triggerToast('Fehler: ' + error.message); return []; }
-		// Wer bereits abgestimmt hat (Ja oder Nein), braucht die Aufgabe nicht mehr.
-		return (data ?? []).filter(m => !(m.tournament_votes ?? []).some(v => v.player_id === pid));
+		// Wer bereits angemeldet ist, braucht die Aufgabe nicht mehr.
+		return (data ?? []).filter(row => !(row.landesbewerb_registrations ?? []).some(r => r.player_id === pid));
 	}
 
 	// Reload-Callback für Child-Komponenten (nach Aktion, wenn Fade fertig ist).
@@ -133,8 +132,8 @@
 			{#each lineupItems as entry (entry.gamePlanPlayerId)}
 				<LineupConfirmTask {entry} myName={myName} onReload={reload} />
 			{/each}
-			{#each landesItems as match (match.id)}
-				<LandesbewerbTask {match} onReload={reload} />
+			{#each landesItems as lb (lb.id)}
+				<LandesbewerbTask {lb} onReload={reload} />
 			{/each}
 		</div>
 	</div>

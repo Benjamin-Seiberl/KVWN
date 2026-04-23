@@ -86,7 +86,7 @@
 		if (match.cal_week && match.league_id) {
 			const { data: gp } = await sb
 				.from('game_plans')
-				.select('id, result_mode, result_published_at, game_plan_players(id, position, player_id, player_name, score, played, result_state, players(name, photo), game_plan_player_lanes(bahn, volle, abraeumen))')
+				.select('id, result_mode, result_published_at, game_plan_players(id, position, player_id, player_name, score, played, result_state, players!game_plan_players_player_id_fkey(name, photo), game_plan_player_lanes(bahn, volle, abraeumen))')
 				.eq('cal_week', match.cal_week)
 				.eq('league_id', match.league_id)
 				.maybeSingle();

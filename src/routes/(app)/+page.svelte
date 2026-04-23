@@ -16,33 +16,33 @@
 		<GreetingHeader />
 	</div>
 
-	<!-- 1: Kapitän-Aufgaben (nur wenn kapitaen UND ≥1 Signal) -->
+	<!-- 1: Match carousel — Spiele der Woche direkt unter dem Greeting -->
 	<div class="dash-section" style="--i:1">
-		<CaptainTaskBlock />
-	</div>
-
-	<!-- 2: Offene Aufgaben (Lineup-Bestätigung, Landesbewerb-Votes) -->
-	<div class="dash-section" style="--i:2">
-		<TaskBlock />
-	</div>
-
-	<!-- 3: Mein nächstes Spiel (rendert nur wenn ich auf einer Aufstellung stehe) -->
-	<div class="dash-section" style="--i:3">
-		<MyNextMatchCard />
-	</div>
-
-	<!-- 4: Nächstes Training -->
-	<div class="dash-section" style="--i:4">
-		<NextTrainingCard />
-	</div>
-
-	<!-- 5: Match carousel -->
-	<div class="dash-section" style="--i:5">
 		<div class="sec-head">
 			<span class="material-symbols-outlined sec-icon">sports_score</span>
 			<h3 class="sec-title">Spiele der Woche</h3>
 		</div>
 		<MatchCarousel />
+	</div>
+
+	<!-- 2: Kapitän-Aufgaben (nur wenn kapitaen UND ≥1 Signal) -->
+	<div class="dash-section" style="--i:2">
+		<CaptainTaskBlock />
+	</div>
+
+	<!-- 3: Offene Aufgaben (Lineup-Bestätigung, Landesbewerb-Anmeldung) -->
+	<div class="dash-section" style="--i:3">
+		<TaskBlock />
+	</div>
+
+	<!-- 4: Mein nächstes Spiel (rendert nur wenn ich auf einer Aufstellung stehe) -->
+	<div class="dash-section" style="--i:4">
+		<MyNextMatchCard />
+	</div>
+
+	<!-- 5: Nächstes Training -->
+	<div class="dash-section" style="--i:5">
+		<NextTrainingCard />
 	</div>
 
 	<!-- 6: Upcoming events -->

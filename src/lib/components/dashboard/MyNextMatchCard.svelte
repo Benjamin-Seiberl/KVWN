@@ -1,13 +1,16 @@
 <script>
-	import { onMount } from 'svelte';
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
-	import { goto } from '$app/navigation';
+	import { triggerToast } from '$lib/stores/toast.js';
 	import { DAY_SHORT, daysUntil } from '$lib/utils/dates.js';
+	import MatchDetailSheet from '$lib/components/kalender/MatchDetailSheet.svelte';
 
 	let match    = $state(null);
 	let position = $state(null);
 	let loading  = $state(true);
+	let sheetOpen    = $state(false);
+	let sheetLineup  = $state([]);
+	let lineupLoaded = $state(false);
 
 	function formatTime(t) { return t ? t.substring(0, 5) : ''; }
 
@@ -24,20 +27,22 @@
 		const todayStr = new Date().toISOString().split('T')[0];
 
 		// Find all game_plan_players entries for this player in future matches
-		const { data: entries } = await sb
+		const { data: entries, error: eErr } = await sb
 			.from('game_plan_players')
 			.select('position, game_plans!inner(cal_week, league_id)')
 			.eq('player_id', pid);
+		if (eErr) { triggerToast('Fehler: ' + eErr.message); loading = false; return; }
 
 		if (!entries?.length) { loading = false; return; }
 
 		// Get future matches
-		const { data: futureMatches } = await sb
+		const { data: futureMatches, error: mErr } = await sb
 			.from('matches')
-			.select('id, date, time, opponent, home_away, cal_week, league_id, leagues(name)')
+			.select('id, date, time, opponent, home_away, cal_week, league_id, location, round, is_tournament, is_landesbewerb, leagues(name)')
 			.gte('date', todayStr)
 			.order('date')
 			.order('time');
+		if (mErr) { triggerToast('Fehler: ' + mErr.message); loading = false; return; }
 
 		if (!futureMatches?.length) { loading = false; return; }
 
@@ -56,11 +61,32 @@
 		loading = false;
 	}
 
+	async function loadLineup() {
+		if (!match?.cal_week || !match?.league_id) return;
+		const { data, error } = await sb
+			.from('game_plans')
+			.select('id, cal_week, league_id, game_plan_players(id, position, player_id, player_name, confirmed, players!game_plan_players_player_id_fkey(name, photo))')
+			.eq('cal_week', match.cal_week)
+			.eq('league_id', match.league_id)
+			.maybeSingle();
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
+		sheetLineup = (data?.game_plan_players ?? [])
+			.slice()
+			.sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
+	}
+
 	let loaded = false;
 	$effect(() => {
 		if ($playerId && !loaded) {
 			loaded = true;
 			load();
+		}
+	});
+
+	$effect(() => {
+		if (sheetOpen && match && !lineupLoaded) {
+			lineupLoaded = true;
+			loadLineup();
 		}
 	});
 </script>
@@ -83,7 +109,7 @@
 			<span class="material-symbols-outlined sec-icon">emoji_events</span>
 			<h3 class="sec-title">Mein nächstes Spiel</h3>
 		</div>
-		<button class="nmc" onclick={() => goto('/spielbetrieb')} aria-label="Mein nächstes Match">
+		<button class="nmc" onclick={() => sheetOpen = true} aria-label="Mein nächstes Match">
 			<div class="nmc-icon-wrap">
 				<span class="nmc-days">{days}</span>
 				<span class="nmc-days-label">{days === 1 ? 'Tag' : 'Tage'}</span>
@@ -100,6 +126,8 @@
 			<span class="material-symbols-outlined nmc-chevron">chevron_right</span>
 		</button>
 	</div>
+
+	<MatchDetailSheet bind:open={sheetOpen} {match} lineup={sheetLineup} />
 {/if}
 
 <style>
@@ -155,7 +183,7 @@
 		width: 52px;
 		height: 52px;
 		border-radius: var(--radius-lg);
-		background: linear-gradient(135deg, var(--color-primary), #7A0000);
+		background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, black));
 		display: flex;
 		flex-direction: column;
 		align-items: center;

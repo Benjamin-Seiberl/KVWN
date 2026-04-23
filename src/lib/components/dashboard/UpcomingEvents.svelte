@@ -17,7 +17,7 @@
 			.gte('date', todayStr)
 			.order('date')
 			.order('time')
-			.limit(3);
+			.limit(5);
 		if (error) { triggerToast('Fehler: ' + error.message); loading = false; return; }
 		events = data ?? [];
 		loading = false;

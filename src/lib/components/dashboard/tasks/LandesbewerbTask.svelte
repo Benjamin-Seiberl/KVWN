@@ -2,12 +2,13 @@
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
-	import { fmtDate } from '$lib/utils/dates.js';
+	import { fmtDate, fmtTime } from '$lib/utils/dates.js';
+	import { BEWERB_LABEL } from '$lib/constants/competitions.js';
 
-	let { match, onReload } = $props();
+	let { lb, onReload } = $props();
 
 	let busy    = $state(false);
-	let done    = $state(null);   // null | 'yes' | 'no' | 'dismissed'
+	let done    = $state(null);   // null | 'registered' | 'unregistered' | 'dismissed'
 	let leaving = $state(false);
 
 	function fmtDeadline(ts) {
@@ -17,14 +18,13 @@
 		return Math.max(0, Math.floor((new Date(ts).getTime() - Date.now()) / 3_600_000));
 	}
 
-	async function vote(wants) {
+	async function register() {
 		if (busy || done || !$playerId) return;
 		busy = true;
 
-		const { error } = await sb.from('tournament_votes').upsert({
-			tournament_id: match.id,
-			player_id:     $playerId,
-			wants_to_play: wants,
+		const { error } = await sb.from('landesbewerb_registrations').insert({
+			landesbewerb_id: lb.id,
+			player_id:       $playerId,
 		});
 		if (error) {
 			triggerToast('Fehler: ' + error.message);
@@ -32,7 +32,30 @@
 			return;
 		}
 
-		done = wants ? 'yes' : 'no';
+		done = 'registered';
+		busy = false;
+
+		setTimeout(() => {
+			leaving = true;
+			setTimeout(() => onReload?.(), 280);
+		}, 1400);
+	}
+
+	async function unregister() {
+		if (busy || done || !$playerId) return;
+		busy = true;
+
+		const { error } = await sb.from('landesbewerb_registrations')
+			.delete()
+			.eq('landesbewerb_id', lb.id)
+			.eq('player_id', $playerId);
+		if (error) {
+			triggerToast('Fehler: ' + error.message);
+			busy = false;
+			return;
+		}
+
+		done = 'unregistered';
 		busy = false;
 
 		setTimeout(() => {
@@ -48,7 +71,7 @@
 		const { error } = await sb.from('dashboard_task_dismissals').insert({
 			player_id:   $playerId,
 			task_kind:   'landesbewerb',
-			task_ref_id: match.id,
+			task_ref_id: lb.id,
 		});
 		if (error) {
 			triggerToast('Fehler: ' + error.message);
@@ -58,14 +81,13 @@
 
 		done = 'dismissed';
 		busy = false;
-		// Kein Success-Banner — direkt fade out.
 		setTimeout(() => {
 			leaving = true;
 			setTimeout(() => onReload?.(), 280);
 		}, 200);
 	}
 
-	let left   = $derived(hoursLeft(match.registration_deadline));
+	let left   = $derived(hoursLeft(lb.registration_deadline));
 	let urgent = $derived(left < 24);
 </script>
 
@@ -85,28 +107,30 @@
 		</div>
 		<div class="lbt-head-text">
 			<span class="lbt-title">Landesbewerb-Anmeldung</span>
-			<span class="lbt-sub">{match.tournament_title ?? 'Landesbewerb'}</span>
+			<span class="lbt-sub">
+				{lb.title ?? (BEWERB_LABEL[lb.typ] ?? 'Landesbewerb')}
+			</span>
 		</div>
 	</div>
 
 	<div class="lbt-meta">
 		<span class="material-symbols-outlined lbt-meta-icon">event</span>
-		{fmtDate(match.date)}
-		{#if match.tournament_location} · {match.tournament_location}{/if}
+		{fmtDate(lb.date)}{#if lb.time} · {fmtTime(lb.time)} Uhr{/if}
+		{#if lb.location} · {lb.location}{/if}
 	</div>
 
 	<div class="lbt-deadline" class:lbt-deadline--urgent={urgent}>
 		<span class="material-symbols-outlined">alarm</span>
-		bis {fmtDeadline(match.registration_deadline)}
+		bis {fmtDeadline(lb.registration_deadline)}
 		{#if urgent} · nur mehr {left} h{/if}
 	</div>
 
-	{#if done === 'yes'}
+	{#if done === 'registered'}
 		<div class="lbt-result lbt-result--ok">
 			<span class="material-symbols-outlined">check_circle</span>
 			Angemeldet
 		</div>
-	{:else if done === 'no'}
+	{:else if done === 'unregistered'}
 		<div class="lbt-result lbt-result--off">
 			<span class="material-symbols-outlined">cancel</span>
 			Abgemeldet
@@ -115,21 +139,21 @@
 		<div class="lbt-actions">
 			<button
 				class="mw-btn mw-btn--ghost"
-				onclick={() => vote(false)}
+				onclick={unregister}
 				disabled={busy}
-				aria-label="Nein, keine Teilnahme"
+				aria-label="Abmelden"
 			>
 				<span class="material-symbols-outlined">close</span>
-				Nein
+				Abmelden
 			</button>
 			<button
 				class="mw-btn mw-btn--primary"
-				onclick={() => vote(true)}
+				onclick={register}
 				disabled={busy}
-				aria-label="Ja, ich spiele"
+				aria-label="Anmelden"
 			>
 				<span class="material-symbols-outlined">check</span>
-				Ja
+				Anmelden
 			</button>
 		</div>
 	{/if}

@@ -68,7 +68,7 @@
 
 			const { data: pData, error: pErr } = await sb
 				.from('game_plans')
-				.select('id, cal_week, league_id, lineup_published_at, confirmation_deadline, game_plan_players(id, position, confirmed, player_id, players(name, photo))')
+				.select('id, cal_week, league_id, lineup_published_at, confirmation_deadline, game_plan_players(id, position, confirmed, player_id, players!game_plan_players_player_id_fkey(name, photo))')
 				.in('cal_week', calWeeks);
 			if (pErr) { triggerToast('Fehler: ' + pErr.message); return; }
 			plans = (pData ?? []).map(p => ({

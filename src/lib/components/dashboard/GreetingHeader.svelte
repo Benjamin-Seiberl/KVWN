@@ -59,7 +59,7 @@
 
 		// A) Alle Matches im Fenster (für Lineup + Next-Match)
 		const { data: matches, error: mErr } = await sb.from('matches')
-			.select('id, date, time, cal_week, league_id, is_landesbewerb, registration_deadline')
+			.select('id, date, time, cal_week, league_id')
 			.gte('date', todayStr)
 			.order('date').order('time');
 		if (mErr) { triggerToast('Fehler: ' + mErr.message); return; }
@@ -95,12 +95,11 @@
 			if (e.confirmed === null) lineupPending += 1;
 		}
 
-		// Landesbewerb-Offen (nicht abgestimmt + nicht dismissed + Frist läuft)
+		// Landesbewerb-Offen (nicht angemeldet + nicht dismissed + Frist läuft)
 		const nowIso = new Date().toISOString();
 		const [lbRes, dismissRes] = await Promise.all([
-			sb.from('matches')
-				.select('id, tournament_votes(player_id)')
-				.eq('is_landesbewerb', true)
+			sb.from('landesbewerbe')
+				.select('id, landesbewerb_registrations!landesbewerb_id(player_id)')
 				.gte('date', todayStr)
 				.gt('registration_deadline', nowIso),
 			sb.from('dashboard_task_dismissals')
@@ -112,9 +111,9 @@
 		if (dismissRes.error) { triggerToast('Fehler: ' + dismissRes.error.message); return; }
 
 		const dismissed = new Set((dismissRes.data ?? []).map(d => d.task_ref_id));
-		const lbOpen = (lbRes.data ?? []).filter(m =>
-			!dismissed.has(m.id) &&
-			!((m.tournament_votes ?? []).some(v => v.player_id === pid))
+		const lbOpen = (lbRes.data ?? []).filter(row =>
+			!dismissed.has(row.id) &&
+			!((row.landesbewerb_registrations ?? []).some(r => r.player_id === pid))
 		).length;
 
 		openTasks = lineupPending + lbOpen;

@@ -155,7 +155,7 @@
 		// Bestehende Aufstellung laden
 		const { data: gp } = await sb
 			.from('game_plans')
-			.select('id, cal_week, league_id, round_code, lineup_published_at, confirmation_deadline, game_plan_players(id, position, player_id, player_name, players(name, photo))')
+			.select('id, cal_week, league_id, round_code, lineup_published_at, confirmation_deadline, game_plan_players(id, position, player_id, player_name, players!game_plan_players_player_id_fkey(name, photo))')
 			.eq('cal_week', m.cal_week)
 			.eq('league_id', m.league_id)
 			.maybeSingle();

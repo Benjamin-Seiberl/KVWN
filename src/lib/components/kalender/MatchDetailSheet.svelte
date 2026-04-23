@@ -5,10 +5,17 @@
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { fmtDate } from '$lib/utils/dates.js';
 	import { leagueTiming, offsetTime, shortTime } from '$lib/utils/league.js';
+	import { imgPath, shortName } from '$lib/utils/players.js';
 	import BottomSheet from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard from '$lib/components/spielbetrieb/CarpoolCard.svelte';
 
-	let { open = $bindable(false), match = null } = $props();
+	let { open = $bindable(false), match = null, lineup = [] } = $props();
+
+	function confirmStatus(entry) {
+		if (entry?.confirmed === true)  return 'confirmed';
+		if (entry?.confirmed === false) return 'declined';
+		return 'pending';
+	}
 
 	let carpools = $state([]);
 	let meetup   = $state(null);
@@ -98,6 +105,43 @@
 				{/if}
 			</div>
 
+			{#if lineup.length > 0}
+				<div class="md-section">
+					<h3 class="md-section-title">
+						<span class="material-symbols-outlined">format_list_numbered</span>
+						Aufstellung
+					</h3>
+					<div class="md-lineup">
+						{#each lineup as entry (entry.id)}
+							{@const name  = entry.players?.name ?? entry.player_name ?? '–'}
+							{@const photo = entry.players?.photo ?? null}
+							{@const status = confirmStatus(entry)}
+							<div class="md-lineup-row">
+								<span class="md-lineup-pos">{entry.position}</span>
+								<div class="md-lineup-avatar">
+									<img
+										src={imgPath(photo, name)}
+										alt=""
+										onerror={(e) => { e.currentTarget.style.display = 'none'; }}
+									/>
+									<span class="md-lineup-initial">{name.slice(0, 1)}</span>
+								</div>
+								<span class="md-lineup-name">{shortName(name)}</span>
+								<span class="md-lineup-status md-lineup-status--{status}" aria-label={status === 'confirmed' ? 'Bestätigt' : status === 'declined' ? 'Abgelehnt' : 'Ausstehend'}>
+									{#if status === 'confirmed'}
+										<span class="material-symbols-outlined">check_circle</span>
+									{:else if status === 'declined'}
+										<span class="material-symbols-outlined">cancel</span>
+									{:else}
+										<span class="material-symbols-outlined">radio_button_unchecked</span>
+									{/if}
+								</span>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			{#if isAway && !isTourney}
 				<div class="md-section">
 					<h3 class="md-section-title">
@@ -173,6 +217,62 @@
 		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 	}
 	.md-loading { height: 90px; border-radius: var(--radius-md); }
+
+	.md-lineup {
+		display: flex; flex-direction: column; gap: var(--space-2);
+	}
+	.md-lineup-row {
+		display: flex; align-items: center; gap: var(--space-3);
+		padding: var(--space-2) var(--space-3);
+		background: var(--color-surface-container-lowest);
+		border: 1px solid var(--color-outline-variant);
+		border-radius: var(--radius-md);
+	}
+	.md-lineup-pos {
+		font-family: var(--font-display);
+		font-size: var(--text-label-md);
+		font-weight: 800;
+		color: var(--color-primary);
+		min-width: 20px;
+		text-align: center;
+	}
+	.md-lineup-avatar {
+		position: relative;
+		width: 34px; height: 34px;
+		border-radius: var(--radius-full);
+		background: var(--color-surface-container);
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+	.md-lineup-avatar img {
+		width: 100%; height: 100%;
+		object-fit: cover; object-position: top center;
+	}
+	.md-lineup-initial {
+		position: absolute; inset: 0;
+		display: flex; align-items: center; justify-content: center;
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: 0.85rem;
+		color: var(--color-on-surface-variant);
+		z-index: -1;
+	}
+	.md-lineup-name {
+		flex: 1;
+		font-size: var(--text-body-md);
+		font-weight: 600;
+		color: var(--color-on-surface);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.md-lineup-status .material-symbols-outlined {
+		font-size: 1.1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.md-lineup-status--confirmed { color: var(--color-success); }
+	.md-lineup-status--declined  { color: var(--color-primary); }
+	.md-lineup-status--pending   { color: var(--color-outline); }
 
 	.md-cta {
 		display: flex; align-items: center; justify-content: center; gap: var(--space-2);

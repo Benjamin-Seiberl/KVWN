@@ -88,7 +88,7 @@
 		// Replicate the fetch pattern from SpielbetriebeTab.selectMatch (lines 73–119)
 		const { data: gpFull, error } = await sb
 			.from('game_plans')
-			.select('id, result_mode, result_published_at, game_plan_players(id, position, player_id, player_name, score, played, result_state, players(name, photo), game_plan_player_lanes(bahn, volle, abraeumen))')
+			.select('id, result_mode, result_published_at, game_plan_players(id, position, player_id, player_name, score, played, result_state, players!game_plan_players_player_id_fkey(name, photo), game_plan_player_lanes(bahn, volle, abraeumen))')
 			.eq('id', gp.id)
 			.maybeSingle();
 
