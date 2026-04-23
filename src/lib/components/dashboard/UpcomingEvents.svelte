@@ -12,7 +12,7 @@
 		const todayStr = new Date().toISOString().split('T')[0];
 		const { data } = await sb
 			.from('events')
-			.select('id, title, date, time, location')
+			.select('id, title, date, time, location, external_id')
 			.gte('date', todayStr)
 			.order('date')
 			.order('time')

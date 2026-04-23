@@ -13,6 +13,7 @@
 	import TrainingDetailSheet from '$lib/components/kalender/TrainingDetailSheet.svelte';
 	import MatchDetailSheet    from '$lib/components/kalender/MatchDetailSheet.svelte';
 	import EventDetailSheet    from '$lib/components/kalender/EventDetailSheet.svelte';
+	import EventCreateSheet    from '$lib/components/kalender/EventCreateSheet.svelte';
 
 	// ── Date helpers ─────────────────────────────────────────────────────────
 	function daysUntilLabel(dateStr) {
@@ -73,6 +74,9 @@
 	let eventSheetOpen = $state(false);
 	let eventSheetData = $state(null);
 	function openEventSheet(e) { eventSheetData = e; eventSheetOpen = true; }
+
+	// Create-Sheet für neue Events (Kapitän-gated)
+	let createOpen = $state(false);
 
 	// ── Date range constants ──────────────────────────────────────────────────
 	const today  = toDateStr(new Date());
@@ -306,8 +310,8 @@
 		loading = true;
 		const pid = $playerId;
 		const queries = [
-			sb.from('events').select('id, title, date, time, location').gte('date', today).order('date').limit(1),
-			sb.from('events').select('id, title, date, time, location').gte('date', today).lte('date', plus14).order('date'),
+			sb.from('events').select('id, title, date, time, location, description, external_id, source').gte('date', today).order('date').limit(1),
+			sb.from('events').select('id, title, date, time, location, description, external_id, source').gte('date', today).lte('date', plus14).order('date'),
 			sb.from('matches')
 				.select('id, date, time, opponent, home_away, is_tournament, is_landesbewerb, tournament_title, tournament_status, registration_deadline, league_id, leagues(name)')
 				.gte('date', today).lte('date', plus14).order('date'),
@@ -440,6 +444,14 @@
 		</button>
 
 	</div>
+
+	<!-- ── Captain: Termin anlegen ──────────────────────────────────────────── -->
+	{#if $playerRole === 'kapitaen'}
+		<button class="mw-btn mw-btn--primary mw-btn--wide" onclick={() => createOpen = true}>
+			<span class="material-symbols-outlined">add</span>
+			Termin anlegen
+		</button>
+	{/if}
 
 	<!-- ── Section 4: 14-day Feed ────────────────────────────────────────────── -->
 	<div class="feed-section">
@@ -602,7 +614,15 @@
 
 <!-- ── Match + Event detail BottomSheets ───────────────────────────────────── -->
 <MatchDetailSheet bind:open={matchSheetOpen} match={matchSheetData} />
-<EventDetailSheet bind:open={eventSheetOpen} event={eventSheetData} />
+<EventDetailSheet
+	bind:open={eventSheetOpen}
+	event={eventSheetData}
+	onEdited={loadData}
+	onDeleted={loadData}
+/>
+
+<!-- ── Event-Anlegen BottomSheet ────────────────────────────────────────────── -->
+<EventCreateSheet bind:open={createOpen} onCreated={loadData} />
 
 <!-- ── Key duty swap BottomSheet ────────────────────────────────────────────── -->
 <BottomSheet bind:open={keySheetOpen} title="Schlüssel-Dienst">

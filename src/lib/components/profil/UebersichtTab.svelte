@@ -65,7 +65,7 @@
 				sb.from('game_plan_players')
 					.select('player_id, score').eq('played', true).not('score', 'is', null),
 				sb.from('events')
-					.select('id, title, date, time, location')
+					.select('id, title, date, time, location, external_id')
 					.gte('date', today).order('date').limit(6),
 				sb.from('event_rsvps').select('event_id, response').eq('player_id', pid),
 			]);
