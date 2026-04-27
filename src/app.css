@@ -46,6 +46,9 @@
   --color-success-container:    #D7F0DC;
   --color-on-success-container: #1A4521;
 
+  /* --- Info (Hinweis/Profil-Ergänzen-States) --- */
+  --color-info:                 #3b82f6;
+
   /* --- Typografie --- */
   --font-display: 'Lexend', sans-serif;
   --font-body:    'Public Sans', sans-serif;
