@@ -9,7 +9,6 @@
 	import BottomSheet      from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard      from '$lib/components/spielbetrieb/CarpoolCard.svelte';
 	import AdminAufstellung from '$lib/components/admin/AdminAufstellung.svelte';
-	import MeetupEditSheet  from '$lib/components/spielbetrieb/MeetupEditSheet.svelte';
 	import FeedbackCard     from '$lib/components/spielbetrieb/FeedbackCard.svelte';
 
 	// ── State ─────────────────────────────────────────────────────────────────
@@ -33,12 +32,6 @@
 	// Lineup-edit sheet (Kapitän)
 	let editLineupOpen    = $state(false);
 	let editLineupMatchId = $state(null);
-
-	// Meetup-edit sheet (Kapitän, Auswärts)
-	let meetupSheetOpen   = $state(false);
-	let meetupSheetMatch  = $state(null);
-	let meetupSheetData   = $state(null);
-	let meetupConfirmedIds = $state([]);
 
 	// Feedback sheet (Spieler, via Push-URL)
 	let feedbackSheetOpen     = $state(false);
@@ -381,39 +374,6 @@
 		wasEditOpen = editLineupOpen;
 	});
 
-	// ── Meetup quick-edit sheet (Kapitän, Auswärts) ───────────────────────────
-	async function openMeetupSheet(match, e) {
-		e?.stopPropagation?.();
-		// Vorhandenen meetup-Eintrag laden
-		const { data: mu, error: muErr } = await sb
-			.from('match_meetups').select('*').eq('match_id', match.id).maybeSingle();
-		if (muErr && muErr.code !== 'PGRST116') {
-			triggerToast('Fehler: ' + muErr.message);
-			return;
-		}
-		// Bestätigte Spieler aus geladenem Lineup ziehen (für Push-Empfänger nach Save)
-		const lu = lineupsByMatch.get(match.id) ?? null;
-		const confirmedIds = (lu?.players ?? [])
-			.filter(p => p.confirmed === true && p.player_id)
-			.map(p => p.player_id);
-		meetupSheetMatch    = match;
-		meetupSheetData     = mu ?? null;
-		meetupConfirmedIds  = confirmedIds;
-		meetupSheetOpen     = true;
-	}
-
-	function handleMeetupKey(e, match) {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			openMeetupSheet(match);
-		}
-	}
-
-	function onMeetupSaved() {
-		triggerToast('Treffpunkt gespeichert');
-		loadData();
-	}
-
 	// ── Captain reminder push ─────────────────────────────────────────────────
 	let reminderSending = $state(null); // match.id while sending
 	async function sendLineupReminder(match) {
@@ -546,17 +506,6 @@
 								</div>
 								<div class="sp-match-head-right">
 									<span class="mw-badge">{bewerbBadge(m)}</span>
-									{#if isCaptain && !isHome}
-										<button
-											class="sp-edit-btn"
-											type="button"
-											aria-label="Treffpunkt festlegen"
-											aria-haspopup="dialog"
-											onclick={(e) => openMeetupSheet(m, e)}
-										>
-											<span class="material-symbols-outlined">location_on</span>
-										</button>
-									{/if}
 									{#if isCaptain}
 										<button
 											class="sp-edit-btn"
@@ -778,16 +727,6 @@
 
 <AdminAufstellung bind:open={editLineupOpen} preselectedMatchId={editLineupMatchId} />
 
-{#if meetupSheetMatch}
-	<MeetupEditSheet
-		bind:open={meetupSheetOpen}
-		match={meetupSheetMatch}
-		meetup={meetupSheetData}
-		confirmedPlayerIds={meetupConfirmedIds}
-		onSaved={onMeetupSaved}
-	/>
-{/if}
-
 <BottomSheet bind:open={feedbackSheetOpen} title="Kurzes Feedback">
 	{#if feedbackSheetMatch}
 		<div class="sp-fb-wrap">
@@ -795,7 +734,7 @@
 				match={feedbackSheetMatch}
 				questions={feedbackQuestions}
 				existingFeedback={feedbackExisting}
-				onSaved={() => { feedbackSheetOpen = false; }}
+				onSaved={() => { setTimeout(() => { feedbackSheetOpen = false; }, 1200); }}
 			/>
 		</div>
 	{/if}

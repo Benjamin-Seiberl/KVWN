@@ -214,8 +214,7 @@ Svelte 5 runes + SvelteKit 2, Supabase (Postgres + Google Auth), Vercel (Node 22
 /(app)/                     Auth-guarded shell
   +page.svelte              Dashboard       tabs: neuigkeiten · events
   kalender/                                 view-modes (local state): agenda · woche · monat
-  spielbetrieb/                             tabs: uebersicht · aufstellungen · statistiken · admin(kapitaen)
-                                            uebersicht hosts inline pill (?pill=spiele|turnier|landesbewerb) at the bottom
+  spielbetrieb/                             tabs: spiele · turniere · landesbewerbe · statistiken
   profil/                                   tabs: uebersicht · einstellungen · admin(kapitaen)
 /api/push/notify            Web Push send endpoint
 /api/cron/gcal-sync         Google Calendar pull (Bearer CRON_SECRET, */15 cron)
@@ -239,7 +238,7 @@ Every `+page.svelte` is a thin router — separate `{#if}` blocks (not `{:else i
 
 `/kalender` uses local `$state` for its view-mode switcher (agenda/woche/monat) instead of subtabs — PAGE_CONFIG entry has `tabs: []`.
 
-`uebersicht` tabs render outside any `.kal-page`/`.sp-page` wrapper so they control their own layout.
+`uebersicht` tabs render outside any `.kal-page` wrapper so they control their own layout.
 
 ### Key DB facts
 

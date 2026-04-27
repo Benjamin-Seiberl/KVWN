@@ -1,57 +1,115 @@
 <script>
-	import { onMount }      from 'svelte';
-	import { sb }           from '$lib/supabase';
-	import { playerRole }   from '$lib/stores/auth';
-	import { triggerToast } from '$lib/stores/toast.js';
-	import { fmtDate, fmtTime, toDateStr } from '$lib/utils/dates.js';
-	import { BEWERB_TYPEN } from '$lib/constants/competitions.js';
-	import LandesbewerbCard from '$lib/components/spielbetrieb/LandesbewerbCard.svelte';
-	import BottomSheet      from '$lib/components/BottomSheet.svelte';
+	import { onMount }                    from 'svelte';
+	import { sb }                         from '$lib/supabase';
+	import { playerId, playerRole }       from '$lib/stores/auth';
+	import { triggerToast }               from '$lib/stores/toast.js';
+	import { fmtDate, fmtTime, toDateStr, daysUntil } from '$lib/utils/dates.js';
+	import { BEWERB_TYPEN, BEWERB_LABEL } from '$lib/constants/competitions.js';
+	import LandesbewerbCard               from '$lib/components/spielbetrieb/LandesbewerbCard.svelte';
+	import BottomSheet                    from '$lib/components/BottomSheet.svelte';
 
-	const isAdmin = $derived($playerRole === 'kapitaen');
+	// ── State ─────────────────────────────────────────────────────────────────
+	let landesbewerbe     = $state([]);
+	let activePlayerCount = $state(0);
+	let loading           = $state(true);
+	let showPast          = $state(false);
 
-	let landesbewerbe    = $state([]);
-	let loadingLandes    = $state(false);
-	let landesSearch     = $state('');
-	let selectedLandes   = $state(null);
-	let landesCreateOpen = $state(false);
-	let detailOpen       = $state(false);
+	let selectedLandes    = $state(null);
+	let detailOpen        = $state(false);
 
+	// Create-Sheet (Kapitän)
+	let createOpen     = $state(false);
 	let landesTitle    = $state('');
 	let landesTyp      = $state('einzel_ak_herren');
 	let landesDate     = $state('');
 	let landesTime     = $state('');
 	let landesLocation = $state('');
 	let landesDeadline = $state('');
-	let landesSaving   = $state(false);
+	let saving         = $state(false);
 
-	const filteredLandes = $derived.by(() => {
-		const q = landesSearch.toLowerCase().trim();
-		if (!q) return landesbewerbe;
-		return landesbewerbe.filter(t =>
-			t.title?.toLowerCase().includes(q) ||
-			t.location?.toLowerCase().includes(q) ||
-			(t.date && t.date.includes(q))
-		);
-	});
+	const isAdmin = $derived($playerRole === 'kapitaen');
+	const today   = toDateStr(new Date());
 
-	async function loadLandesbewerbe() {
-		loadingLandes = true;
-		const { data, error } = await sb
-			.from('landesbewerbe')
-			.select('id, title, typ, location, date, time, registration_deadline, landesbewerb_registrations!landesbewerb_id(player_id)')
-			.order('date', { ascending: false });
-		if (error) triggerToast('Ladefehler: ' + (error.message ?? error.code ?? 'Unbekannt'));
-		landesbewerbe = data ?? [];
-		if (selectedLandes) {
-			selectedLandes = landesbewerbe.find(l => l.id === selectedLandes.id) ?? selectedLandes;
+	// ── Load ──────────────────────────────────────────────────────────────────
+	async function load() {
+		loading = true;
+		try {
+			const [{ data: lData, error: lErr }, { count: pCount, error: pErr }] = await Promise.all([
+				sb.from('landesbewerbe')
+					.select(`
+						id, title, typ, location, date, time, registration_deadline,
+						landesbewerb_registrations!landesbewerb_id(player_id)
+					`)
+					.order('date', { ascending: true, nullsFirst: false }),
+				sb.from('players').select('id', { count: 'exact', head: true }).eq('active', true),
+			]);
+			if (lErr) { triggerToast('Fehler: ' + lErr.message); return; }
+			if (pErr) { triggerToast('Fehler: ' + pErr.message); return; }
+			landesbewerbe     = lData ?? [];
+			activePlayerCount = pCount ?? 0;
+			if (selectedLandes) {
+				selectedLandes = landesbewerbe.find(l => l.id === selectedLandes.id) ?? selectedLandes;
+			}
+		} finally {
+			loading = false;
 		}
-		loadingLandes = false;
 	}
+
+	onMount(load);
+
+	// ── Helpers ───────────────────────────────────────────────────────────────
+	/** Aktiv = Termin in Zukunft, ohne Termin → Frist in Zukunft. */
+	function isPastLB(l) {
+		if (l.date && l.date < today) return true;
+		if (!l.date && l.registration_deadline) {
+			return new Date(l.registration_deadline) < new Date();
+		}
+		return false;
+	}
+
+	function regCountOf(l)   { return (l.landesbewerb_registrations ?? []).length; }
+	function deadlineDateOf(l){ return l.registration_deadline ? new Date(l.registration_deadline) : null; }
+	function deadlineDayStr(l) {
+		const d = deadlineDateOf(l);
+		return d ? toDateStr(d) : null;
+	}
+
+	function myRegOf(l) {
+		return (l.landesbewerb_registrations ?? []).some(r => r.player_id === $playerId);
+	}
+
+	function myStatusOf(l) {
+		// Es gibt nur "angemeldet" oder "offen" — keine explizite Absage.
+		return myRegOf(l) ? 'confirmed' : 'pending';
+	}
+
+	// ── Filter ────────────────────────────────────────────────────────────────
+	const activeLandes = $derived(landesbewerbe.filter(l => !isPastLB(l)));
+	const pastLandes   = $derived(landesbewerbe.filter(l =>  isPastLB(l)));
+
+	// ── Aktionen ──────────────────────────────────────────────────────────────
+	function openDetail(l, e) {
+		e?.stopPropagation?.();
+		selectedLandes = l;
+		detailOpen = true;
+	}
+
+	function handleCardKey(e, l) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			openDetail(l);
+		}
+	}
+
+	let wasDetailOpen = false;
+	$effect(() => {
+		if (wasDetailOpen && !detailOpen) load();
+		wasDetailOpen = detailOpen;
+	});
 
 	async function createLandesbewerb() {
 		if (!landesTitle || !landesDeadline) return;
-		landesSaving = true;
+		saving = true;
 		const { data, error } = await sb.from('landesbewerbe').insert({
 			title:                 landesTitle,
 			typ:                   landesTyp,
@@ -60,235 +118,693 @@
 			time:                  landesTime || null,
 			registration_deadline: new Date(landesDeadline).toISOString(),
 		}).select().single();
-		landesSaving = false;
-		if (error) { triggerToast('Fehler: ' + (error.message ?? 'Unbekannt')); return; }
-		landesCreateOpen = false;
-		landesTitle = ''; landesTyp = 'einzel_ak_herren'; landesDate = ''; landesTime = ''; landesLocation = ''; landesDeadline = '';
-		await loadLandesbewerbe();
+		saving = false;
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
+		createOpen = false;
+		landesTitle = ''; landesTyp = 'einzel_ak_herren';
+		landesDate = '';  landesTime = '';
+		landesLocation = ''; landesDeadline = '';
+		await load();
 		selectedLandes = landesbewerbe.find(l => l.id === data.id) ?? data;
 		detailOpen = true;
 	}
-
-	onMount(() => loadLandesbewerbe());
 </script>
 
-<div class="sb-page">
-
-		<div class="mp-search-wrap">
-			<div class="tp-search-row">
-				<div class="mp-input-wrap" style="flex:1">
-					<span class="material-symbols-outlined mp-search-icon">search</span>
-					<input
-						class="mp-input"
-						type="search"
-						placeholder="Landesbewerb suchen…"
-						autocomplete="off"
-						bind:value={landesSearch}
-					/>
-					{#if landesSearch}
-						<button class="mp-clear" onclick={() => landesSearch = ''} aria-label="Löschen">
-							<span class="material-symbols-outlined">cancel</span>
-						</button>
-					{/if}
-				</div>
-				{#if isAdmin}
-					<button class="tp-add-btn" onclick={() => landesCreateOpen = true} aria-label="Landesbewerb erstellen">
-						<span class="material-symbols-outlined">add</span>
-					</button>
-				{/if}
-			</div>
+<div class="lt-page">
+	{#if loading}
+		<!-- Skeleton ─────────────────────────────────────────────────────────── -->
+		<div class="lt-loading">
+			<div class="shimmer-box lt-skel lt-skel--head"></div>
+			<div class="shimmer-box lt-skel lt-skel--card"></div>
+			<div class="shimmer-box lt-skel lt-skel--card"></div>
 		</div>
+	{:else}
 
-		{#if loadingLandes}
-			<div class="sb-loading">
-				<span class="material-symbols-outlined sb-loading-icon">workspace_premium</span>
-				<p>Lade Landesbewerbe…</p>
+		<!-- ── Header ────────────────────────────────────────────────────────── -->
+		<header class="lt-page-head">
+			<div class="lt-head-left">
+				<span class="material-symbols-outlined lt-head-icon">workspace_premium</span>
+				<h2 class="lt-head-title">Aktive Landesbewerbe</h2>
 			</div>
-		{:else if filteredLandes.length === 0}
-			<div class="sb-empty">
-				<span class="material-symbols-outlined sb-loading-icon">workspace_premium</span>
-				<p>{landesSearch ? 'Keine Treffer' : 'Noch keine Landesbewerbe'}</p>
-				{#if isAdmin && !landesSearch}
-					<button class="tp-create-cta" onclick={() => landesCreateOpen = true}>
+			{#if isAdmin}
+				<button
+					class="lt-add-btn"
+					type="button"
+					aria-label="Landesbewerb erstellen"
+					onclick={() => createOpen = true}
+				>
+					<span class="material-symbols-outlined">add</span>
+				</button>
+			{/if}
+		</header>
+
+		{#if activeLandes.length === 0}
+			<!-- Empty-State ─────────────────────────────────────────────────── -->
+			<div class="mw-card lt-empty">
+				<span class="material-symbols-outlined lt-empty-icon">workspace_premium</span>
+				<p class="lt-empty-text">Keine aktiven Landesbewerbe</p>
+				{#if isAdmin}
+					<button class="mw-btn mw-btn--primary" type="button" onclick={() => createOpen = true}>
 						<span class="material-symbols-outlined">add_circle</span>
 						Landesbewerb erstellen
 					</button>
 				{/if}
 			</div>
 		{:else}
-			<div class="mp-list">
-				{#each filteredLandes as t}
-					{@const regCount = (t.landesbewerb_registrations ?? []).length}
-					{@const dl = t.registration_deadline ? new Date(t.registration_deadline) : null}
-					{@const regOpen = dl && dl > new Date()}
-					<button class="mp-card" class:mp-card--past={t.date && t.date < toDateStr(new Date())} onclick={() => { selectedLandes = t; detailOpen = true; }}>
-						<div class="mp-card-left">
-							<div class="tp-trophy-badge tp-trophy-badge--landes">
+			<!-- Aktive Landesbewerb-Cards ───────────────────────────────────── -->
+			<div class="lt-cards">
+				{#each activeLandes as l (l.id)}
+					{@const reg          = regCountOf(l)}
+					{@const total        = activePlayerCount}
+					{@const myStatus     = myStatusOf(l)}
+					{@const myLabel      = myStatus === 'confirmed' ? 'Angemeldet' : 'Noch offen'}
+					{@const dlStr        = deadlineDayStr(l)}
+					{@const dlDays       = dlStr ? daysUntil(dlStr) : null}
+					{@const dlOpen       = deadlineDateOf(l) ? deadlineDateOf(l) > new Date() : true}
+					{@const dlUrgent     = dlOpen && dlDays != null && dlDays <= 2}
+					{@const showVoteHint = dlOpen && myStatus === 'pending'}
+					{@const typLabel     = BEWERB_LABEL[l.typ] ?? l.typ ?? '—'}
+
+					<article
+						class="mw-card lt-card animate-fade-float"
+						role="button"
+						tabindex="0"
+						aria-label={`Landesbewerb ${l.title ?? ''}, ${typLabel}${l.date ? `, am ${fmtDate(l.date)}` : ''}. ${reg} von ${total} angemeldet. Mein Status: ${myLabel}.`}
+						onclick={() => openDetail(l)}
+						onkeydown={(e) => handleCardKey(e, l)}
+					>
+						<!-- Header: Trophy + Titel + Disziplin + Termin -->
+						<div class="lt-card-head">
+							<div class="lt-trophy">
 								<span class="material-symbols-outlined">workspace_premium</span>
 							</div>
-							<h3 class="mp-opponent">{t.title ?? 'Landesbewerb'}</h3>
-							{#if t.location}
-								<p class="mp-league">
-									<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-2px">location_on</span>
-									{t.location}
-								</p>
-							{/if}
-							{#if dl}
-								<div class="tp-card-meta">
-									{#if regOpen}
-										<span class="tp-status-badge tp-status-badge--voting">Anmeldung offen</span>
-									{:else}
-										<span class="tp-status-badge tp-status-badge--voting_closed">Geschlossen</span>
-									{/if}
-									{#if regCount > 0}
-										<span class="tp-yes-count">
-											<span class="material-symbols-outlined" style="font-size:0.75rem;vertical-align:-1px">how_to_reg</span>
-											{regCount} Anmeldung{regCount !== 1 ? 'en' : ''}
+							<div class="lt-head-info">
+								<h3 class="lt-card-title">{l.title ?? 'Landesbewerb'}</h3>
+								<p class="lt-card-meta">
+									<span class="lt-typ-badge">{typLabel}</span>
+									{#if l.date}
+										<span class="lt-card-sep">·</span>
+										<span class="lt-card-when">
+											{fmtDate(l.date)}{l.time ? ' · ' + fmtTime(l.time) : ''}
 										</span>
+									{/if}
+								</p>
+								{#if l.location}
+									<p class="lt-card-loc">
+										<span class="material-symbols-outlined lt-loc-icon">location_on</span>
+										{l.location}
+									</p>
+								{/if}
+							</div>
+						</div>
+
+						<div class="lt-divider"></div>
+
+						<!-- Counter + Frist-Countdown -->
+						<div class="lt-stats">
+							<div class="lt-counter">
+								<span class="material-symbols-outlined lt-counter-icon">how_to_reg</span>
+								<span class="lt-counter-num">{reg}<span class="lt-counter-total">/{total}</span></span>
+								<span class="lt-counter-label">angemeldet</span>
+							</div>
+							{#if dlStr}
+								<div class="lt-frist" class:lt-frist--urgent={dlUrgent} class:lt-frist--past={!dlOpen}>
+									<span class="material-symbols-outlined lt-frist-icon">alarm</span>
+									{#if !dlOpen}
+										<span>Frist abgelaufen</span>
+									{:else if dlDays === 0}
+										<span>Frist heute</span>
+									{:else if dlDays === 1}
+										<span>Frist morgen</span>
+									{:else}
+										<span>Frist in {dlDays} Tagen</span>
 									{/if}
 								</div>
 							{/if}
 						</div>
-						<div class="mp-card-right">
-							{#if t.date}<span class="mp-date">{fmtDate(t.date)}</span>{/if}
-							{#if t.time}<span class="mp-time">{fmtTime(t.time)}</span>{/if}
-							<span class="material-symbols-outlined mp-chevron">chevron_right</span>
+
+						<!-- Mein Status (Outer-Card-Klick öffnet Detail-Sheet) -->
+						<div
+							class="lt-mine lt-mine--{myStatus}"
+						>
+							<span class="material-symbols-outlined lt-mine-icon">
+								{#if myStatus === 'confirmed'}check_circle
+								{:else}radio_button_unchecked{/if}
+							</span>
+							<span class="lt-mine-label">{myLabel}</span>
+							{#if dlOpen}
+								<span class="material-symbols-outlined lt-mine-chevron">chevron_right</span>
+							{:else}
+								<span class="material-symbols-outlined lt-mine-chevron">lock</span>
+							{/if}
 						</div>
-					</button>
+
+						<!-- Offene-Aktionen-Strip -->
+						{#if showVoteHint}
+							<div class="lt-actions" aria-live="polite">
+								<span class="material-symbols-outlined lt-actions-icon">how_to_reg</span>
+								<span class="lt-actions-text">
+									{dlUrgent ? 'Frist endet bald — bitte anmelden' : 'Du musst dich noch anmelden'}
+								</span>
+							</div>
+						{/if}
+
+						<!-- Kapitän: Verwalten -->
+						{#if isAdmin}
+							<div class="lt-admin-row">
+								<button
+									type="button"
+									class="mw-btn mw-btn--soft lt-admin-btn"
+									aria-label={`Landesbewerb verwalten: ${l.title ?? ''}`}
+									onclick={(e) => openDetail(l, e)}
+								>
+									<span class="material-symbols-outlined">settings</span>
+									Verwalten
+								</button>
+							</div>
+						{/if}
+					</article>
 				{/each}
 			</div>
 		{/if}
 
-	<BottomSheet bind:open={landesCreateOpen} title="Landesbewerb erstellen">
-		<div class="tp-form">
-			<label class="tp-field">
-				<span class="tp-label">Titel *</span>
-				<input class="tp-input" type="text" placeholder="z.B. NÖ Landesmeisterschaft 2026" bind:value={landesTitle} />
-			</label>
-			<label class="tp-field">
-				<span class="tp-label">Bewerbstyp *</span>
-				<select class="tp-input" bind:value={landesTyp}>
-					{#each BEWERB_TYPEN as bt}
-						<option value={bt.key}>{bt.label}</option>
+		<!-- ── Frühere anzeigen ─────────────────────────────────────────────── -->
+		{#if pastLandes.length > 0}
+			<div class="lt-past-toggle-wrap">
+				<button
+					class="lt-past-toggle"
+					type="button"
+					aria-expanded={showPast}
+					onclick={() => showPast = !showPast}
+				>
+					<span class="material-symbols-outlined">{showPast ? 'expand_less' : 'expand_more'}</span>
+					{showPast ? 'Frühere ausblenden' : `Frühere anzeigen (${pastLandes.length})`}
+				</button>
+			</div>
+
+			{#if showPast}
+				<div class="lt-cards lt-cards--past">
+					{#each pastLandes as l (l.id)}
+						{@const reg = regCountOf(l)}
+						{@const typLabel = BEWERB_LABEL[l.typ] ?? l.typ ?? '—'}
+						<article
+							class="mw-card lt-card lt-card--past"
+							role="button"
+							tabindex="0"
+							aria-label={`Vergangener Landesbewerb ${l.title ?? ''}.`}
+							onclick={() => openDetail(l)}
+							onkeydown={(e) => handleCardKey(e, l)}
+						>
+							<div class="lt-card-head">
+								<div class="lt-trophy lt-trophy--past">
+									<span class="material-symbols-outlined">workspace_premium</span>
+								</div>
+								<div class="lt-head-info">
+									<h3 class="lt-card-title">{l.title ?? 'Landesbewerb'}</h3>
+									<p class="lt-card-meta">
+										<span class="lt-typ-badge">{typLabel}</span>
+										{#if l.date}
+											<span class="lt-card-sep">·</span>
+											<span class="lt-card-when">{fmtDate(l.date)}</span>
+										{/if}
+										{#if reg > 0}
+											<span class="lt-card-sep">·</span>
+											<span>{reg} angemeldet</span>
+										{/if}
+									</p>
+								</div>
+								<span class="material-symbols-outlined lt-chevron">chevron_right</span>
+							</div>
+						</article>
 					{/each}
-				</select>
-			</label>
-			<label class="tp-field">
-				<span class="tp-label">Anmelde-Deadline *</span>
-				<input class="tp-input" type="datetime-local" bind:value={landesDeadline} />
-			</label>
-			<label class="tp-field">
-				<span class="tp-label">Datum</span>
-				<input class="tp-input" type="date" bind:value={landesDate} />
-			</label>
-			<label class="tp-field">
-				<span class="tp-label">Uhrzeit</span>
-				<input class="tp-input" type="time" bind:value={landesTime} />
-			</label>
-			<label class="tp-field">
-				<span class="tp-label">Ort</span>
-				<input class="tp-input" type="text" placeholder="z.B. Sportzentrum Wiener Neustadt" bind:value={landesLocation} />
-			</label>
-			<button
-				class="tp-save-btn"
-				onclick={createLandesbewerb}
-				disabled={!landesTitle || !landesDeadline || landesSaving}
-			>
-				{landesSaving ? 'Speichern…' : 'Landesbewerb anlegen'}
-			</button>
-		</div>
-	</BottomSheet>
-
-	<BottomSheet bind:open={detailOpen} title={selectedLandes?.title ?? 'Landesbewerb'}>
-		{#if selectedLandes}
-			<LandesbewerbCard lb={selectedLandes} onReload={loadLandesbewerbe} />
+				</div>
+			{/if}
 		{/if}
-	</BottomSheet>
 
+	{/if}
 </div>
 
+<!-- ── Detail-Sheet (An-/Abmelden / Verwalten) ──────────────────────────── -->
+<BottomSheet bind:open={detailOpen} title={selectedLandes?.title ?? 'Landesbewerb'}>
+	{#if selectedLandes}
+		<LandesbewerbCard lb={selectedLandes} onReload={load} />
+	{/if}
+</BottomSheet>
+
+<!-- ── Create-Sheet (Kapitän) ───────────────────────────────────────────── -->
+<BottomSheet bind:open={createOpen} title="Landesbewerb erstellen">
+	<div class="lt-form">
+		<label class="lt-field">
+			<span class="lt-label">Titel *</span>
+			<input class="lt-input" type="text" placeholder="z.B. NÖ Landesmeisterschaft 2026" bind:value={landesTitle} />
+		</label>
+		<label class="lt-field">
+			<span class="lt-label">Bewerbstyp *</span>
+			<select class="lt-input" bind:value={landesTyp}>
+				{#each BEWERB_TYPEN as bt (bt.key)}
+					<option value={bt.key}>{bt.label}</option>
+				{/each}
+			</select>
+		</label>
+		<label class="lt-field">
+			<span class="lt-label">Anmelde-Frist *</span>
+			<input class="lt-input" type="datetime-local" bind:value={landesDeadline} />
+		</label>
+		<label class="lt-field">
+			<span class="lt-label">Datum</span>
+			<input class="lt-input" type="date" bind:value={landesDate} />
+		</label>
+		<label class="lt-field">
+			<span class="lt-label">Uhrzeit</span>
+			<input class="lt-input" type="time" bind:value={landesTime} />
+		</label>
+		<label class="lt-field">
+			<span class="lt-label">Ort</span>
+			<input class="lt-input" type="text" placeholder="z.B. Sportzentrum Wiener Neustadt" bind:value={landesLocation} />
+		</label>
+		<button
+			class="mw-btn mw-btn--primary mw-btn--wide"
+			type="button"
+			onclick={createLandesbewerb}
+			disabled={!landesTitle || !landesDeadline || saving}
+		>
+			{saving ? 'Speichern…' : 'Landesbewerb anlegen'}
+		</button>
+	</div>
+</BottomSheet>
+
 <style>
-	.tp-search-row {
+	/* ── Page-Frame ───────────────────────────────────────────────────────── */
+	.lt-page {
+		padding: var(--space-4) 0 calc(var(--nav-height) + var(--space-5));
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+	}
+
+	.lt-loading {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		padding: 0 var(--space-4);
+	}
+	.lt-skel { border-radius: var(--radius-lg); }
+	.lt-skel--head { height: 32px; width: 70%; }
+	.lt-skel--card { height: 220px; }
+
+	/* ── Page-Header ──────────────────────────────────────────────────────── */
+	.lt-page-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		padding: 0 var(--space-5);
+	}
+	.lt-head-left {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
 	}
-	.tp-add-btn {
-		width: 2.6rem;
-		height: 2.6rem;
-		flex-shrink: 0;
+	.lt-head-icon {
+		font-size: 1.2rem;
+		color: var(--color-primary);
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.lt-head-title {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: var(--text-title-md);
+		font-weight: 700;
+		color: var(--color-on-surface);
+	}
+	.lt-add-btn {
+		width: 44px;
+		height: 44px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		background: var(--color-primary);
 		color: #fff;
 		border: none;
-		border-radius: var(--radius-lg);
+		border-radius: var(--radius-full);
 		cursor: pointer;
 		transition: transform 120ms ease;
 		-webkit-tap-highlight-color: transparent;
 	}
-	.tp-add-btn:active { transform: scale(0.92); }
-	.tp-add-btn .material-symbols-outlined { font-size: 1.3rem; }
+	.lt-add-btn:active { transform: scale(0.92); }
+	.lt-add-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+	.lt-add-btn .material-symbols-outlined {
+		font-size: 1.3rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
 
-	.tp-trophy-badge {
-		width: 2rem;
-		height: 2rem;
+	/* ── Card-Liste ───────────────────────────────────────────────────────── */
+	.lt-cards {
+		display: flex;
+		flex-direction: column;
+	}
+	.lt-cards :global(.mw-card) {
+		margin: 0 var(--space-4) var(--space-3);
+	}
+
+	/* ── Empty-State ──────────────────────────────────────────────────────── */
+	.lt-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-3);
+		padding: var(--space-6) var(--space-4);
+		text-align: center;
+	}
+	.lt-empty-icon {
+		font-size: 1.6rem;
+		color: var(--color-on-surface-variant);
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.lt-empty-text {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: var(--text-body-md);
+		color: var(--color-on-surface-variant);
+	}
+
+	/* ── Card ─────────────────────────────────────────────────────────────── */
+	.lt-card {
+		display: flex;
+		flex-direction: column;
+		cursor: pointer;
+		text-align: left;
+		font: inherit;
+		-webkit-tap-highlight-color: transparent;
+		transition: transform 120ms ease, box-shadow 120ms ease;
+	}
+	.lt-card:active { transform: scale(0.985); }
+	.lt-card:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
+	.lt-card--past { opacity: 0.78; }
+
+	.lt-card-head {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-3);
+	}
+	.lt-trophy {
+		width: 40px;
+		height: 40px;
+		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: rgba(212,175,55,0.12);
-		border-radius: var(--radius-md);
-		margin-bottom: 2px;
+		border-radius: var(--radius-full);
+		background: linear-gradient(135deg, var(--color-secondary), color-mix(in srgb, var(--color-secondary) 35%, white));
 	}
-	.tp-trophy-badge .material-symbols-outlined {
-		font-size: 1.1rem;
-		color: var(--color-secondary, #D4AF37);
+	.lt-trophy .material-symbols-outlined {
+		font-size: 1.25rem;
+		color: color-mix(in srgb, var(--color-secondary) 70%, black);
 		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 	}
-	.tp-trophy-badge--landes {
-		background: rgba(99, 102, 241, 0.1);
+	.lt-trophy--past {
+		background: var(--color-surface-container);
 	}
-	.tp-trophy-badge--landes .material-symbols-outlined {
-		color: #6366f1;
+	.lt-trophy--past .material-symbols-outlined {
+		color: var(--color-on-surface-variant);
 	}
 
-	.tp-create-cta {
+	.lt-head-info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.lt-card-title {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: var(--text-title-sm);
+		font-weight: 700;
+		color: var(--color-on-surface);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.lt-card-meta {
+		margin: 0;
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
-		padding: var(--space-2) var(--space-4);
-		background: var(--color-primary);
-		color: #fff;
-		border: none;
-		border-radius: var(--radius-lg);
-		font: inherit;
+		flex-wrap: wrap;
+		font-family: var(--font-body);
+		font-size: var(--text-label-sm);
+		color: var(--color-on-surface-variant);
+	}
+	.lt-card-when { font-weight: 700; }
+	.lt-card-sep  { color: var(--color-outline); }
+	.lt-typ-badge {
+		display: inline-block;
+		font-family: var(--font-display);
+		font-size: 0.62rem;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		background: color-mix(in srgb, var(--color-primary) 10%, white);
+		color: var(--color-primary);
+		border-radius: var(--radius-full);
+		padding: 2px 8px;
+	}
+	.lt-card-loc {
+		margin: 2px 0 0;
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		font-family: var(--font-body);
+		font-size: var(--text-label-sm);
+		color: var(--color-on-surface-variant);
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.lt-loc-icon {
+		font-size: 0.85rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+
+	.lt-chevron {
+		font-size: 1.1rem;
+		color: var(--color-outline);
+		flex-shrink: 0;
+	}
+
+	.lt-divider {
+		border-top: 1px solid var(--color-outline-variant);
+		margin: var(--space-3) 0;
+	}
+
+	/* ── Counter + Frist ──────────────────────────────────────────────────── */
+	.lt-stats {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+	}
+	.lt-counter {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+	.lt-counter-icon {
+		font-size: 1.05rem;
+		color: var(--color-on-surface-variant);
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+	.lt-counter-num {
+		font-family: var(--font-display);
+		font-size: var(--text-title-sm);
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		color: var(--color-on-surface);
+	}
+	.lt-counter-total {
+		font-weight: 700;
+		color: var(--color-on-surface-variant);
+	}
+	.lt-counter-label {
+		font-family: var(--font-body);
+		font-size: var(--text-label-sm);
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: var(--color-on-surface-variant);
+	}
+
+	.lt-frist {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-family: var(--font-body);
+		font-size: var(--text-label-sm);
+		font-weight: 700;
+		color: var(--color-on-surface-variant);
+		flex-shrink: 0;
+	}
+	.lt-frist-icon {
+		font-size: 1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+	.lt-frist--urgent {
+		color: var(--color-primary);
+		font-weight: 800;
+	}
+	.lt-frist--past {
+		color: var(--color-outline);
+	}
+
+	/* ── Mein-Status-Bar ──────────────────────────────────────────────────── */
+	.lt-mine {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: 44px;
+		margin-top: var(--space-3);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		font-family: var(--font-body);
 		font-size: var(--text-label-md);
 		font-weight: 700;
-		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition: background 150ms ease, transform 80ms ease;
+	}
+	.lt-mine:active { transform: scale(0.98); }
+	.lt-mine:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
+	.lt-mine-icon {
+		font-size: 1.1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+		flex-shrink: 0;
+	}
+	.lt-mine-label {
+		flex: 1;
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.lt-mine-chevron {
+		font-size: 1rem;
+		opacity: 0.7;
+		flex-shrink: 0;
+	}
+	.lt-mine--pending {
+		background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+		color: var(--color-primary);
+		box-shadow: inset 3px 0 0 var(--color-primary);
+	}
+	.lt-mine--confirmed {
+		background: color-mix(in srgb, var(--color-success) 10%, transparent);
+		color: var(--color-success);
+		box-shadow: inset 3px 0 0 var(--color-success);
+	}
+
+	/* ── Offene-Aktionen-Strip ────────────────────────────────────────────── */
+	.lt-actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: 36px;
+		margin-top: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+		background: color-mix(in srgb, var(--color-secondary) 14%, white);
+		color: color-mix(in srgb, var(--color-secondary) 80%, black);
+		border-left: 3px solid var(--color-secondary);
+		border-radius: var(--radius-md);
+		font-family: var(--font-body);
+		font-size: var(--text-label-sm);
+		font-weight: 700;
+	}
+	.lt-actions-icon {
+		font-size: 1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+		flex-shrink: 0;
+	}
+	.lt-actions-text {
+		flex: 1;
+		min-width: 0;
+	}
+
+	/* ── Kapitän: Verwalten ───────────────────────────────────────────────── */
+	.lt-admin-row {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--space-3);
+	}
+	.lt-admin-btn {
+		min-height: 36px;
+		padding: var(--space-2) var(--space-3);
+		font-size: var(--text-label-sm);
+		-webkit-tap-highlight-color: transparent;
+	}
+	.lt-admin-btn:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
+
+	/* ── Frühere anzeigen ─────────────────────────────────────────────────── */
+	.lt-past-toggle-wrap {
+		padding: 0 var(--space-4);
 		margin-top: var(--space-2);
 	}
-	.tp-create-cta .material-symbols-outlined { font-size: 1.1rem; }
+	.lt-past-toggle {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: var(--space-2) var(--space-3);
+		background: transparent;
+		color: var(--color-on-surface-variant);
+		border: none;
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		font-family: var(--font-body);
+		font-size: var(--text-label-md);
+		font-weight: 700;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.lt-past-toggle:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
+	.lt-past-toggle .material-symbols-outlined {
+		font-size: 1.1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
 
-	.tp-form {
+	/* ── Create-Form ──────────────────────────────────────────────────────── */
+	.lt-form {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-4);
 		padding: var(--space-4) var(--space-5) var(--space-6);
 	}
-	.tp-field {
+	.lt-field {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 	}
-	.tp-label {
+	.lt-label {
+		font-family: var(--font-body);
 		font-size: var(--text-label-sm);
 		font-weight: 700;
 		color: var(--color-on-surface-variant);
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 	}
-	.tp-input {
+	.lt-input {
 		width: 100%;
 		padding: var(--space-3);
 		background: var(--color-surface-container);
@@ -300,139 +816,9 @@
 		box-sizing: border-box;
 		transition: border-color 150ms ease, box-shadow 150ms ease;
 	}
-	.tp-input:focus {
+	.lt-input:focus {
 		outline: none;
-		border-color: rgba(204,0,0,0.5);
-		box-shadow: 0 0 0 3px rgba(204,0,0,0.1);
+		border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
 	}
-	.tp-save-btn {
-		width: 100%;
-		padding: var(--space-3);
-		background: var(--color-primary);
-		color: #fff;
-		border: none;
-		border-radius: var(--radius-lg);
-		font: inherit;
-		font-size: var(--text-body-md);
-		font-weight: 700;
-		cursor: pointer;
-		transition: opacity 150ms ease;
-		margin-top: var(--space-2);
-	}
-	.tp-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	.mp-search-wrap { position: relative; }
-	.mp-input-wrap {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		background: var(--color-surface-container);
-		border: 1.5px solid var(--color-outline-variant);
-		border-radius: var(--radius-lg);
-		padding: 0 var(--space-3);
-		transition: border-color 200ms ease, box-shadow 200ms ease;
-	}
-	.mp-input-wrap:focus-within {
-		border-color: rgba(204,0,0,0.5);
-		box-shadow: 0 0 0 3px rgba(204,0,0,0.12);
-	}
-	.mp-search-icon {
-		font-size: 1.15rem;
-		color: var(--color-outline);
-		font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
-		flex-shrink: 0;
-	}
-	.mp-input {
-		flex: 1;
-		height: 2.6rem;
-		background: none;
-		border: none;
-		outline: none;
-		font-size: var(--text-body-md);
-		color: var(--color-on-surface);
-	}
-	.mp-input::placeholder { color: var(--color-outline); }
-	.mp-input::-webkit-search-cancel-button { display: none; }
-	.mp-clear {
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 0;
-		color: var(--color-outline);
-		display: flex;
-		align-items: center;
-	}
-	.mp-clear .material-symbols-outlined { font-size: 1.1rem; }
-
-	.mp-list {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-	}
-	.mp-card {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3);
-		padding: var(--space-3) var(--space-4);
-		background: var(--color-surface-container-lowest);
-		border: 1.5px solid var(--color-outline-variant);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-card);
-		cursor: pointer;
-		text-align: left;
-		font: inherit;
-		transition: transform 120ms ease, box-shadow 120ms ease;
-		-webkit-tap-highlight-color: transparent;
-	}
-	.mp-card:active { transform: scale(0.98); }
-	.mp-card--past { opacity: 0.72; }
-	.mp-card-left {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		min-width: 0;
-	}
-	.mp-opponent {
-		margin: 0;
-		font-family: var(--font-display);
-		font-size: var(--text-title-sm);
-		font-weight: 700;
-		color: var(--color-on-surface);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.mp-league {
-		margin: 0;
-		font-size: var(--text-label-sm);
-		color: var(--color-on-surface-variant);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.mp-card-right {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 2px;
-		flex-shrink: 0;
-	}
-	.mp-date {
-		font-size: 0.7rem;
-		font-weight: 700;
-		color: var(--color-on-surface-variant);
-		white-space: nowrap;
-	}
-	.mp-time {
-		font-size: 0.65rem;
-		color: var(--color-outline);
-		white-space: nowrap;
-	}
-	.mp-chevron {
-		font-size: 1rem;
-		color: var(--color-outline);
-		margin-top: 2px;
-	}
-
 </style>

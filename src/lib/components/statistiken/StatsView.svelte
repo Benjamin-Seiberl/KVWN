@@ -3,6 +3,8 @@
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
+	import { fmtDate } from '$lib/utils/dates.js';
+	import { imgPath, shortName, BLANK_IMG } from '$lib/utils/players.js';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import BottomSheet from '$lib/components/BottomSheet.svelte';
 
@@ -10,34 +12,22 @@
 	let players         = $state([]);   // alle Spieler mit Stats, nach Schnitt sortiert
 	let myStats         = $state(null); // eingeloggter Spieler
 	let myScores        = $state([]);   // letzte 6 Ergebnisse (älteste zuerst, für Chart)
-	let clubAvgSeries   = $state([]);   // [{ week, avg, count }] – Vereinsschnitt pro Runde
-
-	// ── Bild-Pfad ──────────────────────────────────────────
-	function imgPath(photo, name) {
-		const key = photo || name;
-		return key ? '/images/' + encodeURIComponent(key) + '.jpg' : '';
-	}
-
-	function initials(name) {
-		if (!name) return '?';
-		const parts = name.trim().split(' ');
-		return parts.length >= 2
-			? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-			: name[0].toUpperCase();
-	}
+	let clubAvgSeries   = $state([]);   // [{ round, avg, count }] – Vereinsschnitt pro Runde
+	let seasonStats     = $state(null); // Saison-KPIs: { clubAvg, clubAvgPrev, homeAvg, awayAvg, myAvg, myAvgPrev }
 
 	// ── Daten laden ────────────────────────────────────────
 	onMount(async () => {
-		const { data: playerData } = await sb
+		const { data: playerData, error: pErr } = await sb
 			.from('players')
 			.select('id, name, photo')
 			.eq('active', true)
 			.order('name');
-
+		if (pErr) { triggerToast('Fehler: ' + pErr.message); loading = false; return; }
 		if (!playerData?.length) { loading = false; return; }
 
-		// Scores laden – cal_week + league_id für Runden-Lookup mitladen
-		const [{ data: allScores }, { data: matchRounds }] = await Promise.all([
+		// Scores + Match-Metadaten parallel laden.
+		// Match-Metadaten (date, opponent, home_away, round) per cal_week+league_id zuordenbar.
+		const [{ data: allScores, error: sErr }, { data: matchMeta, error: mErr }] = await Promise.all([
 			sb.from('game_plan_players')
 				.select('player_id, score, game_plans!inner(cal_week, league_id)')
 				.in('player_id', playerData.map(p => p.id))
@@ -45,25 +35,39 @@
 				.not('score', 'is', null)
 				.order('cal_week', { referencedTable: 'game_plans', ascending: false })
 				.limit(1000),
-			// Runden-Bezeichnungen aller Ligaspiele (NÖ-Cup ausgeschlossen)
 			sb.from('matches')
-				.select('cal_week, league_id, round, is_tournament')
+				.select('cal_week, league_id, round, date, opponent, home_away, is_tournament')
 				.not('round', 'is', null),
 		]);
+		if (sErr) { triggerToast('Fehler: ' + sErr.message); loading = false; return; }
+		if (mErr) { triggerToast('Fehler: ' + mErr.message); loading = false; return; }
 
-		// Lookup: `${cal_week}_${league_id}` → round-Bezeichnung
-		// Nur reguläre Ligaspiele – Turniere (NÖ-Cup) werden übersprungen
-		const roundLookup = {};
-		for (const m of matchRounds ?? []) {
+		// Lookup: `${cal_week}_${league_id}` → match-Metadaten.
+		// Nur reguläre Ligaspiele – Turniere (NÖ-Cup) werden für Heim/Auswärts/Runden ausgeschlossen.
+		const matchLookup = {};
+		for (const m of matchMeta ?? []) {
 			if (m.is_tournament) continue;
-			roundLookup[`${m.cal_week}_${m.league_id}`] = m.round;
+			matchLookup[`${m.cal_week}_${m.league_id}`] = m;
 		}
 
-		// Scores pro Spieler – alle Spiele inkl. NÖ-Cup
-		const scoreMap = {};
+		// Scores pro Spieler – alle Spiele (inkl. NÖ-Cup für Schnitte) +
+		// pro Spieler eine reichere Liste mit { score, date, opponent, home_away, round } für Drilldown.
+		const scoreMap = {};        // pid → number[]
+		const scoreRichMap = {};    // pid → { score, date, opponent, home_away, round }[] (sortiert: neueste zuerst)
 		for (const g of allScores ?? []) {
 			if (!scoreMap[g.player_id]) scoreMap[g.player_id] = [];
+			if (!scoreRichMap[g.player_id]) scoreRichMap[g.player_id] = [];
 			scoreMap[g.player_id].push(Number(g.score));
+
+			const { cal_week, league_id } = g.game_plans ?? {};
+			const meta = matchLookup[`${cal_week}_${league_id}`];
+			scoreRichMap[g.player_id].push({
+				score:     Number(g.score),
+				date:      meta?.date ?? null,
+				opponent:  meta?.opponent ?? null,
+				home_away: meta?.home_away ?? null,
+				round:     meta?.round ?? null,
+			});
 		}
 
 		// Vereinsschnitt pro Match-Runde (z.B. F01, H03)
@@ -71,10 +75,10 @@
 		for (const g of allScores ?? []) {
 			const { cal_week, league_id } = g.game_plans ?? {};
 			if (cal_week == null || league_id == null) continue;
-			const round = roundLookup[`${cal_week}_${league_id}`];
-			if (!round) continue;
-			if (!roundMap[round]) roundMap[round] = [];
-			roundMap[round].push(Number(g.score));
+			const meta = matchLookup[`${cal_week}_${league_id}`];
+			if (!meta?.round) continue;
+			if (!roundMap[meta.round]) roundMap[meta.round] = [];
+			roundMap[meta.round].push(Number(g.score));
 		}
 		clubAvgSeries = Object.entries(roundMap)
 			.map(([round, scores]) => ({
@@ -86,18 +90,92 @@
 			.sort((a, b) => a.round.localeCompare(b.round))
 			.slice(-6); // letzte 6 Runden
 
+		// ── Saison-KPIs (Verein) ──────────────────────────────
+		// Saison-Logik: aktuelle Saison-Hälfte (H = Herbst-/Vorrunde, F = Frühjahr-/Rückrunde)
+		// Vergleichshälfte: andere Hälfte derselben Saison (oder vorherige Hälfte falls nichts vorhanden).
+		const allRoundScores = Object.entries(roundMap); // [round, scores[]]
+		const hRounds = allRoundScores.filter(([r]) => r.startsWith('H'));
+		const fRounds = allRoundScores.filter(([r]) => r.startsWith('F'));
+
+		function avgOf(roundList) {
+			const flat = roundList.flatMap(([, sc]) => sc);
+			return flat.length ? Math.round(flat.reduce((a, b) => a + b, 0) / flat.length) : null;
+		}
+
+		const hAvg = avgOf(hRounds);
+		const fAvg = avgOf(fRounds);
+
+		// Welche Hälfte ist "aktuell"? → richtet sich nach dem Kalendermonat:
+		// Sep–Dez (Monat ≥ 8) = Vorrunde (H), Jan–Mai = Rückrunde (F).
+		// Falls die "aktuelle" Hälfte keine Daten hat, fallback auf die andere.
+		const hasH = hRounds.length > 0;
+		const hasF = fRounds.length > 0;
+		const monthNow = new Date().getMonth(); // 0=Jan
+		const seasonIsF = monthNow < 8;          // Jan-Aug → F, Sep-Dez → H
+		const currentIsF = seasonIsF ? (hasF || !hasH) : (hasH ? false : true);
+		const clubAvg     = currentIsF ? fAvg : hAvg;
+		const clubAvgPrev = currentIsF ? hAvg : fAvg;
+
+		// Heim/Auswärts-Schnitt (Verein, alle Liga-Spiele dieser Saison-Hälfte falls möglich;
+		// fallback: über alles)
+		let homeScores = [];
+		let awayScores = [];
+		for (const g of allScores ?? []) {
+			const { cal_week, league_id } = g.game_plans ?? {};
+			const meta = matchLookup[`${cal_week}_${league_id}`];
+			if (!meta) continue;
+			// Nur aktuelle Saison-Hälfte falls beide Hälften existieren
+			if (hasH && hasF) {
+				const isF = meta.round?.startsWith('F');
+				if (currentIsF && !isF) continue;
+				if (!currentIsF && isF) continue;
+			}
+			if (meta.home_away === 'HEIM') homeScores.push(Number(g.score));
+			else if (meta.home_away)        awayScores.push(Number(g.score));
+		}
+		const homeAvg = homeScores.length
+			? Math.round(homeScores.reduce((a, b) => a + b, 0) / homeScores.length)
+			: null;
+		const awayAvg = awayScores.length
+			? Math.round(awayScores.reduce((a, b) => a + b, 0) / awayScores.length)
+			: null;
+
 		// Spieler mit Stats aufbauen
 		const withStats = playerData
 			.map(p => {
-				const scores = scoreMap[p.id] ?? [];
-				const avg  = scores.length
+				const scores  = scoreMap[p.id] ?? [];
+				const rich    = scoreRichMap[p.id] ?? [];
+				const avg     = scores.length
 					? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
 					: null;
-				const avg5 = scores.slice(0, 5).length
+				const avg5    = scores.slice(0, 5).length
 					? Math.round(scores.slice(0, 5).reduce((a, b) => a + b, 0) / scores.slice(0, 5).length)
 					: null;
-				const best = scores.length ? Math.max(...scores) : null;
-				return { ...p, scores, avg, avg5, best, gamesPlayed: scores.length };
+				const best    = scores.length ? Math.max(...scores) : null;
+
+				// Heim/Auswärts pro Spieler
+				const myHome = rich.filter(r => r.home_away === 'HEIM').map(r => r.score);
+				const myAway = rich.filter(r => r.home_away && r.home_away !== 'HEIM').map(r => r.score);
+				const homeAvgP = myHome.length ? Math.round(myHome.reduce((a, b) => a + b, 0) / myHome.length) : null;
+				const awayAvgP = myAway.length ? Math.round(myAway.reduce((a, b) => a + b, 0) / myAway.length) : null;
+
+				// H vs. F Trend (eigene Schnitte je Hälfte)
+				const myH = rich.filter(r => r.round?.startsWith('H')).map(r => r.score);
+				const myF = rich.filter(r => r.round?.startsWith('F')).map(r => r.score);
+				const hAvgP = myH.length ? Math.round(myH.reduce((a, b) => a + b, 0) / myH.length) : null;
+				const fAvgP = myF.length ? Math.round(myF.reduce((a, b) => a + b, 0) / myF.length) : null;
+
+				return {
+					...p,
+					scores,
+					richScores:  rich,         // [{ score, date, opponent, home_away, round }]
+					avg, avg5, best,
+					gamesPlayed: scores.length,
+					homeAvg:     homeAvgP,
+					awayAvg:     awayAvgP,
+					avgH:        hAvgP,
+					avgF:        fAvgP,
+				};
 			})
 			.filter(p => p.gamesPlayed > 0)
 			.sort((a, b) => (b.avg ?? 0) - (a.avg ?? 0));
@@ -106,13 +184,31 @@
 
 		// Eigenen Spieler finden
 		const pid = $playerId;
+		let myAvg     = null;
+		let myAvgPrev = null;
 		if (pid) {
 			const me = withStats.find(p => p.id === pid);
 			if (me) {
 				myStats  = { ...me, rank: withStats.indexOf(me) + 1 };
 				myScores = [...me.scores.slice(0, 6)].reverse(); // älteste zuerst
+				// Mein Schnitt aktuelle/vorige Hälfte
+				myAvg     = currentIsF ? me.avgF : me.avgH;
+				myAvgPrev = currentIsF ? me.avgH : me.avgF;
+				// Falls keine "aktuelle Hälfte"-Daten: Fallback auf Gesamt-Schnitt
+				if (myAvg == null) myAvg = me.avg;
 			}
 		}
+
+		seasonStats = {
+			clubAvg,
+			clubAvgPrev,
+			homeAvg,
+			awayAvg,
+			myAvg,
+			myAvgPrev,
+			currentLabel: currentIsF ? 'Rückrunde' : 'Vorrunde',
+			prevLabel:    currentIsF ? 'Vorrunde'  : 'Rückrunde',
+		};
 
 		loading = false;
 	});
@@ -199,6 +295,12 @@
 			},
 		];
 	}
+
+	// Δ-Helper für KPI-Cards
+	function delta(curr, prev) {
+		if (curr == null || prev == null) return null;
+		return curr - prev;
+	}
 </script>
 
 <div class="stats-wrap">
@@ -223,6 +325,13 @@
 	</div>
 
 	{#if loading}
+		<!-- Saison-KPI skeleton -->
+		<div class="skel-kpi-row">
+			{#each [0,1,2] as _}
+				<div class="skel-kpi-card shimmer-box"></div>
+			{/each}
+		</div>
+
 		<!-- Formkurve card skeleton -->
 		<div class="skel-chart-card">
 			<div class="skel-chart-title shimmer-box"></div>
@@ -260,6 +369,81 @@
 
 	{:else}
 
+		<!-- ── Saison-KPI-Block ─────────────────────────── -->
+		{#if seasonStats}
+			{@const clubDelta = delta(seasonStats.clubAvg, seasonStats.clubAvgPrev)}
+			{@const myDelta   = delta(seasonStats.myAvg,   seasonStats.myAvgPrev)}
+			{@const haHome    = seasonStats.homeAvg}
+			{@const haAway    = seasonStats.awayAvg}
+			{@const haHomeLeads = haHome != null && haAway != null && haHome > haAway}
+			{@const haAwayLeads = haHome != null && haAway != null && haAway > haHome}
+			<div class="kpi-row" role="list" aria-label="Saison-Übersicht">
+				<!-- Liga-Schnitt Verein -->
+				<div class="kpi-card mw-card" role="listitem">
+					<span class="kpi-label">Verein · {seasonStats.currentLabel}</span>
+					<div class="kpi-value-row">
+						<span class="kpi-value">{seasonStats.clubAvg ?? '–'}</span>
+						{#if clubDelta != null}
+							<span class="kpi-delta" class:kpi-delta--up={clubDelta > 0} class:kpi-delta--down={clubDelta < 0}>
+								<span class="material-symbols-outlined">
+									{clubDelta > 0 ? 'arrow_upward' : clubDelta < 0 ? 'arrow_downward' : 'remove'}
+								</span>
+								{clubDelta > 0 ? '+' : ''}{clubDelta}
+							</span>
+						{/if}
+					</div>
+					<span class="kpi-sub">vs. {seasonStats.prevLabel} {seasonStats.clubAvgPrev ?? '–'}</span>
+				</div>
+
+				<!-- Heim vs. Auswärts -->
+				<div class="kpi-card mw-card kpi-card--split" role="listitem">
+					<span class="kpi-label">Heim vs. Auswärts</span>
+					<div class="kpi-split-row">
+						<div class="kpi-split-cell" class:kpi-split-cell--lead={haHomeLeads}>
+							<span class="material-symbols-outlined kpi-split-icon">home</span>
+							<span class="kpi-split-value">{haHome ?? '–'}</span>
+							<span class="kpi-split-cap">Heim</span>
+						</div>
+						<div class="kpi-split-divider" aria-hidden="true">
+							{#if haHome != null && haAway != null}
+								<span class="material-symbols-outlined">
+									{haHomeLeads ? 'chevron_left' : haAwayLeads ? 'chevron_right' : 'drag_handle'}
+								</span>
+							{/if}
+						</div>
+						<div class="kpi-split-cell" class:kpi-split-cell--lead={haAwayLeads}>
+							<span class="material-symbols-outlined kpi-split-icon">directions_car</span>
+							<span class="kpi-split-value">{haAway ?? '–'}</span>
+							<span class="kpi-split-cap">Auswärts</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Mein Saison-Schnitt -->
+				<div class="kpi-card mw-card kpi-card--me" role="listitem">
+					<span class="kpi-label">Mein Schnitt · {seasonStats.currentLabel}</span>
+					<div class="kpi-value-row">
+						<span class="kpi-value">{seasonStats.myAvg ?? '–'}</span>
+						{#if myDelta != null}
+							<span class="kpi-delta" class:kpi-delta--up={myDelta > 0} class:kpi-delta--down={myDelta < 0}>
+								<span class="material-symbols-outlined">
+									{myDelta > 0 ? 'arrow_upward' : myDelta < 0 ? 'arrow_downward' : 'remove'}
+								</span>
+								{myDelta > 0 ? '+' : ''}{myDelta}
+							</span>
+						{/if}
+					</div>
+					<span class="kpi-sub">
+						{#if seasonStats.myAvgPrev != null}
+							vs. {seasonStats.prevLabel} {seasonStats.myAvgPrev}
+						{:else}
+							noch keine Vergleichswerte
+						{/if}
+					</span>
+				</div>
+			</div>
+		{/if}
+
 		<!-- ── Formkurve ──────────────────────────────────── -->
 		{#if myScores.length >= 2}
 		{@const pts = chartPoints(myScores)}
@@ -277,21 +461,21 @@
 
 			<!-- SVG-Chart -->
 			<div class="chart-wrap">
-				<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="chart-svg">
+				<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="chart-svg chart-svg--primary">
 					<defs>
 						<linearGradient id="chartGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-							<stop offset="0%" style="stop-color:#CC0000;stop-opacity:0.18"/>
-							<stop offset="100%" style="stop-color:#CC0000;stop-opacity:0"/>
+							<stop offset="0%" class="chart-grad-start"/>
+							<stop offset="100%" class="chart-grad-end"/>
 						</linearGradient>
 					</defs>
 					<path d={areaPath(pts)} fill="url(#chartGrad)" />
-					<path d={linePath(pts)} fill="none" stroke="#CC0000" stroke-width="4"
+					<path class="chart-line" d={linePath(pts)} fill="none" stroke-width="4"
 						stroke-linecap="round" stroke-linejoin="round"/>
 					{#each pts as pt, i}
 						<circle
+							class={i === pts.length - 1 ? 'chart-dot chart-dot--last' : 'chart-dot'}
 							cx={pt.x} cy={pt.y} r={i === pts.length - 1 ? 7 : 4}
-							fill={i === pts.length - 1 ? '#CC0000' : 'white'}
-							stroke="#CC0000" stroke-width="2.5"
+							stroke-width="2.5"
 						/>
 					{/each}
 				</svg>
@@ -335,21 +519,21 @@
 
 			<!-- SVG Chart -->
 			<div class="chart-wrap">
-				<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="chart-svg">
+				<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="chart-svg chart-svg--club">
 					<defs>
 						<linearGradient id="clubGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-							<stop offset="0%"   style="stop-color:#D4AF37;stop-opacity:0.22"/>
-							<stop offset="100%" style="stop-color:#D4AF37;stop-opacity:0"/>
+							<stop offset="0%"   class="club-grad-start"/>
+							<stop offset="100%" class="club-grad-end"/>
 						</linearGradient>
 					</defs>
 					<path d={areaPath(cPts)} fill="url(#clubGrad)" />
-					<path d={linePath(cPts)} fill="none" stroke="#D4AF37" stroke-width="4"
+					<path class="chart-line" d={linePath(cPts)} fill="none" stroke-width="4"
 						stroke-linecap="round" stroke-linejoin="round"/>
 					{#each cPts as pt, i}
 						<circle
+							class={i === cPts.length - 1 ? 'chart-dot chart-dot--last' : 'chart-dot'}
 							cx={pt.x} cy={pt.y} r={i === cPts.length - 1 ? 7 : 4}
-							fill={i === cPts.length - 1 ? '#D4AF37' : 'white'}
-							stroke="#D4AF37" stroke-width="2.5"
+							stroke-width="2.5"
 						/>
 					{/each}
 				</svg>
@@ -422,19 +606,18 @@
 			</div>
 
 			<div class="ranking-list">
-				{#each players as p, i}
+				{#each players as p, i (p.id)}
 					{@const isMe = myStats?.id === p.id}
 					<ContextMenu actions={playerActions(p, i)}>
-						<div class="ranking-row" class:ranking-row--me={isMe} onclick={() => openDetail({ ...p, rank: i + 1 })} role="button" tabindex="0">
+						<div class="ranking-row" class:ranking-row--me={isMe} onclick={() => openDetail({ ...p, rank: i + 1 })} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail({ ...p, rank: i + 1 }); } }} role="button" tabindex="0" aria-label={`${p.name}, Rang ${i + 1}, Schnitt ${p.avg} Holz. Antippen für Details.`}>
 							<span class="rank-num {rankColor(i)}">{i + 1}</span>
 
 							<div class="ranking-avatar">
 								{#if imgPath(p.photo, p.name)}
 									<img src={imgPath(p.photo, p.name)} alt={p.name}
-										onerror={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling.style.display='flex'; }}/>
-									<span class="avatar-fallback" style="display:none">{initials(p.name)}</span>
+										onerror={(e) => { e.currentTarget.src = BLANK_IMG; }}/>
 								{:else}
-									<span class="avatar-fallback">{initials(p.name)}</span>
+									<span class="avatar-fallback">{shortName(p.name)}</span>
 								{/if}
 							</div>
 
@@ -485,9 +668,9 @@
 			<div class="pds-avatar">
 				{#if imgPath(detailPlayer.photo, detailPlayer.name)}
 					<img src={imgPath(detailPlayer.photo, detailPlayer.name)} alt={detailPlayer.name}
-						onerror={(e) => { e.currentTarget.style.display='none'; }}/>
+						onerror={(e) => { e.currentTarget.src = BLANK_IMG; }}/>
 				{/if}
-				<span class="pds-initial">{initials(detailPlayer.name)}</span>
+				<span class="pds-initial">{shortName(detailPlayer.name)}</span>
 			</div>
 			<div>
 				<h3 class="pds-name">{detailPlayer.name}</h3>
@@ -495,6 +678,7 @@
 			</div>
 		</div>
 
+		<!-- Schnitt / Letzte 5 / Best / Spiele -->
 		<div class="pds-stats">
 			<div class="pds-stat">
 				<span class="pds-stat-value">{detailPlayer.avg ?? '–'}</span>
@@ -514,15 +698,73 @@
 			</div>
 		</div>
 
-		{#if detailPlayer.scores?.length >= 2}
-			<p class="pds-section">Letzte Ergebnisse</p>
-			<div class="pds-scores">
-				{#each [...detailPlayer.scores].slice(0, 8).reverse() as s, i}
-					<div class="pds-score-chip" class:pds-score-chip--latest={i === 0}>
-						{s}
-					</div>
-				{/each}
+		<!-- Heim vs. Auswärts (Spieler) -->
+		{#if detailPlayer.homeAvg != null || detailPlayer.awayAvg != null}
+			{@const pHome = detailPlayer.homeAvg}
+			{@const pAway = detailPlayer.awayAvg}
+			{@const pHomeLeads = pHome != null && pAway != null && pHome > pAway}
+			{@const pAwayLeads = pHome != null && pAway != null && pAway > pHome}
+			<p class="pds-section">Heim vs. Auswärts</p>
+			<div class="pds-split">
+				<div class="pds-split-cell" class:pds-split-cell--lead={pHomeLeads}>
+					<span class="material-symbols-outlined pds-split-icon">home</span>
+					<span class="pds-split-value">{pHome ?? '–'}</span>
+					<span class="pds-split-cap">Heim</span>
+				</div>
+				<div class="pds-split-cell" class:pds-split-cell--lead={pAwayLeads}>
+					<span class="material-symbols-outlined pds-split-icon">directions_car</span>
+					<span class="pds-split-value">{pAway ?? '–'}</span>
+					<span class="pds-split-cap">Auswärts</span>
+				</div>
 			</div>
+		{/if}
+
+		<!-- Trend H vs. F -->
+		{#if detailPlayer.avgH != null && detailPlayer.avgF != null}
+			{@const dHF = detailPlayer.avgF - detailPlayer.avgH}
+			<p class="pds-section">Vor- vs. Rückrunde</p>
+			<div class="pds-trend-row">
+				<div class="pds-trend-cell">
+					<span class="pds-trend-cap">Vorrunde</span>
+					<span class="pds-trend-value">{detailPlayer.avgH}</span>
+				</div>
+				<span
+					class="pds-trend-arrow"
+					class:pds-trend-arrow--up={dHF > 0}
+					class:pds-trend-arrow--down={dHF < 0}
+				>
+					<span class="material-symbols-outlined">
+						{dHF > 0 ? 'arrow_forward' : dHF < 0 ? 'arrow_backward' : 'drag_handle'}
+					</span>
+					{dHF > 0 ? '+' : ''}{dHF}
+				</span>
+				<div class="pds-trend-cell">
+					<span class="pds-trend-cap">Rückrunde</span>
+					<span class="pds-trend-value">{detailPlayer.avgF}</span>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Letzte 6 Ergebnisse mit Datum + Gegner -->
+		{#if detailPlayer.richScores?.length}
+			<p class="pds-section">Letzte Ergebnisse</p>
+			<ul class="pds-recent" role="list">
+				{#each detailPlayer.richScores.slice(0, 6) as r, i (i)}
+					<li class="pds-recent-row" class:pds-recent-row--latest={i === 0} role="listitem">
+						<div class="pds-recent-meta">
+							<span class="pds-recent-date">{r.date ? fmtDate(r.date) : '–'}</span>
+							<span class="pds-recent-opp">
+								{#if r.opponent}
+									{r.home_away === 'HEIM' ? 'vs. ' : r.home_away ? 'bei ' : ''}{r.opponent}
+								{:else}
+									–
+								{/if}
+							</span>
+						</div>
+						<span class="pds-recent-score">{r.score}</span>
+					</li>
+				{/each}
+			</ul>
 		{/if}
 	</BottomSheet>
 {/if}
@@ -589,19 +831,144 @@
 }
 .hero-chip--primary .hero-chip-value { color: #fff; }
 
-/* ── Loading ────────────────────────────────────────────── */
-.stats-loading {
+/* ── Saison-KPI-Block ─────────────────────────────────── */
+.kpi-row {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--space-3);
+}
+@media (max-width: 600px) {
+	.kpi-row {
+		display: flex;
+		gap: var(--space-3);
+		overflow-x: auto;
+		scroll-snap-type: x mandatory;
+		padding-bottom: var(--space-1);
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
+	}
+	.kpi-row::-webkit-scrollbar { display: none; }
+	.kpi-card {
+		flex: 0 0 78%;
+		scroll-snap-align: start;
+	}
+}
+.kpi-card {
+	/* Override mw-card margin so it works inside grid/flex container */
+	margin: 0;
+	padding: var(--space-3) var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-height: 88px;
+}
+.kpi-card--me {
+	border-left: 3px solid var(--color-primary);
+}
+.kpi-card--split {
+	gap: var(--space-2);
+}
+.kpi-label {
+	font-family: var(--font-body);
+	font-size: var(--text-label-sm);
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--color-on-surface-variant);
+}
+.kpi-value-row {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+}
+.kpi-value {
+	font-family: var(--font-display);
+	font-size: 1.6rem;
+	font-weight: 900;
+	color: var(--color-on-surface);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+.kpi-delta {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	font-family: var(--font-display);
+	font-size: var(--text-label-md);
+	font-weight: 800;
+	color: var(--color-on-surface-variant);
+}
+.kpi-delta .material-symbols-outlined {
+	font-size: 0.95rem;
+	font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20;
+}
+.kpi-delta--up   { color: var(--color-success); }
+.kpi-delta--down { color: var(--color-primary); }
+.kpi-sub {
+	font-family: var(--font-body);
+	font-size: var(--text-label-sm);
+	font-weight: 600;
+	color: var(--color-on-surface-variant);
+}
+
+.kpi-split-row {
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
+	gap: var(--space-1);
+	align-items: center;
+}
+.kpi-split-cell {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	justify-content: center;
-	gap: var(--space-3);
-	min-height: 30dvh;
-	color: var(--color-outline);
-	font-size: var(--text-body-md);
+	gap: 2px;
+	padding: var(--space-1) 0;
+	border-radius: var(--radius-sm);
+	transition: background 150ms ease;
 }
-.loading-icon { font-size: 2.5rem; animation: spin 1.2s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.kpi-split-cell--lead {
+	background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+.kpi-split-icon {
+	font-size: 1rem;
+	color: var(--color-on-surface-variant);
+	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+.kpi-split-cell--lead .kpi-split-icon { color: var(--color-primary); }
+.kpi-split-value {
+	font-family: var(--font-display);
+	font-size: var(--text-title-sm);
+	font-weight: 900;
+	color: var(--color-on-surface);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+.kpi-split-cell--lead .kpi-split-value { color: var(--color-primary); }
+.kpi-split-cap {
+	font-family: var(--font-body);
+	font-size: 0.62rem;
+	font-weight: 800;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--color-on-surface-variant);
+}
+.kpi-split-divider {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--color-outline);
+}
+.kpi-split-divider .material-symbols-outlined {
+	font-size: 1.1rem;
+}
+
+/* ── Loading-Skeletons ──────────────────────────────────── */
+.skel-kpi-row { display: flex; gap: var(--space-3); }
+.skel-kpi-card {
+	flex: 1;
+	height: 88px;
+	border-radius: var(--radius-lg);
+}
 
 /* ── Karte ──────────────────────────────────────────────── */
 .stat-card {
@@ -630,6 +997,17 @@
 /* ── SVG-Chart ── */
 .chart-wrap { width: 100%; height: 9rem; }
 .chart-svg  { width: 100%; height: 100%; }
+/* SVG color tokens (CSS-variables can't be applied via SVG attributes directly) */
+.chart-svg--primary .chart-line { stroke: var(--color-primary); }
+.chart-svg--primary .chart-dot  { fill: white; stroke: var(--color-primary); }
+.chart-svg--primary .chart-dot--last { fill: var(--color-primary); }
+.chart-svg--primary .chart-grad-start { stop-color: var(--color-primary); stop-opacity: 0.18; }
+.chart-svg--primary .chart-grad-end   { stop-color: var(--color-primary); stop-opacity: 0; }
+.chart-svg--club    .chart-line { stroke: var(--color-secondary); }
+.chart-svg--club    .chart-dot  { fill: white; stroke: var(--color-secondary); }
+.chart-svg--club    .chart-dot--last { fill: var(--color-secondary); }
+.chart-svg--club    .club-grad-start { stop-color: var(--color-secondary); stop-opacity: 0.22; }
+.chart-svg--club    .club-grad-end   { stop-color: var(--color-secondary); stop-opacity: 0; }
 .chart-axis { display: flex; justify-content: space-between; font-size: var(--text-label-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-on-surface-variant); margin-top: var(--space-2); }
 .chart-axis .axis-active { color: var(--color-primary); }
 .chart-scores { display: flex; justify-content: space-between; font-family: var(--font-display); font-size: var(--text-label-md); font-weight: 600; color: var(--color-on-surface-variant); margin-top: 2px; }
@@ -643,9 +1021,9 @@
 	flex-direction: column;
 	align-items: center;
 	padding: var(--space-2) var(--space-3);
-	background: rgba(212, 175, 55, 0.1);
-	border: 1px solid rgba(212, 175, 55, 0.3);
-	border-radius: 12px;
+	background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--color-secondary) 30%, transparent);
+	border-radius: var(--radius-md);
 	flex-shrink: 0;
 }
 .club-avg-num {
@@ -660,7 +1038,7 @@
 	font-weight: 800;
 	text-transform: uppercase;
 	letter-spacing: 0.1em;
-	color: rgba(212, 175, 55, 0.7);
+	color: color-mix(in srgb, var(--color-secondary) 70%, var(--color-on-surface-variant));
 	margin-top: 2px;
 }
 
@@ -684,12 +1062,12 @@
 .qs-icon { font-size: 1.25rem; color: var(--color-secondary); font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
 .qs-label { font-size: var(--text-label-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-on-surface-variant); line-height: 1.2; }
 .qs-value { font-family: var(--font-display); font-size: var(--text-title-sm); font-weight: 900; color: var(--color-on-surface); display: flex; align-items: center; gap: var(--space-1); }
-.trend-up   { font-size: var(--text-label-sm); color: #16a34a; font-weight: 700; }
+.trend-up   { font-size: var(--text-label-sm); color: var(--color-success); font-weight: 700; }
 .trend-down { font-size: var(--text-label-sm); color: var(--color-error); font-weight: 700; }
 
 /* ── Ranking-Liste ── */
 .ranking-list { display: flex; flex-direction: column; }
-.ranking-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); border-top: 1px solid var(--color-surface-container); transition: background 0.15s; }
+.ranking-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); border-top: 1px solid var(--color-surface-container); transition: background 0.15s; min-height: 44px; }
 .ranking-row:first-child { border-top: none; }
 .ranking-row--me { background: var(--gradient-primary); }
 .ranking-row--me .ranking-name,
@@ -698,9 +1076,9 @@
 .ranking-row--me .trend-icon { color: rgba(255,255,255,0.75); }
 
 .rank-num { font-family: var(--font-display); font-size: var(--text-title-sm); font-weight: 900; width: 1.5rem; text-align: center; flex-shrink: 0; color: var(--color-on-surface-variant); }
-.rank-gold   { color: #D4AF37; }
-.rank-silver { color: #8A9299; }
-.rank-bronze { color: #C47B35; }
+.rank-gold   { color: var(--color-secondary); }
+.rank-silver { color: var(--color-outline); }
+.rank-bronze { color: color-mix(in srgb, var(--color-secondary) 60%, var(--color-on-surface)); }
 
 .ranking-avatar { width: 2.25rem; height: 2.25rem; border-radius: var(--radius-full); overflow: hidden; flex-shrink: 0; background: var(--color-surface-container); display: flex; align-items: center; justify-content: center; }
 .ranking-avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -711,7 +1089,7 @@
 .ranking-avg { font-size: var(--text-label-sm); font-weight: 600; color: var(--color-on-surface-variant); }
 
 .trend-icon { font-size: 1.25rem; flex-shrink: 0; }
-.trend-icon--up   { color: #16a34a; }
+.trend-icon--up   { color: var(--color-success); }
 .trend-icon--down { color: var(--color-error); }
 .trend-icon--flat { color: var(--color-on-surface-variant); }
 .ranking-empty { padding: var(--space-6); text-align: center; color: var(--color-on-surface-variant); font-size: var(--text-body-md); }
@@ -726,6 +1104,10 @@
 
 /* ── Player detail sheet ── */
 .ranking-row { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.ranking-row:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: -2px;
+}
 
 .pds-hero {
 	display: flex; align-items: center; gap: var(--space-3);
@@ -750,7 +1132,7 @@
 .pds-stat {
 	display: flex; flex-direction: column; align-items: center;
 	padding: var(--space-3) var(--space-2);
-	background: var(--color-surface-container-low);
+	background: var(--color-surface-container);
 	border-radius: var(--radius-md);
 }
 .pds-stat-value {
@@ -768,21 +1150,151 @@
 	letter-spacing: 0.07em; text-transform: uppercase;
 	color: var(--color-outline); margin: 0 0 var(--space-2);
 }
-.pds-scores {
-	display: flex; flex-wrap: wrap; gap: var(--space-2);
+
+/* Heim/Auswärts-Split (Spieler) */
+.pds-split {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--space-2);
 	margin-bottom: var(--space-4);
 }
-.pds-score-chip {
-	padding: 6px 14px;
-	background: var(--color-surface-container-low);
-	border: 1.5px solid var(--color-outline-variant);
-	border-radius: var(--radius-full);
-	font-weight: 700; font-size: var(--text-body-sm);
+.pds-split-cell {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	padding: var(--space-3) var(--space-2);
+	background: var(--color-surface-container);
+	border-radius: var(--radius-md);
+	border: 1.5px solid transparent;
+}
+.pds-split-cell--lead {
+	border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+	background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-container));
+}
+.pds-split-icon {
+	font-size: 1.1rem;
+	color: var(--color-on-surface-variant);
+	font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+.pds-split-cell--lead .pds-split-icon { color: var(--color-primary); }
+.pds-split-value {
+	font-family: var(--font-display);
+	font-size: var(--text-title-sm);
+	font-weight: 900;
 	color: var(--color-on-surface);
+	font-variant-numeric: tabular-nums;
 }
-.pds-score-chip--latest {
-	background: rgba(204, 0, 0, 0.08);
-	border-color: var(--color-primary);
-	color: var(--color-primary);
+.pds-split-cell--lead .pds-split-value { color: var(--color-primary); }
+.pds-split-cap {
+	font-size: 0.65rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--color-on-surface-variant);
 }
+
+/* Trend H vs. F */
+.pds-trend-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-3);
+	background: var(--color-surface-container);
+	border-radius: var(--radius-md);
+	margin-bottom: var(--space-4);
+}
+.pds-trend-cell {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+.pds-trend-cap {
+	font-family: var(--font-body);
+	font-size: 0.65rem;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--color-on-surface-variant);
+}
+.pds-trend-value {
+	font-family: var(--font-display);
+	font-size: var(--text-title-sm);
+	font-weight: 900;
+	color: var(--color-on-surface);
+	font-variant-numeric: tabular-nums;
+}
+.pds-trend-arrow {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	font-family: var(--font-display);
+	font-size: var(--text-label-md);
+	font-weight: 800;
+	color: var(--color-on-surface-variant);
+}
+.pds-trend-arrow .material-symbols-outlined {
+	font-size: 1rem;
+	font-variation-settings: 'FILL' 1, 'wght' 700, 'GRAD' 0, 'opsz' 20;
+}
+.pds-trend-arrow--up   { color: var(--color-success); }
+.pds-trend-arrow--down { color: var(--color-primary); }
+
+/* Recent results list */
+.pds-recent {
+	list-style: none;
+	margin: 0 0 var(--space-4);
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+.pds-recent-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	background: var(--color-surface-container);
+	border-radius: var(--radius-md);
+	border: 1.5px solid transparent;
+}
+.pds-recent-row--latest {
+	border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+	background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-container));
+}
+.pds-recent-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+.pds-recent-date {
+	font-family: var(--font-body);
+	font-size: 0.7rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--color-on-surface-variant);
+}
+.pds-recent-opp {
+	font-family: var(--font-body);
+	font-size: var(--text-body-md);
+	font-weight: 600;
+	color: var(--color-on-surface);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.pds-recent-score {
+	font-family: var(--font-display);
+	font-size: var(--text-title-sm);
+	font-weight: 900;
+	color: var(--color-on-surface);
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+}
+.pds-recent-row--latest .pds-recent-score { color: var(--color-primary); }
 </style>
