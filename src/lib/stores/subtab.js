@@ -13,10 +13,10 @@ export const PAGE_CONFIG = {
 	'/spielbetrieb': {
 		title: 'Spielbetrieb',
 		tabs: [
-			{ key: 'uebersicht',    label: 'Übersicht',    icon: 'dashboard'                                  },
-			{ key: 'aufstellungen', label: 'Aufstellungen', icon: 'format_list_numbered'                      },
-			{ key: 'statistiken',   label: 'Statistiken',  icon: 'bar_chart'                                  },
-			{ key: 'admin',         label: 'Admin',        icon: 'admin_panel_settings', adminOnly: true      },
+			{ key: 'spiele',        label: 'Spiele',        icon: 'sports'                  },
+			{ key: 'turniere',      label: 'Turniere',      icon: 'emoji_events'            },
+			{ key: 'landesbewerbe', label: 'Landesbewerbe', icon: 'military_tech'           },
+			{ key: 'statistiken',   label: 'Statistiken',   icon: 'bar_chart'               },
 		],
 	},
 	'/profil': {
@@ -32,7 +32,7 @@ export const PAGE_CONFIG = {
 export const activeSubtabs = writable({
 	'/':             'neuigkeiten',
 	'/kalender':     'uebersicht',
-	'/spielbetrieb': 'uebersicht',
+	'/spielbetrieb': 'spiele',
 	'/profil':       'uebersicht',
 });
 
