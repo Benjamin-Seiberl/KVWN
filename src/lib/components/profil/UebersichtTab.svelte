@@ -8,7 +8,7 @@
 	import ProfilHeroCard           from './ProfilHeroCard.svelte';
 	import ProfilActionCards        from './ProfilActionCards.svelte';
 	import ProfilMitgliedschaftCard from './ProfilMitgliedschaftCard.svelte';
-	import ProfilDatenCard          from './ProfilDatenCard.svelte';
+	import ProfilDatenAccordion     from './ProfilDatenAccordion.svelte';
 	import ProfilDatenSheet         from './ProfilDatenSheet.svelte';
 	import ProfilEinwilligungenCard from './ProfilEinwilligungenCard.svelte';
 	import ProfilTermineCard        from './ProfilTermineCard.svelte';
@@ -211,6 +211,14 @@
 		];
 	});
 
+	const dataSections = $derived([
+		{ key: 'kontakt',    title: 'Kontakt & Adresse',      icon: 'contact_page',         rows: kontaktRows },
+		{ key: 'notfall',    title: 'Notfallkontakt',          icon: 'emergency',            rows: notfallRows },
+		{ key: 'sport',      title: 'Sport-Ausrüstung',        icon: 'sports_and_outdoors',  rows: sportRows },
+		{ key: 'mobilitaet', title: 'Mobilität & Verpflegung', icon: 'directions_car',       rows: mobilitaetRows },
+		{ key: 'zahlung',    title: 'Zahlung',                 icon: 'account_balance',      rows: zahlungRows },
+	]);
+
 	// ── Edit orchestration ──────────────────────────────────────────────────────
 	function openEdit(section, focus = '') {
 		if (!me) return;
@@ -332,45 +340,7 @@
 
 		<ProfilMitgliedschaftCard {me} />
 
-		<ProfilDatenCard
-			section="kontakt"
-			title="Kontakt & Adresse"
-			icon="contact_page"
-			rows={kontaktRows}
-			onEdit={openEdit}
-		/>
-
-		<ProfilDatenCard
-			section="notfall"
-			title="Notfallkontakt"
-			icon="emergency"
-			rows={notfallRows}
-			onEdit={openEdit}
-		/>
-
-		<ProfilDatenCard
-			section="sport"
-			title="Sport-Ausrüstung"
-			icon="sports_and_outdoors"
-			rows={sportRows}
-			onEdit={openEdit}
-		/>
-
-		<ProfilDatenCard
-			section="mobilitaet"
-			title="Mobilität & Verpflegung"
-			icon="directions_car"
-			rows={mobilitaetRows}
-			onEdit={openEdit}
-		/>
-
-		<ProfilDatenCard
-			section="zahlung"
-			title="Zahlung"
-			icon="account_balance"
-			rows={zahlungRows}
-			onEdit={openEdit}
-		/>
+		<ProfilDatenAccordion sections={dataSections} onEdit={openEdit} />
 
 		<ProfilEinwilligungenCard {me} onUpdated={onConsentUpdated} />
 
