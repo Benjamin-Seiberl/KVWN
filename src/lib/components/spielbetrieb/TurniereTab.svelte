@@ -504,7 +504,7 @@
 		align-items: center;
 		justify-content: center;
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-on-primary);
 		border: none;
 		border-radius: var(--radius-full);
 		cursor: pointer;

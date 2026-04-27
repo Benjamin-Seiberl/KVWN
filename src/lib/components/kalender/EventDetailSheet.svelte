@@ -1,9 +1,9 @@
 <script>
-	import { fmtDate } from '$lib/utils/dates.js';
+	import { fmtDate, toDateStr } from '$lib/utils/dates.js';
 	import { shortTime } from '$lib/utils/league.js';
 	import BottomSheet from '$lib/components/BottomSheet.svelte';
 	import { sb } from '$lib/supabase';
-	import { playerRole } from '$lib/stores/auth.js';
+	import { playerId, playerRole } from '$lib/stores/auth.js';
 	import { triggerToast } from '$lib/stores/toast.js';
 
 	let {
@@ -24,13 +24,81 @@
 	let editLocation    = $state('');
 	let editDescription = $state('');
 
+	// RSVP state — null = keine Antwort, 'yes' | 'no' = gewählt
+	let myRsvp        = $state(null);
+	let rsvpLoading   = $state(false);
+	let rsvpSaving    = $state(false);
+
 	// Sheet schließt → Edit-Mode verlassen
 	$effect(() => {
 		if (!open) editing = false;
 	});
 
+	// Beim Öffnen / Wechsel des Events RSVP laden
+	$effect(() => {
+		if (open && event?.id && $playerId) {
+			loadMyRsvp();
+		} else {
+			myRsvp = null;
+		}
+	});
+
 	const isGcal = $derived(!!event?.external_id);
 	const canEdit = $derived($playerRole === 'kapitaen' && isGcal);
+	const isPast  = $derived(!!event?.date && event.date < toDateStr(new Date()));
+
+	async function loadMyRsvp() {
+		rsvpLoading = true;
+		try {
+			const { data, error } = await sb
+				.from('event_rsvps')
+				.select('response')
+				.eq('event_id', event.id)
+				.eq('player_id', $playerId)
+				.maybeSingle();
+			if (error) { triggerToast('Fehler: ' + error.message); return; }
+			myRsvp = data?.response ?? null;
+		} finally {
+			rsvpLoading = false;
+		}
+	}
+
+	async function setRsvp(response) {
+		if (!event?.id || !$playerId || rsvpSaving) return;
+		const previous = myRsvp;
+		// Optimistic: Toggle (gleiche Antwort nochmal = Abmeldung)
+		const next = previous === response ? null : response;
+		myRsvp = next;
+		rsvpSaving = true;
+		try {
+			if (next === null) {
+				const { error } = await sb.from('event_rsvps')
+					.delete()
+					.eq('event_id', event.id)
+					.eq('player_id', $playerId);
+				if (error) {
+					myRsvp = previous;
+					triggerToast('Fehler: ' + error.message);
+					return;
+				}
+				triggerToast('Antwort entfernt');
+			} else {
+				const { error } = await sb.from('event_rsvps').upsert({
+					event_id:  event.id,
+					player_id: $playerId,
+					response:  next,
+				});
+				if (error) {
+					myRsvp = previous;
+					triggerToast('Fehler: ' + error.message);
+					return;
+				}
+				triggerToast(next === 'yes' ? 'Zugesagt' : 'Abgesagt');
+			}
+		} finally {
+			rsvpSaving = false;
+		}
+	}
 
 	function startEdit() {
 		if (!event) return;
@@ -205,6 +273,38 @@
 					</p>
 				{/if}
 
+				{#if !isPast}
+					<div class="ed-rsvp">
+						<span class="ed-rsvp-label">Bist du dabei?</span>
+						<div class="ed-rsvp-row">
+							<button
+								type="button"
+								class="ed-rsvp-btn ed-rsvp-btn--yes"
+								class:ed-rsvp-btn--active={myRsvp === 'yes'}
+								onclick={() => setRsvp('yes')}
+								disabled={rsvpSaving || rsvpLoading || !$playerId}
+								aria-label="Zusagen"
+								aria-pressed={myRsvp === 'yes'}
+							>
+								<span class="material-symbols-outlined">check_circle</span>
+								Zusagen
+							</button>
+							<button
+								type="button"
+								class="ed-rsvp-btn ed-rsvp-btn--no"
+								class:ed-rsvp-btn--active={myRsvp === 'no'}
+								onclick={() => setRsvp('no')}
+								disabled={rsvpSaving || rsvpLoading || !$playerId}
+								aria-label="Absagen"
+								aria-pressed={myRsvp === 'no'}
+							>
+								<span class="material-symbols-outlined">cancel</span>
+								Absagen
+							</button>
+						</div>
+					</div>
+				{/if}
+
 				{#if canEdit}
 					<div class="ed-actions">
 						<button
@@ -289,5 +389,59 @@
 	.ed-btn-danger {
 		background: var(--color-error-container);
 		color: var(--color-error);
+	}
+
+	.ed-rsvp {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		padding: var(--space-3);
+		background: var(--color-surface-container);
+		border-radius: var(--radius-md);
+	}
+	.ed-rsvp-label {
+		font-family: var(--font-display);
+		font-size: var(--text-label-md);
+		font-weight: 700;
+		color: var(--color-on-surface);
+	}
+	.ed-rsvp-row {
+		display: flex;
+		gap: var(--space-2);
+	}
+	.ed-rsvp-btn {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+		border: 1.5px solid var(--color-outline-variant);
+		background: var(--color-surface-container-lowest);
+		font-family: var(--font-display);
+		font-size: var(--text-label-md);
+		font-weight: 700;
+		color: var(--color-on-surface-variant);
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 80ms ease;
+	}
+	.ed-rsvp-btn:active { transform: scale(0.97); }
+	.ed-rsvp-btn:disabled { opacity: 0.5; cursor: default; }
+	.ed-rsvp-btn .material-symbols-outlined {
+		font-size: 1.1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+	.ed-rsvp-btn--yes.ed-rsvp-btn--active {
+		background: color-mix(in srgb, var(--color-success) 12%, transparent);
+		border-color: var(--color-success);
+		color: var(--color-success);
+	}
+	.ed-rsvp-btn--no.ed-rsvp-btn--active {
+		background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+		border-color: var(--color-primary);
+		color: var(--color-primary);
 	}
 </style>

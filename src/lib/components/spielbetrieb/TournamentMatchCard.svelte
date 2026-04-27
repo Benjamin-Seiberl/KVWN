@@ -100,13 +100,34 @@
 	// ── Status-Übergänge (Kapitän) ─────────────────────────────────
 	async function setStatus(s) {
 		savingStatus = true;
-		await sb.from('tournaments').update({ status: s }).eq('id', tournament.id);
-		tournament = { ...tournament, status: s };
+		const { error } = await sb.from('tournaments').update({ status: s }).eq('id', tournament.id);
 		savingStatus = false;
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
+		tournament = { ...tournament, status: s };
 		triggerToast(s === 'voting_closed' ? 'Abstimmung geschlossen' :
 		             s === 'scheduling'    ? 'Spielplan-Phase' :
 		             s === 'confirmed'     ? 'Turnier bestätigt!' : '');
 		await load();
+		onReload();
+	}
+
+	// ── Datum bestätigen (nach Voting) ─────────────────────────────
+	const sortedDateOptions = $derived.by(() => {
+		return [...dateOptions]
+			.map(o => ({ ...o, _count: dateVoteCount(o.id) }))
+			.sort((a, b) => b._count - a._count || a.date.localeCompare(b.date));
+	});
+
+	async function confirmTournamentDate(opt) {
+		if (!opt?.date) return;
+		savingStatus = true;
+		const { error } = await sb.from('tournaments')
+			.update({ confirmed_date: opt.date })
+			.eq('id', tournament.id);
+		savingStatus = false;
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
+		tournament = { ...tournament, confirmed_date: opt.date };
+		triggerToast('Termin bestätigt: ' + fmtDate(opt.date));
 		onReload();
 	}
 
@@ -304,6 +325,34 @@
 						<span class="material-symbols-outlined">lock</span>
 						Abstimmung schließen
 					</button>
+
+				{:else if !tournament.confirmed_date && dateOptions.length > 0}
+					<!-- Termin bestätigen (nach geschlossener Abstimmung) -->
+					<h3 class="twd-sec-title" style="margin-bottom:var(--space-3)">
+						<span class="material-symbols-outlined">event_available</span>
+						Termin bestätigen
+					</h3>
+					<p class="twd-muted" style="margin-bottom:var(--space-3)">
+						Wähle den endgültigen Termin. Nach Vote-Stimmen sortiert.
+					</p>
+					<div class="twd-confirm-list">
+						{#each sortedDateOptions as opt, i (opt.id)}
+							{@const isWinner = i === 0 && opt._count > 0}
+							<button
+								class="twd-confirm-row"
+								class:twd-confirm-row--winner={isWinner}
+								onclick={() => confirmTournamentDate(opt)}
+								disabled={savingStatus}
+							>
+								<span class="twd-confirm-date">{fmtDate(opt.date)}</span>
+								<span class="twd-confirm-count">
+									<span class="material-symbols-outlined">how_to_vote</span>
+									{opt._count}
+								</span>
+								<span class="material-symbols-outlined twd-confirm-cta">check</span>
+							</button>
+						{/each}
+					</div>
 
 				{:else}
 					<!-- Mannschaften anlegen -->
@@ -567,4 +616,44 @@
 	.twd-score-display { font-family:var(--font-display); font-weight:700; font-size:var(--text-body-sm); color:var(--color-on-surface); margin-left:auto; }
 	.twd-self-assign { display:flex; align-items:center; gap:4px; padding:4px 10px; border-radius:var(--radius-full); border:1.5px dashed var(--color-primary); background:rgba(204,0,0,0.05); color:var(--color-primary); font-family:var(--font-display); font-size:var(--text-label-md); font-weight:700; cursor:pointer; -webkit-tap-highlight-color:transparent; }
 	.twd-self-assign .material-symbols-outlined { font-size:0.95rem; font-variation-settings:'FILL' 1; }
+
+	/* Termin bestätigen — nach Voting */
+	.twd-confirm-list { display:flex; flex-direction:column; gap:var(--space-2); }
+	.twd-confirm-row {
+		display:flex; align-items:center; gap:var(--space-3);
+		width:100%; padding:var(--space-3) var(--space-4);
+		background:var(--color-surface-container);
+		border:1.5px solid var(--color-outline-variant);
+		border-radius:var(--radius-lg);
+		cursor:pointer; font:inherit;
+		-webkit-tap-highlight-color:transparent;
+		transition:transform 100ms ease, border-color 150ms ease, background 150ms ease;
+	}
+	.twd-confirm-row:active { transform:scale(0.98); }
+	.twd-confirm-row:disabled { opacity:0.5; cursor:default; }
+	.twd-confirm-row--winner {
+		border-color:var(--color-success);
+		background:color-mix(in srgb, var(--color-success) 8%, transparent);
+	}
+	.twd-confirm-date {
+		flex:1; font-family:var(--font-display);
+		font-size:var(--text-body-md); font-weight:700;
+		color:var(--color-on-surface); text-align:left;
+	}
+	.twd-confirm-count {
+		display:inline-flex; align-items:center; gap:4px;
+		font-family:var(--font-display);
+		font-size:var(--text-label-md); font-weight:700;
+		color:var(--color-on-surface-variant);
+	}
+	.twd-confirm-count .material-symbols-outlined {
+		font-size:0.95rem;
+		font-variation-settings:'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+	.twd-confirm-cta {
+		font-size:1.1rem;
+		color:var(--color-success);
+		font-variation-settings:'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	}
+	.twd-confirm-row--winner .twd-confirm-date { color:var(--color-success); }
 </style>

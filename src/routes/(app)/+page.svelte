@@ -7,6 +7,7 @@
 	import GreetingHeader     from '$lib/components/dashboard/GreetingHeader.svelte';
 	import TaskBlock          from '$lib/components/dashboard/tasks/TaskBlock.svelte';
 	import CaptainTaskBlock   from '$lib/components/dashboard/tasks/CaptainTaskBlock.svelte';
+	import OnboardingCard     from '$lib/components/dashboard/OnboardingCard.svelte';
 </script>
 
 <div class="page active dash">
@@ -50,8 +51,13 @@
 		<UpcomingEvents />
 	</div>
 
-	<!-- 7: News & polls (mixed feed) -->
+	<!-- 7: Onboarding-Hinweis (nur für neue Spieler ohne Scores + unvollständigem Profil) -->
 	<div class="dash-section" style="--i:7">
+		<OnboardingCard />
+	</div>
+
+	<!-- 8: News & polls (mixed feed) -->
+	<div class="dash-section" style="--i:8">
 		<NewsFeed />
 	</div>
 

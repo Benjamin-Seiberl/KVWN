@@ -12,17 +12,23 @@
 	let publishing   = $state(false);
 	let feedbackSending = $state(false);
 
-	// Client-side score cache keyed by game_plan_player_id
-	let scores = $state({});
-	// Lanes keyed by game_plan_player_id → array of { bahn, volle, abraeumen }
-	let lanesByPlayer = $state({});
-	let loaded = $state(false);
+	// Client-side caches keyed by game_plan_player_id
+	let scores         = $state({});  // playerId → number | null
+	let lanesByPlayer  = $state({});  // playerId → [{ bahn, volle, abraeumen }]
+	let playedById     = $state({});  // playerId → boolean (false = DNF / nicht gespielt)
+	let loaded         = $state(false);
 
 	async function loadLanes() {
 		const ids = players.map(p => p.id);
 		const initialScores = {};
-		for (const p of players) initialScores[p.id] = p.score ?? null;
-		scores = initialScores;
+		const initialPlayed = {};
+		for (const p of players) {
+			initialScores[p.id] = p.score ?? null;
+			// played === false → DNF aktiv. null/true → spielt (Default true).
+			initialPlayed[p.id] = p.played === false ? false : true;
+		}
+		scores     = initialScores;
+		playedById = initialPlayed;
 
 		if (!ids.length) { loaded = true; return; }
 		const { data, error } = await sb
@@ -56,41 +62,45 @@
 		if (error) { triggerToast('Fehler: ' + error.message); return; }
 	}
 
-	async function handleScore(playerId, score) {
-		scores = { ...scores, [playerId]: score };
-		const { error } = await sb.from('game_plan_players').update({
-			score,
-			result_state: publishedAt ? 'published' : (score != null ? 'draft' : 'empty'),
-			played: score != null,
-		}).eq('id', playerId);
-		if (error) { triggerToast('Fehler: ' + error.message); return; }
-	}
+	// ── Per-row debounced commit (vom ScoreInputRow nach 500ms Inaktivität) ──
+	async function handleRowChange(playerId, snap) {
+		if (playedById[playerId] === false) return; // DNF — keine Score-Edits
 
-	async function handleLane(playerId, bahn, field, value) {
-		// Update local cache
-		const existing = lanesByPlayer[playerId] ? [...lanesByPlayer[playerId]] : [];
-		const idx = existing.findIndex(l => l.bahn === bahn);
-		if (idx >= 0) existing[idx] = { ...existing[idx], [field]: value };
-		else existing.push({ bahn, volle: field === 'volle' ? value : null, abraeumen: field === 'abraeumen' ? value : null });
-		lanesByPlayer = { ...lanesByPlayer, [playerId]: existing };
+		if (snap.mode === 'gesamt') {
+			const score = snap.score;
+			scores = { ...scores, [playerId]: score };
+			const { error } = await sb.from('game_plan_players').update({
+				score,
+				result_state: publishedAt ? 'published' : (score != null ? 'draft' : 'empty'),
+				played: score != null,
+			}).eq('id', playerId);
+			if (error) { triggerToast('Fehler: ' + error.message); return; }
+			return;
+		}
 
-		// Persist lane
-		const cur = existing.find(l => l.bahn === bahn) ?? { bahn, volle: null, abraeumen: null };
-		const { error: laneErr } = await sb.from('game_plan_player_lanes').upsert(
-			{
-				game_plan_player_id: playerId,
-				bahn,
-				volle: cur.volle ?? null,
-				abraeumen: cur.abraeumen ?? null,
-			},
-			{ onConflict: 'game_plan_player_id,bahn' },
-		);
-		if (laneErr) { triggerToast('Fehler: ' + laneErr.message); return; }
+		// detailliert: alle 4 Bahnen upserten + score sum aktualisieren
+		const lanes = snap.lanes ?? [];
+		// Cache aktualisieren
+		lanesByPlayer = { ...lanesByPlayer, [playerId]: lanes };
 
-		// Recompute sum
+		// Pro Bahn upsert
+		for (const l of lanes) {
+			const { error: laneErr } = await sb.from('game_plan_player_lanes').upsert(
+				{
+					game_plan_player_id: playerId,
+					bahn:                l.bahn,
+					volle:               l.volle ?? null,
+					abraeumen:           l.abraeumen ?? null,
+				},
+				{ onConflict: 'game_plan_player_id,bahn' },
+			);
+			if (laneErr) { triggerToast('Fehler: ' + laneErr.message); return; }
+		}
+
+		// Sum berechnen
 		let sum = 0;
 		let any = false;
-		for (const l of existing) {
+		for (const l of lanes) {
 			if (Number.isFinite(Number(l.volle)))     { sum += Number(l.volle);     any = true; }
 			if (Number.isFinite(Number(l.abraeumen))) { sum += Number(l.abraeumen); any = true; }
 		}
@@ -105,7 +115,35 @@
 		if (gppErr) { triggerToast('Fehler: ' + gppErr.message); return; }
 	}
 
-	const allHaveScore = $derived(players.length > 0 && players.every(p => scores[p.id] != null));
+	// ── DNF-Toggle ────────────────────────────────────────────────────────────
+	async function handlePlayedChange(playerId, played) {
+		playedById = { ...playedById, [playerId]: played };
+		if (played === false) {
+			// DNF: score=0, played=false. Lane-Rows bleiben in DB, sind aber irrelevant.
+			scores = { ...scores, [playerId]: 0 };
+			const { error } = await sb.from('game_plan_players').update({
+				score: 0,
+				played: false,
+				result_state: publishedAt ? 'published' : 'draft',
+			}).eq('id', playerId);
+			if (error) { triggerToast('Fehler: ' + error.message); return; }
+		} else {
+			// Re-aktivieren: score=null, played=true zurücksetzen, Eingabe wieder offen.
+			// (Existierende Code-Pfade nutzen `played: score != null` als Boolean — null vermeiden.)
+			scores = { ...scores, [playerId]: null };
+			const { error } = await sb.from('game_plan_players').update({
+				score: null,
+				played: true,
+				result_state: publishedAt ? 'published' : 'empty',
+			}).eq('id', playerId);
+			if (error) { triggerToast('Fehler: ' + error.message); return; }
+		}
+	}
+
+	// "ready for publish": entweder score gesetzt ODER DNF aktiv
+	const allHaveScore = $derived(
+		players.length > 0 && players.every(p => playedById[p.id] === false || scores[p.id] != null)
+	);
 
 	async function publish() {
 		if (publishing) return;
@@ -113,7 +151,16 @@
 		try {
 			const now = new Date().toISOString();
 			for (const p of players) {
-				if (scores[p.id] != null) {
+				const isDnf = playedById[p.id] === false;
+				if (isDnf) {
+					const { error } = await sb.from('game_plan_players').update({
+						result_state: 'published',
+						published_at: now,
+						played: false,
+						score:  0,
+					}).eq('id', p.id);
+					if (error) { triggerToast('Fehler: ' + error.message); return; }
+				} else if (scores[p.id] != null) {
 					const { error } = await sb.from('game_plan_players').update({
 						result_state: 'published',
 						published_at: now,
@@ -147,6 +194,7 @@
 			if (error) { triggerToast('Fehler: ' + error.message); return; }
 			const player_ids = (entries ?? []).map(e => e.player_id).filter(Boolean);
 			if (!player_ids.length) { triggerToast('Keine Empfänger gefunden'); return; }
+			const feedbackUrl = match?.id ? `/spielbetrieb?feedback=${match.id}` : '/spielbetrieb';
 			await fetch('/api/push/notify', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -154,7 +202,7 @@
 					player_ids,
 					title: 'Kurzes Feedback',
 					body: `${match?.opponent ?? 'Spiel'} – eine Frage zum Spiel`,
-					url: '/#action-hub-feedback',
+					url: feedbackUrl,
 					pref_key: 'feedback',
 				}),
 			});
@@ -219,9 +267,10 @@
 					mode={mode}
 					lanes={lanesByPlayer[p.id] ?? []}
 					score={scores[p.id] ?? null}
+					played={playedById[p.id] !== false}
 					published={!!publishedAt}
-					onScore={handleScore}
-					onLane={handleLane}
+					onRowChange={handleRowChange}
+					onPlayedChange={handlePlayedChange}
 				/>
 			{/each}
 		</div>
@@ -237,7 +286,7 @@
 					{publishing ? 'Wird veröffentlicht…' : 'Ergebnis veröffentlichen'}
 				</button>
 				{#if !allHaveScore}
-					<p class="mre-hint">Alle Holz-Werte eintragen, um zu veröffentlichen.</p>
+					<p class="mre-hint">Alle Holz-Werte eintragen oder „Nicht gespielt" markieren, um zu veröffentlichen.</p>
 				{/if}
 			{:else}
 				<button

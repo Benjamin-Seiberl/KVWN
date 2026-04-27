@@ -35,6 +35,8 @@
 	let templates = $state([]);
 	let overrides = $state([]);
 	let specials  = $state([]);
+	let bookings  = $state([]);
+	let waitlist  = $state([]);
 
 	let selectedKey = $state(fmt(today));
 
@@ -69,20 +71,26 @@
 			{ data: t,  error: e3 },
 			{ data: o,  error: e4 },
 			{ data: s,  error: e5 },
+			{ data: b,  error: e6 },
+			{ data: w,  error: e7 },
 		] = await Promise.all([
 			sb.from('matches').select('id, date, time, home_away, opponent, location, round, is_tournament, is_landesbewerb, tournament_title, league_id, leagues(name)').gte('date', from).lte('date', to),
 			sb.from('events').select('*').gte('date', from).lte('date', to),
 			sb.from('training_templates').select('*').eq('active', true),
 			sb.from('training_overrides').select('*').gte('date', from).lte('date', to),
 			sb.from('training_specials').select('*').gte('date', from).lte('date', to),
+			sb.from('training_bookings').select('date, start_time, player_id').gte('date', from).lte('date', to),
+			sb.from('training_waitlist').select('date, start_time, player_id').gte('date', from).lte('date', to),
 		]);
-		const err = e1 ?? e2 ?? e3 ?? e4 ?? e5;
+		const err = e1 ?? e2 ?? e3 ?? e4 ?? e5 ?? e6 ?? e7;
 		if (err) { triggerToast('Fehler: ' + err.message); return; }
 		matches   = m ?? [];
 		events    = ev ?? [];
 		templates = t ?? [];
 		overrides = o ?? [];
 		specials  = s ?? [];
+		bookings  = b ?? [];
+		waitlist  = w ?? [];
 	}
 
 	function prevWeek() {
@@ -116,14 +124,41 @@
 				const endTime   = `${String(h+1).padStart(2,'0')}:00`;
 				const ov = overrides.find(o => o.date === key && String(o.start_time).slice(0,5) === startTime);
 				if (ov?.closed) continue;
-				slots.push({ start_time: startTime, end_time: endTime });
+				slots.push({ start_time: startTime, end_time: endTime, capacity: tpl.lane_count });
 			}
 		}
 		for (const sp of specials.filter(s => s.date === key)) {
-			slots.push({ start_time: String(sp.start_time).slice(0,5), end_time: String(sp.end_time).slice(0,5) });
+			slots.push({
+				start_time: String(sp.start_time).slice(0,5),
+				end_time:   String(sp.end_time).slice(0,5),
+				capacity:   sp.capacity,
+			});
 		}
 		slots.sort((a,b) => a.start_time.localeCompare(b.start_time));
 		return slots;
+	}
+
+	// ── Occupancy helpers ────────────────────────────────────────────────────
+	function bookingsForSlot(date, startTime) {
+		return bookings.filter(b => b.date === date && String(b.start_time).slice(0,5) === startTime).length;
+	}
+	function waitlistForSlot(date, startTime) {
+		return waitlist.filter(w => w.date === date && String(w.start_time).slice(0,5) === startTime).length;
+	}
+	function dayOccupancy(slots, date) {
+		let booked = 0, capacity = 0, wait = 0;
+		for (const s of slots) {
+			booked   += bookingsForSlot(date, s.start_time);
+			capacity += s.capacity ?? 0;
+			wait     += waitlistForSlot(date, s.start_time);
+		}
+		const ratio = capacity > 0 ? booked / capacity : 0;
+		return { booked, capacity, wait, ratio };
+	}
+	function occColor(ratio) {
+		if (ratio < 0.5)  return 'var(--color-success)';
+		if (ratio < 0.85) return 'var(--color-warning)';
+		return 'var(--color-danger)';
 	}
 
 	// Items per day for mini column list (sorted chronologically)
@@ -142,7 +177,7 @@
 			items.push({
 				type: 'training',
 				sortTime: toMinutes(first.start_time),
-				data: { date: key, startTime: first.start_time, endTime: last.end_time },
+				data: { date: key, startTime: first.start_time, endTime: last.end_time, slots: trs },
 			});
 		}
 		items.sort((a,b) => a.sortTime - b.sortTime);
@@ -274,7 +309,9 @@
 							</button>
 
 						{:else if item.type === 'training'}
-							{@const tr = item.data}
+							{@const tr  = item.data}
+							{@const occ = dayOccupancy(tr.slots, tr.date)}
+							{@const isFull = occ.capacity > 0 && occ.booked >= occ.capacity}
 							<button class="wo-event-card wo-event-card--training" onclick={() => openTrSheet(tr.date)}>
 								<div class="wo-event-time-col wo-event-time-col--training">
 									<span class="wo-event-time-text">{tr.startTime}</span>
@@ -282,7 +319,22 @@
 								<div class="wo-event-body">
 									<div class="wo-event-type-label wo-event-type-label--training">Training</div>
 									<h3 class="wo-event-title">{tr.startTime} – {tr.endTime} Uhr</h3>
-									<p class="wo-event-desc">Plätze ansehen & buchen</p>
+									{#if occ.capacity > 0}
+										<div class="wo-occ-row">
+											<span class="wo-occ-pill" style="--occ-color:{occColor(occ.ratio)}">
+												{occ.booked}/{occ.capacity} belegt
+											</span>
+											{#if isFull && occ.wait > 0}
+												<span class="wo-occ-wait">
+													<span class="material-symbols-outlined">hourglass_top</span>
+													{occ.wait} {occ.wait === 1 ? 'wartet' : 'warten'}
+												</span>
+											{/if}
+										</div>
+										<div class="wo-occ-bar" style="--bar-ratio:{occ.ratio}; --bar-color:{occColor(occ.ratio)}"></div>
+									{:else}
+										<p class="wo-event-desc">Plätze ansehen & buchen</p>
+									{/if}
 								</div>
 							</button>
 
@@ -411,6 +463,42 @@
 	.wo-event-type-label--training { color: var(--color-primary); }
 	.wo-event-title { font-family: var(--font-display); font-size: var(--text-title-sm); font-weight: 700; line-height: 1.2; margin: 0; }
 	.wo-event-desc { font-size: var(--text-label-md); color: var(--color-on-surface-variant); margin: 0; }
+
+	.wo-occ-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+	.wo-occ-pill {
+		display: inline-flex; align-items: center;
+		font-family: var(--font-display);
+		font-size: 0.7rem; font-weight: 700;
+		letter-spacing: 0.04em;
+		padding: 2px 8px; border-radius: var(--radius-full);
+		background: color-mix(in srgb, var(--occ-color) 14%, transparent);
+		color: var(--occ-color);
+	}
+	.wo-occ-wait {
+		display: inline-flex; align-items: center; gap: 2px;
+		font-size: 0.7rem; font-weight: 700;
+		color: var(--color-warning);
+	}
+	.wo-occ-wait .material-symbols-outlined {
+		font-size: 0.85rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+	.wo-occ-bar {
+		width: 100%; height: 4px;
+		background: var(--color-surface-container);
+		border-radius: var(--radius-full);
+		overflow: hidden;
+		margin-top: 2px;
+	}
+	.wo-occ-bar::after {
+		content: '';
+		display: block;
+		height: 100%;
+		width: calc(var(--bar-ratio, 0) * 100%);
+		background: var(--bar-color, var(--color-primary));
+		border-radius: var(--radius-full);
+		transition: width 400ms ease;
+	}
 
 	.wo-no-events { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-10) var(--space-4); color: var(--color-outline); }
 	.wo-no-events-icon { font-size: 2.5rem; opacity: 0.5; }

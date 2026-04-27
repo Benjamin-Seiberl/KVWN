@@ -1,6 +1,8 @@
 <script>
 	import { sb } from '$lib/supabase';
+	import { goto } from '$app/navigation';
 	import { triggerToast } from '$lib/stores/toast.js';
+	import { setSubtab } from '$lib/stores/subtab.js';
 	import { DAY_SHORT, daysUntil } from '$lib/utils/dates.js';
 
 	/**
@@ -57,10 +59,6 @@
 			return;
 		}
 
-		if (confirmed === true && entry.match?.home_away && entry.match.home_away !== 'HEIM') {
-			triggerToast('Auswärtsfahrt – Mitfahrgelegenheit prüfen');
-		}
-
 		if (confirmed === false) {
 			notifyCaptainsOnDecline();
 		}
@@ -68,14 +66,24 @@
 		done = confirmed ? 'confirmed' : 'declined';
 		busy = false;
 
-		// 1.4s Success-State → Fade-Out → Reload.
+		// Bei Zusage + Auswärts: Card kurzzeitig stehen lassen, damit der Carpool-CTA sichtbar wird.
+		// Sonst: 1.4 s Success-State → Fade-Out → Reload.
+		const holdLonger = confirmed && isAway;
 		setTimeout(() => {
 			leaving = true;
 			setTimeout(() => onReload?.(), 280);
-		}, 1400);
+		}, holdLonger ? 4200 : 1400);
+	}
+
+	function openCarpool() {
+		// Push subtab auf "spiele" damit /spielbetrieb direkt SpieleTab rendert,
+		// danach Deep-Link mit ?carpool=<id>.
+		setSubtab('/spielbetrieb', 'spiele');
+		goto(`/spielbetrieb?carpool=${entry.match.id}`);
 	}
 
 	let days = $derived(daysUntil(entry.match.date));
+	let isAway = $derived(!!entry.match?.home_away && entry.match.home_away !== 'HEIM');
 </script>
 
 <div class="lct" class:lct--leaving={leaving} class:lct--done={!!done}>
@@ -99,9 +107,21 @@
 	</div>
 
 	{#if done === 'confirmed'}
-		<div class="lct-result lct-result--ok">
-			<span class="material-symbols-outlined">check_circle</span>
-			Bestätigt
+		<div class="lct-confirmed-row">
+			<div class="lct-result lct-result--ok">
+				<span class="material-symbols-outlined">check_circle</span>
+				Bestätigt
+			</div>
+			{#if isAway}
+				<button
+					class="mw-btn mw-btn--soft lct-carpool-btn"
+					onclick={openCarpool}
+					aria-label="Fahrt organisieren"
+				>
+					<span class="material-symbols-outlined">directions_car</span>
+					Fahrt organisieren
+				</button>
+			{/if}
 		</div>
 	{:else if done === 'declined'}
 		<div class="lct-result lct-result--off">
@@ -144,7 +164,7 @@
 		flex-direction: column;
 		gap: var(--space-2);
 		transition: opacity 260ms ease, transform 260ms ease, max-height 320ms ease, padding 260ms ease, margin 260ms ease;
-		max-height: 260px;
+		max-height: 320px;
 		overflow: hidden;
 	}
 	.lct--done {
@@ -246,5 +266,19 @@
 	.lct-result--off {
 		background: rgba(204, 0, 0, 0.1);
 		color: var(--color-primary);
+	}
+
+	.lct-confirmed-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		flex-wrap: wrap;
+		margin-top: var(--space-1);
+	}
+	.lct-confirmed-row .lct-result {
+		margin-top: 0;
+	}
+	.lct-carpool-btn {
+		margin-left: auto;
 	}
 </style>

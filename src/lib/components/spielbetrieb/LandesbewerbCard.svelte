@@ -5,13 +5,15 @@
 	import { triggerToast } from '$lib/stores/toast.js';
 	import BottomSheet from '$lib/components/BottomSheet.svelte';
 	import { fmtDate, fmtTime } from '$lib/utils/dates.js';
-	import { BEWERB_LABEL } from '$lib/constants/competitions.js';
+	import { BEWERB_TYPEN, BEWERB_LABEL } from '$lib/constants/competitions.js';
 
 	let { lb, onReload = () => {} } = $props();
 
 	let registrations = $state([]);
 	let saving        = $state(false);
 	let editOpen      = $state(false);
+	let editTitle     = $state('');
+	let editTyp       = $state('');
 	let editDeadline  = $state('');
 	let editDate      = $state('');
 	let editTime      = $state('');
@@ -76,6 +78,9 @@
 	}
 
 	function openEdit() {
+		if (!isAdmin) return;
+		editTitle    = lb.title ?? '';
+		editTyp      = lb.typ ?? '';
 		editDate     = lb.date ?? '';
 		editTime     = lb.time ? String(lb.time).slice(0, 5) : '';
 		editDeadline = lb.registration_deadline ? new Date(lb.registration_deadline).toISOString().slice(0, 16) : '';
@@ -83,15 +88,21 @@
 	}
 
 	async function saveEdit() {
+		if (!isAdmin) return;
+		const t = editTitle.trim();
+		if (!t) { triggerToast('Bitte Titel eintragen'); return; }
+		if (!editTyp) { triggerToast('Bitte Bewerbstyp wählen'); return; }
 		saving = true;
 		const payload = {
-			date: editDate || null,
-			time: editTime || null,
+			title: t,
+			typ:   editTyp,
+			date:  editDate || null,
+			time:  editTime || null,
 			registration_deadline: editDeadline ? new Date(editDeadline).toISOString() : null,
 		};
 		const { error } = await sb.from('landesbewerbe').update(payload).eq('id', lb.id);
 		saving = false;
-		if (error) { triggerToast('Fehler beim Speichern'); return; }
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
 		lb = { ...lb, ...payload };
 		editOpen = false;
 		triggerToast('Aktualisiert');
@@ -205,8 +216,8 @@
 	{#if isAdmin}
 		<div class="lbw-admin">
 			<button class="lbw-admin-btn" onclick={openEdit}>
-				<span class="material-symbols-outlined">edit_calendar</span>
-				Termin &amp; Deadline bearbeiten
+				<span class="material-symbols-outlined">edit</span>
+				Bearbeiten
 			</button>
 		</div>
 	{/if}
@@ -214,23 +225,38 @@
 
 <!-- Admin Edit Sheet -->
 <BottomSheet bind:open={editOpen} title="Landesbewerb bearbeiten">
-	<div class="lbw-edit-form">
-		<label class="tp-field">
-			<span class="tp-label">Termin-Datum</span>
-			<input class="tp-input" type="date" bind:value={editDate} />
-		</label>
-		<label class="tp-field">
-			<span class="tp-label">Uhrzeit</span>
-			<input class="tp-input" type="time" bind:value={editTime} />
-		</label>
-		<label class="tp-field">
-			<span class="tp-label">Anmelde-Deadline</span>
-			<input class="tp-input" type="datetime-local" bind:value={editDeadline} />
-		</label>
-		<button class="tp-save-btn" onclick={saveEdit} disabled={saving}>
-			{saving ? 'Speichern…' : 'Speichern'}
-		</button>
-	</div>
+	{#if isAdmin}
+		<div class="lbw-edit-form">
+			<label class="tp-field">
+				<span class="tp-label">Titel</span>
+				<input class="tp-input" type="text" bind:value={editTitle} required />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Bewerb</span>
+				<select class="tp-input" bind:value={editTyp} required>
+					<option value="" disabled>— wählen —</option>
+					{#each BEWERB_TYPEN as b (b.key)}
+						<option value={b.key}>{b.label}</option>
+					{/each}
+				</select>
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Termin-Datum</span>
+				<input class="tp-input" type="date" bind:value={editDate} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Uhrzeit</span>
+				<input class="tp-input" type="time" bind:value={editTime} />
+			</label>
+			<label class="tp-field">
+				<span class="tp-label">Anmelde-Deadline</span>
+				<input class="tp-input" type="datetime-local" bind:value={editDeadline} />
+			</label>
+			<button class="tp-save-btn" onclick={saveEdit} disabled={saving}>
+				{saving ? 'Speichern…' : 'Speichern'}
+			</button>
+		</div>
+	{/if}
 </BottomSheet>
 
 <style>

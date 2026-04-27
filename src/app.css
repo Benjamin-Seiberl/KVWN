@@ -54,6 +54,9 @@
   --color-warning-container:    color-mix(in srgb, var(--color-warning) 15%, var(--color-surface-container-lowest));
   --color-on-warning:            #ffffff;
 
+  /* --- Danger (Auslastungs-Alerts, kritische Hinweise) --- */
+  --color-danger:               #dc2626;
+
   /* --- Typografie --- */
   --font-display: 'Lexend', sans-serif;
   --font-body:    'Public Sans', sans-serif;

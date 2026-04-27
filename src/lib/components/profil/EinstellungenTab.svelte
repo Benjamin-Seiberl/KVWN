@@ -53,6 +53,7 @@
 			{ k: 'meetup',          label: 'Treffpunkt'  },
 			{ k: 'news',            label: 'News'        },
 			{ k: 'poll',            label: 'Umfragen'    },
+			{ k: 'training',        label: 'Trainings-Nachrückung' },
 		] as p}
 			<label class="toggle">
 				<span>{p.label}</span>
