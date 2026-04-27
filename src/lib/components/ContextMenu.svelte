@@ -211,7 +211,7 @@
 		pointer-events: none;
 		border-radius: 14px;
 		overflow: hidden;
-		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--shadow-float);
 		display: flex;
 		flex-direction: column;
 	}

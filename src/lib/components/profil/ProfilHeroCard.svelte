@@ -5,7 +5,7 @@
 
 	/**
 	 * @typedef {{ id: string, name: string|null, avatar_url: string|null, photo: string|null, member_since: string|null }} Me
-	 * @typedef {{ avg: number, count: number, rank?: number }} Stats
+	 * @typedef {{ avg: number, count: number }} Stats
 	 */
 	let { me, stats, last5 = [], onUpdated } = $props();
 
@@ -139,11 +139,6 @@
 			<div class="hero-stat">
 				<span class="hero-stat-val">Ø {displayedAvg}</span>
 				<span class="hero-stat-lbl">Schnitt</span>
-			</div>
-			<div class="hero-stat-sep" aria-hidden="true"></div>
-			<div class="hero-stat">
-				<span class="hero-stat-val">{stats.rank ? '#' + stats.rank : '—'}</span>
-				<span class="hero-stat-lbl">Liga</span>
 			</div>
 			<div class="hero-stat-sep" aria-hidden="true"></div>
 			<div class="hero-stat">
@@ -340,7 +335,7 @@
 	.hero-stats {
 		margin-top: var(--space-1);
 		display: grid;
-		grid-template-columns: 1fr 1px 1fr 1px 1fr 1px 1fr;
+		grid-template-columns: 1fr 1px 1fr 1px 1fr;
 		align-items: stretch;
 		gap: 0;
 	}

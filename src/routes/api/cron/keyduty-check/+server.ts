@@ -35,7 +35,10 @@ export const GET: RequestHandler = async ({ request, url, fetch }) => {
 
 	const res = await fetch(`${url.origin}/api/push/notify`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers: {
+			'Authorization': `Bearer ${CRON_SECRET}`,
+			'Content-Type': 'application/json',
+		},
 		body: JSON.stringify({
 			player_ids: playerIds,
 			title: 'Schlüssel-Dienst offen',

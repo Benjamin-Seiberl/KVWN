@@ -9,6 +9,8 @@
 	import BottomSheet      from '$lib/components/BottomSheet.svelte';
 	import CarpoolCard      from '$lib/components/spielbetrieb/CarpoolCard.svelte';
 	import AdminAufstellung from '$lib/components/admin/AdminAufstellung.svelte';
+	import MeetupEditSheet  from '$lib/components/spielbetrieb/MeetupEditSheet.svelte';
+	import FeedbackCard     from '$lib/components/spielbetrieb/FeedbackCard.svelte';
 
 	// ── State ─────────────────────────────────────────────────────────────────
 	let pastMatches    = $state([]);                 // last 14 days, scored (or unscored for Kapitän)
@@ -31,6 +33,18 @@
 	// Lineup-edit sheet (Kapitän)
 	let editLineupOpen    = $state(false);
 	let editLineupMatchId = $state(null);
+
+	// Meetup-edit sheet (Kapitän, Auswärts)
+	let meetupSheetOpen   = $state(false);
+	let meetupSheetMatch  = $state(null);
+	let meetupSheetData   = $state(null);
+	let meetupConfirmedIds = $state([]);
+
+	// Feedback sheet (Spieler, via Push-URL)
+	let feedbackSheetOpen     = $state(false);
+	let feedbackSheetMatch    = $state(null);
+	let feedbackQuestions     = $state([]);
+	let feedbackExisting      = $state(null);
 
 	// Confirm-mutation guard (per game_plan_player_id)
 	let confirming = $state(null);
@@ -58,7 +72,9 @@
 	}
 
 	function bewerbBadge(m) {
-		// Liga-Match: leagues.name (max 12 Zeichen) — Fallback 'Liga'.
+		// Spec §12 q3: Designer-Empfehlung ist `leagues.name` (max 12 Zeichen) für Liga-Matches.
+		// `BEWERB_LABEL` aus `$lib/constants/competitions.js` deckt nur Turnier/Landesbewerb-Keys ab —
+		// hier werden ausschließlich Liga-Matches geladen (`.not('league_id', 'is', null)`), daher nicht anwendbar.
 		const ligaName = m.leagues?.name?.trim();
 		if (ligaName) return ligaName.length > 12 ? ligaName.slice(0, 12) : ligaName;
 		return 'Liga';
@@ -142,7 +158,83 @@
 		}
 	}
 
-	onMount(loadData);
+	onMount(async () => {
+		await loadData();
+		// Push-URL ?feedback=<match_id> — Sheet öffnen
+		try {
+			const params = new URLSearchParams(window.location.search);
+			const fbId = params.get('feedback');
+			if (fbId) await openFeedbackForMatch(fbId);
+			// Deep-Link ?carpool=<match_id> (vom Dashboard nach Lineup-Zusage)
+			const cpId = params.get('carpool');
+			if (cpId) await openCarpoolForMatchId(cpId);
+		} catch {}
+	});
+
+	async function openCarpoolForMatchId(matchId) {
+		// Match aus den geladenen upcomingMatches nehmen — sonst nachladen.
+		let match = upcomingMatches.find(m => m.id === matchId);
+		if (!match) {
+			const { data, error } = await sb
+				.from('matches')
+				.select('id, date, time, opponent, home_away, league_id, cal_week, leagues(name)')
+				.eq('id', matchId)
+				.maybeSingle();
+			if (error) { triggerToast('Fehler: ' + error.message); return; }
+			if (!data)  { triggerToast('Spiel nicht gefunden'); return; }
+			match = data;
+		}
+		await openCarpoolSheet(match);
+	}
+
+	// Close: ?carpool aus URL entfernen, damit Sheet beim Reload nicht wieder aufgeht.
+	let wasCarpoolOpen = false;
+	$effect(() => {
+		if (wasCarpoolOpen && !carpoolSheetOpen) {
+			try {
+				const url = new URL(window.location.href);
+				if (url.searchParams.has('carpool')) {
+					url.searchParams.delete('carpool');
+					window.history.replaceState(window.history.state, '', url.pathname + url.search);
+				}
+			} catch {}
+		}
+		wasCarpoolOpen = carpoolSheetOpen;
+	});
+
+	// ── Feedback sheet (vom Push-Link `?feedback=<match_id>`) ─────────────────
+	async function openFeedbackForMatch(matchId) {
+		const [{ data: m, error: mErr }, { data: qs, error: qErr }, { data: fb, error: fbErr }] = await Promise.all([
+			sb.from('matches').select('id, opponent, date, home_away, leagues(name)').eq('id', matchId).maybeSingle(),
+			sb.from('feedback_questions').select('id, prompt'),
+			sb.from('match_feedback').select('id, answer, question_id').eq('match_id', matchId).eq('player_id', $playerId).maybeSingle(),
+		]);
+		if (mErr) { triggerToast('Fehler: ' + mErr.message); return; }
+		if (qErr) { triggerToast('Fehler: ' + qErr.message); return; }
+		if (fbErr && fbErr.code !== 'PGRST116') { triggerToast('Fehler: ' + fbErr.message); return; }
+		if (!m) { triggerToast('Spiel nicht gefunden'); return; }
+		feedbackSheetMatch = m;
+		feedbackQuestions  = qs ?? [];
+		feedbackExisting   = fb ?? null;
+		feedbackSheetOpen  = true;
+	}
+
+	// Close: Param aus URL entfernen damit Sheet bei späterem Reload nicht wieder aufgeht
+	let wasFeedbackOpen = false;
+	$effect(() => {
+		if (wasFeedbackOpen && !feedbackSheetOpen) {
+			try {
+				const url = new URL(window.location.href);
+				if (url.searchParams.has('feedback')) {
+					url.searchParams.delete('feedback');
+					window.history.replaceState(window.history.state, '', url.pathname + url.search);
+				}
+			} catch {}
+			feedbackSheetMatch = null;
+			feedbackExisting   = null;
+		}
+		wasFeedbackOpen = feedbackSheetOpen;
+	});
 
 	// ── Derived ───────────────────────────────────────────────────────────────
 	const recentResults = $derived.by(() => {
@@ -288,6 +380,75 @@
 		}
 		wasEditOpen = editLineupOpen;
 	});
+
+	// ── Meetup quick-edit sheet (Kapitän, Auswärts) ───────────────────────────
+	async function openMeetupSheet(match, e) {
+		e?.stopPropagation?.();
+		// Vorhandenen meetup-Eintrag laden
+		const { data: mu, error: muErr } = await sb
+			.from('match_meetups').select('*').eq('match_id', match.id).maybeSingle();
+		if (muErr && muErr.code !== 'PGRST116') {
+			triggerToast('Fehler: ' + muErr.message);
+			return;
+		}
+		// Bestätigte Spieler aus geladenem Lineup ziehen (für Push-Empfänger nach Save)
+		const lu = lineupsByMatch.get(match.id) ?? null;
+		const confirmedIds = (lu?.players ?? [])
+			.filter(p => p.confirmed === true && p.player_id)
+			.map(p => p.player_id);
+		meetupSheetMatch    = match;
+		meetupSheetData     = mu ?? null;
+		meetupConfirmedIds  = confirmedIds;
+		meetupSheetOpen     = true;
+	}
+
+	function handleMeetupKey(e, match) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			openMeetupSheet(match);
+		}
+	}
+
+	function onMeetupSaved() {
+		triggerToast('Treffpunkt gespeichert');
+		loadData();
+	}
+
+	// ── Captain reminder push ─────────────────────────────────────────────────
+	let reminderSending = $state(null); // match.id while sending
+	async function sendLineupReminder(match) {
+		if (reminderSending) return;
+		const lu = lineupsByMatch.get(match.id);
+		if (!lu?.published) return;
+		const pendingIds = (lu.players ?? [])
+			.filter(p => p.confirmed === null && p.player_id)
+			.map(p => p.player_id);
+		if (!pendingIds.length) { triggerToast('Keine offenen Bestätigungen'); return; }
+
+		reminderSending = match.id;
+		try {
+			const leagueName = match.leagues?.name ?? 'Liga';
+			const versus     = match.home_away === 'HEIM' ? 'vs.' : 'bei';
+			const fristText  = lu.deadline ? ` – Frist ${fmtDate(lu.deadline)}` : '';
+			const res = await fetch('/api/push/notify', {
+				method:  'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					player_ids: pendingIds,
+					title: 'Bitte Aufstellung bestätigen',
+					body:  `${leagueName} ${versus} ${match.opponent}${fristText}`,
+					url:   '/',
+					pref_key: 'lineup_reminder',
+				}),
+			});
+			if (!res.ok) throw new Error('HTTP ' + res.status);
+			triggerToast(`Erinnerung an ${pendingIds.length} Spieler gesendet`);
+		} catch (err) {
+			triggerToast('Fehler: ' + (err?.message ?? 'Push fehlgeschlagen'));
+		} finally {
+			reminderSending = null;
+		}
+	}
 </script>
 
 <div class="sp-page">
@@ -385,6 +546,17 @@
 								</div>
 								<div class="sp-match-head-right">
 									<span class="mw-badge">{bewerbBadge(m)}</span>
+									{#if isCaptain && !isHome}
+										<button
+											class="sp-edit-btn"
+											type="button"
+											aria-label="Treffpunkt festlegen"
+											aria-haspopup="dialog"
+											onclick={(e) => openMeetupSheet(m, e)}
+										>
+											<span class="material-symbols-outlined">location_on</span>
+										</button>
+									{/if}
 									{#if isCaptain}
 										<button
 											class="sp-edit-btn"
@@ -505,6 +677,34 @@
 								</ul>
 							{/if}
 
+							<!-- Captain-Strip: offene Bestätigungen + Erinnerung -->
+							{#if isCaptain && lu?.published}
+								{@const pendingPlayers = (lu.players ?? []).filter(p => p.confirmed === null && p.player_id)}
+								{#if pendingPlayers.length > 0}
+									<div class="sp-cap-strip">
+										<div class="sp-cap-strip-info">
+											<span class="material-symbols-outlined sp-cap-strip-icon">schedule</span>
+											<div class="sp-cap-strip-text">
+												<span class="sp-cap-strip-count">{pendingPlayers.length} offen</span>
+												<span class="sp-cap-strip-names">
+													{pendingPlayers.map(p => shortName(p.players?.name ?? '–')).join(', ')}
+												</span>
+											</div>
+										</div>
+										<button
+											type="button"
+											class="mw-btn mw-btn--soft sp-cap-strip-btn"
+											onclick={() => sendLineupReminder(m)}
+											disabled={reminderSending === m.id}
+											aria-label={`Erinnerung an ${pendingPlayers.length} offene Spieler senden`}
+										>
+											<span class="material-symbols-outlined">notifications_active</span>
+											{reminderSending === m.id ? 'Wird gesendet…' : 'Erinnerung senden'}
+										</button>
+									</div>
+								{/if}
+							{/if}
+
 							<!-- Carpool-Footer (nur Auswärts; bei Heim ausblenden, User-Entscheidung 2) -->
 							{#if !isHome}
 								{@const cpFree     = cp ? Math.max(0, cp.seats_total - cp.seats_taken) : 0}
@@ -577,6 +777,29 @@
 </BottomSheet>
 
 <AdminAufstellung bind:open={editLineupOpen} preselectedMatchId={editLineupMatchId} />
+
+{#if meetupSheetMatch}
+	<MeetupEditSheet
+		bind:open={meetupSheetOpen}
+		match={meetupSheetMatch}
+		meetup={meetupSheetData}
+		confirmedPlayerIds={meetupConfirmedIds}
+		onSaved={onMeetupSaved}
+	/>
+{/if}
+
+<BottomSheet bind:open={feedbackSheetOpen} title="Kurzes Feedback">
+	{#if feedbackSheetMatch}
+		<div class="sp-fb-wrap">
+			<FeedbackCard
+				match={feedbackSheetMatch}
+				questions={feedbackQuestions}
+				existingFeedback={feedbackExisting}
+				onSaved={() => { feedbackSheetOpen = false; }}
+			/>
+		</div>
+	{/if}
+</BottomSheet>
 
 <style>
 	/* ── Page-Frame ───────────────────────────────────────────────────────── */
@@ -1003,6 +1226,67 @@
 		font-size: 1rem;
 		color: var(--color-on-surface-variant);
 		flex-shrink: 0;
+	}
+
+	/* ── Feedback-Sheet-Wrap ─────────────────────────────────────────────── */
+	.sp-fb-wrap {
+		padding: var(--space-2) 0 var(--space-4);
+	}
+
+	/* ── Captain-Strip (offene Bestätigungen + Erinnerung) ───────────────── */
+	.sp-cap-strip {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		margin-top: var(--space-3);
+		padding: var(--space-2) var(--space-3);
+		background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-secondary) 35%, transparent);
+		border-radius: var(--radius-md);
+		flex-wrap: wrap;
+	}
+	.sp-cap-strip-info {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-2);
+		flex: 1;
+		min-width: 0;
+	}
+	.sp-cap-strip-icon {
+		font-size: 1.1rem;
+		color: color-mix(in srgb, var(--color-secondary) 70%, var(--color-on-surface));
+		flex-shrink: 0;
+		margin-top: 2px;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+	}
+	.sp-cap-strip-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.sp-cap-strip-count {
+		font-family: var(--font-display);
+		font-size: var(--text-label-sm);
+		font-weight: 800;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--color-secondary) 70%, var(--color-on-surface));
+	}
+	.sp-cap-strip-names {
+		font-family: var(--font-body);
+		font-size: var(--text-label-md);
+		font-weight: 600;
+		color: var(--color-on-surface);
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.sp-cap-strip-btn {
+		flex-shrink: 0;
+	}
+	.sp-cap-strip-btn .material-symbols-outlined {
+		font-size: 1rem;
+		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
 	}
 
 	/* ── Sheet-Loading ───────────────────────────────────────────────────── */

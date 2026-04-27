@@ -91,6 +91,7 @@ async function handle(request) {
 	let upserted = 0;
 	let deleted  = 0;
 	let skipped_match_dates = 0;
+	let errorCount = 0;
 
 	for (const ev of items) {
 		if (ev.status === 'cancelled') {
@@ -114,7 +115,12 @@ async function handle(request) {
 		const { error } = await admin
 			.from('events')
 			.upsert(row, { onConflict: 'external_id' });
-		if (!error) upserted++;
+		if (!error) {
+			upserted++;
+		} else {
+			errorCount++;
+			console.error('[gcal-sync] upsert failed', { external_id: ev.id, error });
+		}
 	}
 
 	// ── Sync-State schreiben ─────────────────────────────────────────────────
@@ -132,6 +138,7 @@ async function handle(request) {
 			upserted,
 			deleted,
 			skipped_match_dates,
+			errors: errorCount,
 			next_sync_token: nextSyncToken ?? null,
 		}),
 		{ headers: { 'Content-Type': 'application/json' } },

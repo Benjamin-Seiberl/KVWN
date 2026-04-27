@@ -31,7 +31,7 @@
 	}
 
 	function goToComp(pill, extraParams = '') {
-		setSubtab('/spielbetrieb', 'uebersicht');
+		setSubtab('/spielbetrieb', 'spiele');
 		goto(`/spielbetrieb?pill=${pill}${extraParams}`, { keepFocus: true, noScroll: true });
 	}
 
@@ -260,7 +260,7 @@
 			...keyDuties.filter(k => !(k.date === date && String(k.start_time).slice(0,5) === startTime)),
 			{ date, start_time: startTime, player_id: $playerId, players: { name: '' } },
 		];
-		const { error } = await sb.from('training_key_duties').upsert({ date, start_time: startTime, player_id: $playerId });
+		const { error } = await sb.from('training_key_duties').upsert({ date, start_time: startTime, player_id: $playerId }, { onConflict: 'date,start_time' });
 		if (error) {
 			triggerToast('Fehler beim Übernehmen');
 			loadData();
@@ -520,7 +520,7 @@
 									{@const isTourney = m.is_tournament || m.is_landesbewerb}
 									<button class="feed-item feed-item--match feed-item--btn" class:feed-item--tourney={isTourney} onclick={() => openMatchSheet(m)}>
 										<span class="feed-item-icon material-symbols-outlined"
-											style="color:{isTourney ? '#b45309' : '#1e3a5f'}"
+											style="color:{isTourney ? 'var(--color-warning)' : 'var(--color-on-surface)'}"
 										>{isTourney ? 'military_tech' : 'sports'}</span>
 										<div class="feed-item-body">
 											<span class="feed-item-title">
@@ -716,7 +716,7 @@
 	.action-card--blue { background: #eff6ff; border-color: #93c5fd; }
 	.action-icon { font-size: 1.4rem; flex-shrink: 0; font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
 	.action-card--warn .action-icon { color: #ca8a04; }
-	.action-card--gold .action-icon { color: #b45309; }
+	.action-card--gold .action-icon { color: var(--color-warning); }
 	.action-card--blue .action-icon { color: #1d4ed8; }
 	.action-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 	.action-title { font-weight: 700; font-size: var(--text-label-md); color: var(--color-on-surface); }

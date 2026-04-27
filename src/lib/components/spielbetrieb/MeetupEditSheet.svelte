@@ -2,8 +2,16 @@
 	import BottomSheet from '$lib/components/BottomSheet.svelte';
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
+	import { triggerToast } from '$lib/stores/toast.js';
 
-	let { open = $bindable(false), match, meetup, onSaved } = $props();
+	/**
+	 * @prop {boolean} open               two-way bindable, controls sheet visibility
+	 * @prop {object}  match              match row { id, opponent, ... }
+	 * @prop {object}  meetup             existing match_meetups row, or null
+	 * @prop {string[]} confirmedPlayerIds  player_ids of bestätigte Spieler — empfangen Push nach Save
+	 * @prop {Function} onSaved            called with the saved meetup row
+	 */
+	let { open = $bindable(false), match, meetup = null, confirmedPlayerIds = [], onSaved } = $props();
 
 	let locationName = $state('');
 	let locationUrl  = $state('');
@@ -38,10 +46,33 @@
 			.select()
 			.maybeSingle();
 		saving = false;
-		if (!error) {
-			onSaved?.(data);
-			open = false;
+		if (error) {
+			triggerToast('Fehler: ' + error.message);
+			return;
 		}
+
+		// Push an alle bestätigten Spieler des Lineups (Best-Effort, blockiert Save nicht).
+		const recipients = (confirmedPlayerIds ?? []).filter(Boolean);
+		if (recipients.length) {
+			try {
+				await fetch('/api/push/notify', {
+					method:  'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						player_ids: recipients,
+						title: 'Treffpunkt festgelegt',
+						body:  `${locationName.trim()}, ${meetTime} Uhr`,
+						url:   '/spielbetrieb',
+						pref_key: 'meetup',
+					}),
+				});
+			} catch (err) {
+				console.warn('[MeetupEditSheet] Push-Notify fehlgeschlagen:', err);
+			}
+		}
+
+		onSaved?.(data);
+		open = false;
 	}
 </script>
 
@@ -64,6 +95,6 @@
 	</div>
 	<button class="mw-btn mw-btn--primary mw-btn--wide" disabled={saving || !locationName.trim() || !meetTime} onclick={save}>
 		<span class="material-symbols-outlined">check</span>
-		Speichern
+		{saving ? 'Wird gespeichert…' : 'Speichern'}
 	</button>
 </BottomSheet>

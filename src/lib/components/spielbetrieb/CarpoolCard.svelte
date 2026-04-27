@@ -49,7 +49,8 @@
 	async function cancelMyOffer() {
 		if (!myDriving) return;
 		if (!confirm('Fahrt wirklich zurückziehen?')) return;
-		await sb.from('match_carpools').delete().eq('id', myDriving.id);
+		const { error } = await sb.from('match_carpools').delete().eq('id', myDriving.id);
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
 		triggerToast('Fahrt zurückgezogen');
 		onChanged?.();
 	}

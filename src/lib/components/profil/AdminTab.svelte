@@ -9,13 +9,16 @@
 	import AdminTraining    from '$lib/components/admin/AdminTraining.svelte';
 	import AdminAufstellung from '$lib/components/admin/AdminAufstellung.svelte';
 	import AdminFeedback    from '$lib/components/profil/AdminFeedback.svelte';
+	import AdminNewsCreateSheet from '$lib/components/profil/admin/AdminNewsCreateSheet.svelte';
 
 	let rollenOpen            = $state(false);
 	let trainingOpen          = $state(false);
 	let aufstellungOpen       = $state(false);
 	let aufstellungMatchId    = $state(null);
 	let feedbackOpen          = $state(false);
+	let newsCreateOpen        = $state(false);
 	let attestExpanded        = $state(false);
+	let incompleteExpanded    = $state(false);
 
 	let openLineups        = $state([]);
 	let declinedEntries    = $state([]);
@@ -25,6 +28,7 @@
 	let pendingVotes       = $state([]);
 	let urgentLbs          = $state([]);
 	let expiringAtteste    = $state([]);
+	let incompleteProfiles = $state([]);
 	let loading            = $state(true);
 
 	function openAufstellung(matchId) {
@@ -53,6 +57,7 @@
 			{ data: declined },
 			{ data: unconf },
 			{ data: fbRows },
+			{ data: incomplete },
 		] = await Promise.all([
 			sb.from('game_plans')
 				.select('id, cal_week, league_id, lineup_published_at, matches!inner(id, date, opponent, home_away, leagues(name))')
@@ -93,15 +98,21 @@
 			sb.from('match_feedback')
 				.select('id, match_id, created_at')
 				.gte('created_at', minus14 + 'T00:00:00'),
+			sb.from('players')
+				.select('id, name, phone, emergency_contact_phone, spielerpass_nr')
+				.eq('active', true)
+				.or('phone.is.null,emergency_contact_phone.is.null,spielerpass_nr.is.null')
+				.order('name'),
 		]);
 
-		openLineups      = lineups ?? [];
-		pendingVotes     = tournaments ?? [];
-		urgentLbs        = lbs ?? [];
-		expiringAtteste  = atteste ?? [];
-		declinedEntries  = declined ?? [];
-		unconfirmedToday = unconf ?? [];
-		newFeedbackCount = (fbRows ?? []).length;
+		openLineups        = lineups ?? [];
+		pendingVotes       = tournaments ?? [];
+		urgentLbs          = lbs ?? [];
+		expiringAtteste    = atteste ?? [];
+		declinedEntries    = declined ?? [];
+		unconfirmedToday   = unconf ?? [];
+		newFeedbackCount   = (fbRows ?? []).length;
+		incompleteProfiles = incomplete ?? [];
 
 		// Filter past matches: ended + not yet published
 		missingResults = (pastMatches ?? []).filter(m => {
@@ -115,7 +126,7 @@
 	}
 
 	function goToComp(pill, extraParams = '') {
-		setSubtab('/spielbetrieb', 'uebersicht');
+		setSubtab('/spielbetrieb', 'spiele');
 		goto(`/spielbetrieb?pill=${pill}${extraParams}`, { keepFocus: true, noScroll: true });
 	}
 
@@ -125,7 +136,7 @@
 
 	const totalPending = $derived(
 		openLineups.length + missingResults.length + pendingVotes.length + urgentLbs.length + expiringAtteste.length
-		+ declinedEntries.length + unconfirmedToday.length + newFeedbackCount,
+		+ declinedEntries.length + unconfirmedToday.length + newFeedbackCount + incompleteProfiles.length,
 	);
 
 	// ── Inbox cards ───────────────────────────────────────────────────────────
@@ -151,7 +162,7 @@
 				icon: 'schedule',
 				title: `${n} Spieler nicht rückgemeldet`,
 				sub: next ? `Frist heute: ${next.opponent}` : 'Frist läuft heute ab',
-				color: '#b45309', bg: 'rgba(180,83,9,0.1)',
+				color: 'var(--color-warning)', bg: 'rgba(180,83,9,0.1)',
 				action: () => aufstellungOpen = true,
 			});
 		}
@@ -193,7 +204,7 @@
 				icon: 'how_to_vote',
 				title: `${n} ${n === 1 ? 'Turnier-Abstimmung' : 'Turnier-Abstimmungen'}`,
 				sub: next?.title ? `${next.title} · Frist: ${fmtDate(String(next.voting_deadline).slice(0,10))}` : '',
-				color: '#b45309', bg: 'rgba(180,83,9,0.1)',
+				color: 'var(--color-warning)', bg: 'rgba(180,83,9,0.1)',
 				action: () => goToComp('turnier'),
 			});
 		}
@@ -204,7 +215,7 @@
 				icon: 'workspace_premium',
 				title: `${n} ${n === 1 ? 'Landesbewerb' : 'Landesbewerbe'} ausstehend`,
 				sub: next?.title ? `${next.title} · Frist: ${fmtDate(String(next.registration_deadline).slice(0,10))}` : '',
-				color: '#b45309', bg: 'rgba(180,83,9,0.1)',
+				color: 'var(--color-warning)', bg: 'rgba(180,83,9,0.1)',
 				action: () => goToComp('landesbewerb'),
 			});
 		}
@@ -217,10 +228,32 @@
 				color: '#ca8a04', bg: 'rgba(202,138,4,0.1)',
 				action: () => attestExpanded = !attestExpanded,
 				expandable: true,
+				expandableKey: 'attest',
+			});
+		}
+		if (incompleteProfiles.length > 0) {
+			const n = incompleteProfiles.length;
+			cards.push({
+				id: 'admin-inbox-profile-incomplete',
+				icon: 'badge',
+				title: `${n} ${n === 1 ? 'Spielerprofil unvollständig' : 'Spielerprofile unvollständig'}`,
+				sub: 'Telefon, Notfallkontakt oder Spielerpass-Nr. fehlen',
+				color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',
+				action: () => incompleteExpanded = !incompleteExpanded,
+				expandable: true,
+				expandableKey: 'incomplete',
 			});
 		}
 		return cards;
 	});
+
+	function missingFieldsLabel(p) {
+		const labels = [];
+		if (!p.phone)                    labels.push('Telefon');
+		if (!p.emergency_contact_phone)  labels.push('Notfallkontakt');
+		if (!p.spielerpass_nr)           labels.push('Spielerpass-Nr.');
+		return labels.join(' · ');
+	}
 
 	// ── Grouped tools (live counters injected) ────────────────────────────────
 	const sections = $derived.by(() => [
@@ -258,7 +291,7 @@
 			icon: 'campaign',
 			color: '#ea580c',
 			actions: [
-				{ icon: 'newspaper',     label: 'News verfassen' },
+				{ icon: 'newspaper',     label: 'News verfassen', live: true, open: () => newsCreateOpen = true },
 				{ icon: 'notifications', label: 'Push an alle senden' },
 				{ icon: 'poll',          label: 'Umfrage erstellen' },
 				{ icon: 'celebration',   label: 'Event anlegen' },
@@ -320,7 +353,11 @@
 		</div>
 	{:else}
 		<div class="inbox">
-			{#each inboxCards as card}
+			{#each inboxCards as card (card.id ?? card.title)}
+				{@const expanded =
+					card.expandableKey === 'attest'     ? attestExpanded :
+					card.expandableKey === 'incomplete' ? incompleteExpanded :
+					false}
 				<button
 					id={card.id ?? undefined}
 					class="inbox-card"
@@ -335,23 +372,34 @@
 						{#if card.sub}<span class="inbox-sub">{card.sub}</span>{/if}
 					</div>
 					<span class="material-symbols-outlined inbox-arrow">
-						{card.expandable ? (attestExpanded ? 'expand_less' : 'expand_more') : 'chevron_right'}
+						{card.expandable ? (expanded ? 'expand_less' : 'expand_more') : 'chevron_right'}
 					</span>
 				</button>
-			{/each}
 
-			{#if attestExpanded && expiringAtteste.length > 0}
-				<div class="attest-list">
-					{#each expiringAtteste as p}
-						<div class="attest-row">
-							<span class="attest-name">{p.name}</span>
-							<span class="attest-date" class:attest-date--warn={daysUntil(p.medical_exam_expiry) < 0}>
-								{fmtDate(p.medical_exam_expiry)} · {attestDaysLabel(p.medical_exam_expiry)}
-							</span>
-						</div>
-					{/each}
-				</div>
-			{/if}
+				{#if card.expandableKey === 'attest' && attestExpanded && expiringAtteste.length > 0}
+					<div class="attest-list">
+						{#each expiringAtteste as p (p.id)}
+							<div class="attest-row">
+								<span class="attest-name">{p.name}</span>
+								<span class="attest-date" class:attest-date--warn={daysUntil(p.medical_exam_expiry) < 0}>
+									{fmtDate(p.medical_exam_expiry)} · {attestDaysLabel(p.medical_exam_expiry)}
+								</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				{#if card.expandableKey === 'incomplete' && incompleteExpanded && incompleteProfiles.length > 0}
+					<div class="attest-list">
+						{#each incompleteProfiles as p (p.id)}
+							<div class="attest-row">
+								<span class="attest-name">{p.name}</span>
+								<span class="attest-date">{missingFieldsLabel(p)}</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			{/each}
 		</div>
 	{/if}
 
@@ -403,10 +451,11 @@
 	</div>
 </div>
 
-<AdminRollen      bind:open={rollenOpen} />
-<AdminTraining    bind:open={trainingOpen} />
-<AdminAufstellung bind:open={aufstellungOpen} preselectedMatchId={aufstellungMatchId} />
-<AdminFeedback    bind:open={feedbackOpen} />
+<AdminRollen           bind:open={rollenOpen} />
+<AdminTraining         bind:open={trainingOpen} />
+<AdminAufstellung      bind:open={aufstellungOpen} preselectedMatchId={aufstellungMatchId} />
+<AdminFeedback         bind:open={feedbackOpen} />
+<AdminNewsCreateSheet  bind:open={newsCreateOpen} onCreated={loadData} />
 
 <style>
 	.admin-wrap { padding: var(--space-5) var(--space-5) var(--space-10); display: flex; flex-direction: column; gap: var(--space-4); }

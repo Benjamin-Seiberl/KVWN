@@ -10,7 +10,7 @@ The main session is a **routing layer**, not an implementer. Its job:
 
 1. Understand what the user wants (ask via `AskUserQuestion` if unclear).
 2. Pick the right subagent(s) in `.claude/agents/` for each phase.
-3. Launch them (parallel when independent).
+3. Launch them (parallel when independent). Launch as many agents as usefull to minimize time used
 4. Assemble their output into a result for the user.
 
 You do NOT explore code, write code, review code, run dev servers, or commit yourself — except when the task is trivial per the thresholds below.
@@ -186,6 +186,9 @@ Anything that mentions "feature", "add X", "refactor", "migration", "new compone
 npm run dev      # localhost:5173
 npm run build
 npm run preview  # localhost:4173
+
+# Edge Functions (Supabase) — deploy from supabase/functions/<name>/index.ts
+supabase functions deploy invite-player   # captain-only player invite (called from AdminRollen.svelte)
 ```
 
 No tests, linter, or formatter.
@@ -198,7 +201,7 @@ VITE_SUPABASE_ANON_KEY=...
 VITE_VAPID_PUBLIC_KEY=...
 ```
 
-`VAPID_PRIVATE_KEY` is server-side only — no `VITE_` prefix.
+`VAPID_PRIVATE_KEY` is server-side only — no `VITE_` prefix. Server-only too: `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`, `GOOGLE_CALENDAR_ID` (GCal sync).
 
 ### Stack
 
@@ -215,6 +218,8 @@ Svelte 5 runes + SvelteKit 2, Supabase (Postgres + Google Auth), Vercel (Node 22
                                             uebersicht hosts inline pill (?pill=spiele|turnier|landesbewerb) at the bottom
   profil/                                   tabs: uebersicht · einstellungen · admin(kapitaen)
 /api/push/notify            Web Push send endpoint
+/api/cron/gcal-sync         Google Calendar pull (Bearer CRON_SECRET, */15 cron)
+/api/gcal/events            Google Calendar push: POST/PATCH/DELETE (captain-gated)
 ```
 
 `playerRole` is `'kapitaen'` or `'user'`. All admin features gated on `kapitaen`.
@@ -242,7 +247,8 @@ Every `+page.svelte` is a thin router — separate `{#if}` blocks (not `{:else i
 - **`players.email`** — the RLS auth bridge. Policies match `auth.jwt() ->> 'email'` against `players.email`. No `auth_user_id` column.
 - **`matches.is_tournament` / `is_landesbewerb`** — boolean flags; no separate table per type.
 - **Player photos** — `static/images/<photo-or-name>.jpg`, built by `imgPath()`.
-- **`training_templates.lane_count` = Kapazität** pro Slot. Kein Rename (legacy). Bookings ohne `lane_number` (kapazitätsbasiert). `training_specials` = einmalige Sessions. `training_waitlist` = Warteliste. Buchen/Storno via RPCs `book_training_slot`, `cancel_training_booking`.
+- **`training_templates.lane_count` = Anzahl Bahnen** pro Slot. `training_specials` = einmalige Sessions. `training_waitlist` = Warteliste. Buchen/Storno via RPCs `book_training_lane(p_date, p_start, p_lane)`, `cancel_training_booking` (Migration `20260421_training_lanes.sql` ersetzt den älteren `book_training_slot`).
+- **`events.source` ∈ `'manual' | 'gcal'`** + `external_id` (Google event id, unique), `etag`, `synced_at`. Google-synced rows round-trip through `/api/gcal/events`; manuelle Legacy-Rows bleiben unberührt. Pull-Cron skipped Google-Events, deren Datum in `matches.date` liegt (Duplikat-Guard Übergangssaison).
 
 ### RLS write patterns
 
@@ -260,6 +266,7 @@ Never hardcode colours, spacing, or radii — always use tokens:
 
 ```
 --color-primary #CC0000  --color-secondary #D4AF37
+--color-success / --color-on-success / --color-success-container  (added 2026-04-23 für Task-Done-States)
 --color-surface-container-lowest / --color-surface-container
 --color-on-surface / --color-on-surface-variant
 --color-outline / --color-outline-variant
@@ -315,6 +322,8 @@ import { triggerToast }                  from '$lib/stores/toast.js';
 | Round codes H01–FNN | `$lib/utils/roundCode.js` |
 | Post-match question rotation | `$lib/utils/feedbackRotation.js` |
 | Push helpers | `$lib/push/register.js` |
+| Server-only Supabase admin client | `$lib/server/supabase-admin.js` → `sbAdmin()` |
+| Google Calendar helper (JWT, CRUD, mappers) | `$lib/server/gcal.js` |
 | UI primitives | `$lib/components/ui/` |
 | Sheet primitive | `$lib/components/BottomSheet.svelte` |
 | All global CSS + design tokens | `src/app.css` |

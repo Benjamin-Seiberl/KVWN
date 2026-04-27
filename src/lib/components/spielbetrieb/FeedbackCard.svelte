@@ -4,12 +4,18 @@
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { pickQuestion } from '$lib/utils/feedbackRotation.js';
 
+	/**
+	 * @prop {object} match              { id, opponent, ... } — current match
+	 * @prop {Array}  questions          rows from feedback_questions
+	 * @prop {object|null} existingFeedback  prior match_feedback row or null
+	 * @prop {Function} onSaved          called with the saved feedback row
+	 */
 	let { match, questions = [], existingFeedback = null, onSaved } = $props();
 
 	const question = $derived(pickQuestion(questions, match?.id, $playerId));
 
-	let answer = $state('');
-	let saving = $state(false);
+	let answer    = $state('');
+	let saving    = $state(false);
 	let justSaved = $state(false);
 
 	async function save() {
@@ -29,11 +35,13 @@
 			.select()
 			.maybeSingle();
 		saving = false;
-		if (!error) {
-			justSaved = true;
-			triggerToast('Feedback gespeichert');
-			onSaved?.(data);
+		if (error) {
+			triggerToast('Fehler: ' + error.message);
+			return;
 		}
+		justSaved = true;
+		triggerToast('Feedback gespeichert');
+		onSaved?.(data);
 	}
 </script>
 
@@ -82,17 +90,21 @@
 			onclick={save}
 		>
 			<span class="material-symbols-outlined">send</span>
-			Absenden
+			{saving ? 'Wird gesendet…' : 'Absenden'}
 		</button>
 	{/if}
 </section>
 
 <style>
 	.mw-feedback__hint {
-		display: flex; align-items: center; gap: var(--space-2);
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
 		font-size: var(--text-label-sm);
 		color: var(--color-on-surface-variant);
 		margin: var(--space-2) 0 var(--space-2);
 	}
-	.mw-feedback__hint .material-symbols-outlined { font-size: 1rem; }
+	.mw-feedback__hint .material-symbols-outlined {
+		font-size: 1rem;
+	}
 </style>

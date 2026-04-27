@@ -115,10 +115,14 @@ export function toGoogleResource(fields) {
 	if (!date) return resource;
 
 	if (time == null || time === '') {
-		// all-day
-		const nextDay = new Date(date + 'T00:00:00');
-		nextDay.setDate(nextDay.getDate() + 1);
-		const endStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth()+1).padStart(2,'0')}-${String(nextDay.getDate()).padStart(2,'0')}`;
+		// all-day — pure string-arithmetic, unabhängig von Prozess-TZ
+		const [y, m, d] = String(date).split('-').map(Number);
+		// UTC-Date als reine Kalender-Arithmetik (kein TZ-Drift)
+		const nextDayUtc = new Date(Date.UTC(y, m - 1, d + 1));
+		const endStr =
+			`${nextDayUtc.getUTCFullYear()}-` +
+			`${String(nextDayUtc.getUTCMonth() + 1).padStart(2, '0')}-` +
+			`${String(nextDayUtc.getUTCDate()).padStart(2, '0')}`;
 		resource.start = { date };
 		resource.end   = { date: endStr };
 	} else {
@@ -155,13 +159,26 @@ export function fromGoogle(ev) {
 		date = ev.start.date;
 		time = null;
 	} else if (ev.start?.dateTime) {
-		// timed event — interpret in the event's tz if given
+		// timed event — explizit in Europe/Vienna lesen, sonst driftet UTC-Prozess
+		// (z. B. Vercel) Termine um die Zeitzonen-Differenz.
 		const dt = new Date(ev.start.dateTime);
-		const y  = dt.getFullYear();
-		const mo = String(dt.getMonth() + 1).padStart(2, '0');
-		const da = String(dt.getDate()).padStart(2, '0');
-		const h  = String(dt.getHours()).padStart(2, '0');
-		const mi = String(dt.getMinutes()).padStart(2, '0');
+		const parts = new Intl.DateTimeFormat('en-CA', {
+			timeZone: TIME_ZONE,
+			year:   'numeric',
+			month:  '2-digit',
+			day:    '2-digit',
+			hour:   '2-digit',
+			minute: '2-digit',
+			hour12: false,
+		}).formatToParts(dt);
+		const get = (t) => parts.find(p => p.type === t)?.value ?? '';
+		const y  = get('year');
+		const mo = get('month');
+		const da = get('day');
+		let   h  = get('hour');
+		const mi = get('minute');
+		// Intl liefert 24 für Mitternacht in en-CA → auf 00 normalisieren
+		if (h === '24') h = '00';
 		date = `${y}-${mo}-${da}`;
 		time = `${h}:${mi}:00`;
 	}

@@ -49,6 +49,11 @@
   /* --- Info (Hinweis/Profil-Ergänzen-States) --- */
   --color-info:                 #3b82f6;
 
+  /* --- Warning (Turnier/Landesbewerb-Badges, Frist-Hinweise) --- */
+  --color-warning:              #b45309;
+  --color-warning-container:    color-mix(in srgb, var(--color-warning) 15%, var(--color-surface-container-lowest));
+  --color-on-warning:            #ffffff;
+
   /* --- Typografie --- */
   --font-display: 'Lexend', sans-serif;
   --font-body:    'Public Sans', sans-serif;

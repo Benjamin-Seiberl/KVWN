@@ -132,7 +132,7 @@
 		if (!$playerId || !slots.length) return;
 		saving = true;
 		const startKey = slots[0].start_time;
-		const { error } = await sb.from('training_key_duties').upsert({ date, start_time: startKey, player_id: $playerId });
+		const { error } = await sb.from('training_key_duties').upsert({ date, start_time: startKey, player_id: $playerId }, { onConflict: 'date,start_time' });
 		if (error) triggerToast('Fehler: ' + error.message);
 		else       triggerToast('Schlüssel-Dienst übernommen');
 		await loadSheet();
@@ -188,31 +188,32 @@
 	async function storno(bookingId) {
 		if (!bookingId || saving) return;
 		saving = true;
-		const { data, error } = await sb.rpc('cancel_training_booking', { p_booking_id: bookingId });
-		if (error) {
-			if (error.message.includes('same_day_storno_forbidden')) {
-				triggerToast('Storno am selben Tag nicht mehr möglich');
+		// Server-side: RPC + Promotion-Push laufen in einer Request — so geht
+		// der "Nachgerückt!"-Push auch dann raus, wenn das Browser-Tab des
+		// stornierenden Users sofort danach geschlossen wird.
+		try {
+			const { data: { session } } = await sb.auth.getSession();
+			const res = await fetch('/api/training/cancel', {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					Authorization: `Bearer ${session?.access_token ?? ''}`,
+				},
+				body: JSON.stringify({ booking_id: bookingId }),
+			});
+			const payload = await res.json().catch(() => ({}));
+			if (!res.ok || payload?.error) {
+				const msg = payload?.error ?? '';
+				if (typeof msg === 'string' && msg.includes('same_day_storno_forbidden')) {
+					triggerToast('Storno am selben Tag nicht mehr möglich');
+				} else {
+					triggerToast('Fehler: ' + (msg || res.statusText));
+				}
 			} else {
-				triggerToast('Fehler: ' + error.message);
+				triggerToast('Storniert');
 			}
-		} else {
-			triggerToast('Storniert');
-			const promoted = data?.promoted_player_id;
-			if (promoted) {
-				const promotedLane = data?.promoted_lane;
-				try {
-					await fetch('/api/push/notify', {
-						method: 'POST',
-						headers: { 'content-type': 'application/json' },
-						body: JSON.stringify({
-							player_ids: [promoted],
-							title: 'Nachgerückt!',
-							body: 'Du bist nachgerückt! Dein Training um ' + String(data.start_time).slice(0,5) + ' Uhr' + (promotedLane ? ' (Bahn ' + promotedLane + ')' : '') + ' ist gesichert.',
-							url: '/kalender',
-						}),
-					});
-				} catch {}
-			}
+		} catch (e) {
+			triggerToast('Fehler: ' + (e?.message ?? 'Storno fehlgeschlagen'));
 		}
 		await refreshBookings();
 		onReload?.();

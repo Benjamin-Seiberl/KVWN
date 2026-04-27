@@ -7,8 +7,14 @@ const VAPID_PUBLIC_KEY        = process.env.VAPID_PUBLIC_KEY        ?? '';
 const VAPID_PRIVATE_KEY       = process.env.VAPID_PRIVATE_KEY       ?? '';
 const SUPABASE_URL            = process.env.VITE_SUPABASE_URL       ?? '';
 const SUPABASE_SERVICE_KEY    = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const CRON_SECRET             = process.env.CRON_SECRET             ?? '';
 
 export const POST: RequestHandler = async ({ request }) => {
+	const auth = request.headers.get('authorization');
+	if (!CRON_SECRET || auth !== `Bearer ${CRON_SECRET}`) {
+		return new Response('Unauthorized', { status: 401 });
+	}
+
 	if (!VAPID_PRIVATE_KEY || !VAPID_PUBLIC_KEY) {
 		return new Response(JSON.stringify({ error: 'VAPID keys not configured' }), { status: 500 });
 	}
@@ -59,8 +65,16 @@ export const POST: RequestHandler = async ({ request }) => {
 				payload
 			);
 			sent++;
-		} catch {
-			// Abgelaufene Subscriptions stillschweigend ignorieren
+		} catch (err: any) {
+			// 410 Gone / 404 Not Found → Subscription ist tot, aufräumen
+			const code = err?.statusCode ?? err?.status;
+			if (code === 410 || code === 404) {
+				await admin
+					.from('push_subscriptions')
+					.delete()
+					.eq('endpoint', sub.endpoint);
+			}
+			// andere Fehler still schlucken
 		}
 	}
 

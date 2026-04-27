@@ -259,7 +259,8 @@
 					player_ids: playerIds,
 					title: 'Aufstellung veröffentlicht',
 					body: `${m.leagues?.name} vs. ${m.opponent} – bitte bestätigen`,
-					url: '/spielbetrieb',
+					url: '/',
+					pref_key: 'lineup',
 				}),
 			});
 			const { sent = 0 } = await res.json();
@@ -650,7 +651,7 @@
 	.aa-chevron     { font-size: 1.2rem; color: var(--color-outline); }
 	.aa-no-round {
 		width: 1.25rem; height: 1.25rem;
-		background: #b45309; color: #fff;
+		background: var(--color-warning); color: #fff;
 		border-radius: 50%;
 		font-size: 0.65rem; font-weight: 800;
 		display: flex; align-items: center; justify-content: center;
@@ -696,7 +697,7 @@
 		color: var(--color-outline); margin: 0 0 var(--space-2);
 		cursor: default;
 	}
-	.aa-section-title--warn { color: #b45309; cursor: pointer; }
+	.aa-section-title--warn { color: var(--color-warning); cursor: pointer; }
 
 	/* Lineup slots */
 	.aa-lineup { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
@@ -791,8 +792,8 @@
 	.aa-pool-initial { font-weight: 700; font-size: 0.7rem; color: var(--color-outline); }
 	.aa-pool-name-wrap { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 	.aa-pool-name { font-size: var(--text-body-sm); font-weight: 600; color: var(--color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.aa-pool-reason { font-size: 0.65rem; color: #b45309; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.aa-blocked-icon { font-size: 0.9rem; color: #b45309; align-self: center; }
+	.aa-pool-reason { font-size: 0.65rem; color: var(--color-warning); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.aa-blocked-icon { font-size: 0.9rem; color: var(--color-warning); align-self: center; }
 
 	.aa-ineligible-section { margin-bottom: var(--space-2); }
 	.aa-ineligible-section summary { margin-bottom: var(--space-2); }
@@ -804,7 +805,7 @@
 		background: rgba(180, 83, 9, 0.1);
 		border: 1px solid rgba(180, 83, 9, 0.35);
 		border-radius: var(--radius-md);
-		color: #b45309;
+		color: var(--color-warning);
 		margin-bottom: var(--space-3);
 	}
 	.aa-publish-warn .material-symbols-outlined {

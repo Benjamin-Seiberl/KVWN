@@ -18,7 +18,7 @@
 		background: rgba(255, 255, 255, 0.22);
 		backdrop-filter: blur(24px) saturate(180%);
 		-webkit-backdrop-filter: blur(24px) saturate(180%);
-		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+		box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.4);
 		display: flex;
 		align-items: center;
 		justify-content: center;

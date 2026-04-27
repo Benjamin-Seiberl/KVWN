@@ -104,18 +104,14 @@
 		border-radius: 50%;
 		background: #fff;
 		border: none;
-		box-shadow:
-			0 2px 8px rgba(0,0,0,0.18),
-			0 0 0 0.5px rgba(0,0,0,0.06);
+		box-shadow: var(--shadow-card);
 		cursor: pointer;
 		transition: transform 120ms cubic-bezier(0.34, 1.3, 0.64, 1),
 		            box-shadow 120ms ease;
 	}
 	.ios-slider::-webkit-slider-thumb:active {
 		transform: scale(1.12);
-		box-shadow:
-			0 4px 16px rgba(0,0,0,0.22),
-			0 0 0 0.5px rgba(0,0,0,0.06);
+		box-shadow: var(--shadow-float);
 	}
 
 	/* Firefox thumb */
@@ -125,9 +121,7 @@
 		border-radius: 50%;
 		background: #fff;
 		border: none;
-		box-shadow:
-			0 2px 8px rgba(0,0,0,0.18),
-			0 0 0 0.5px rgba(0,0,0,0.06);
+		box-shadow: var(--shadow-card);
 		cursor: pointer;
 	}
 	/* Firefox track */

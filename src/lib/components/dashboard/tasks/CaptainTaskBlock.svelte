@@ -11,9 +11,11 @@
 	// a) Anzahl Spieler mit confirmed=NULL auf aktuell veröffentlichten Aufstellungen.
 	// b) Kommender cal_week mit Match aber keiner published Aufstellung.
 	// c) Neue Abwesenheiten (letzte 7d) die mit einer published Aufstellung kollidieren.
+	// d) Turniere mit abgelaufener voting_deadline (Voting beendet / Datum offen / Spielplan offen)
 	let unconfirmedCount = $state(0);
 	let missingLineup    = $state(null);   // { round, match } oder null
 	let absenceConflicts = $state([]);     // [{ playerName, date, opponent }]
+	let tourneyTasks     = $state([]);     // [{ id, title, reason }]
 	let loading          = $state(true);
 
 	async function load(pid) {
@@ -105,6 +107,23 @@
 				if (conflicts.length >= 3) break;
 			}
 			absenceConflicts = conflicts;
+
+			// d) Turniere mit abgelaufener voting_deadline und nicht final bestätigt.
+			const nowIso = new Date().toISOString();
+			const { data: tourneys, error: tErr } = await sb.from('tournaments')
+				.select('id, title, status, voting_deadline, confirmed_date')
+				.in('status', ['voting', 'voting_closed', 'scheduling'])
+				.lt('voting_deadline', nowIso)
+				.order('voting_deadline', { ascending: false });
+			if (tErr) { triggerToast('Fehler: ' + tErr.message); return; }
+
+			tourneyTasks = (tourneys ?? []).map(t => {
+				let reason = 'Voting beendet';
+				if (t.status === 'voting_closed' && !t.confirmed_date) reason = 'Datum offen';
+				else if (t.status === 'voting_closed' && t.confirmed_date) reason = 'Spielplan offen';
+				else if (t.status === 'scheduling') reason = 'Spielplan offen';
+				return { id: t.id, title: t.title ?? 'Turnier', reason };
+			});
 		} finally {
 			loading = false;
 		}
@@ -119,14 +138,20 @@
 	});
 
 	function openAufstellungen() {
-		setSubtab('/spielbetrieb', 'aufstellungen');
+		setSubtab('/spielbetrieb', 'spiele');
+		goto('/spielbetrieb');
+	}
+
+	function openTurniere() {
+		setSubtab('/spielbetrieb', 'turniere');
 		goto('/spielbetrieb');
 	}
 
 	let totalSignals = $derived(
 		(unconfirmedCount > 0 ? 1 : 0) +
 		(missingLineup ? 1 : 0) +
-		absenceConflicts.length
+		absenceConflicts.length +
+		tourneyTasks.length
 	);
 </script>
 
@@ -186,6 +211,20 @@
 						<span class="ctb-meta">Kollidiert mit {c.opponent} · {fmtDate(c.date)}</span>
 					</div>
 					<span class="ctb-cta">Prüfen →</span>
+				</button>
+			{/each}
+
+			{#each tourneyTasks as t (t.id)}
+				<button
+					class="ctb-card"
+					onclick={openTurniere}
+					aria-label="Turnier verwalten"
+				>
+					<div class="ctb-body">
+						<span class="ctb-title">Turnier braucht Aufmerksamkeit</span>
+						<span class="ctb-meta">{t.title} – {t.reason}</span>
+					</div>
+					<span class="ctb-cta">Öffnen →</span>
 				</button>
 			{/each}
 		</div>

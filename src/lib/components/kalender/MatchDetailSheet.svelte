@@ -51,7 +51,7 @@
 
 	function goToAufstellung() {
 		open = false;
-		setSubtab('/spielbetrieb', 'aufstellungen');
+		setSubtab('/spielbetrieb', 'spiele');
 		goto('/spielbetrieb');
 	}
 </script>

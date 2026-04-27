@@ -16,7 +16,7 @@
 	const OVERVIEW_TABS = {
 		'/':             'neuigkeiten',
 		'/kalender':     'uebersicht',
-		'/spielbetrieb': 'uebersicht',
+		'/spielbetrieb': 'spiele',
 		'/profil':       'uebersicht',
 	};
 
@@ -235,7 +235,7 @@
 		height: 38px;
 		border-radius: 50%;
 		background: var(--color-surface-container-lowest, #fff);
-		box-shadow: 0 2px 14px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04);
+		box-shadow: var(--shadow-float);
 		display: flex;
 		align-items: center;
 		justify-content: center;

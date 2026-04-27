@@ -519,7 +519,7 @@
 	.action-card--blue { background: #eff6ff; border-color: #93c5fd; }
 	.action-icon { font-size: 1.4rem; flex-shrink: 0; font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
 	.action-card--warn .action-icon { color: #ca8a04; }
-	.action-card--gold .action-icon { color: #b45309; }
+	.action-card--gold .action-icon { color: var(--color-warning); }
 	.action-card--blue .action-icon { color: #1d4ed8; }
 	.action-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	.action-title { font-weight: 700; font-size: var(--text-label-md); color: var(--color-on-surface); }

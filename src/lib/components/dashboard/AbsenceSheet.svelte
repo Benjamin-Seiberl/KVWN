@@ -2,13 +2,11 @@
 	import { sb } from '$lib/supabase';
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
+	import { fmtDate } from '$lib/utils/dates.js';
 	import BottomSheet from '../BottomSheet.svelte';
 	import { onMount } from 'svelte';
 
 	let { open = $bindable(false), onReload } = $props();
-
-	const MONTHS = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-	const DAY_SHORT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
 
 	let fromDate = $state('');
 	let toDate   = $state('');
@@ -61,7 +59,7 @@
 			.from('game_plan_players')
 			.select('id, game_plans!inner(lineup_published_at, matches!inner(date, opponent, leagues(name)))')
 			.eq('player_id', pid)
-			.in('confirmed', [null, true])
+			.or('confirmed.is.null,confirmed.eq.true')
 			.not('game_plans.lineup_published_at', 'is', null)
 			.gte('game_plans.matches.date', fromDate)
 			.lte('game_plans.matches.date', toDate);
@@ -129,14 +127,10 @@
 	}
 
 	async function removeAbsence(id) {
-		await sb.from('absences').delete().eq('id', id);
+		const { error } = await sb.from('absences').delete().eq('id', id);
+		if (error) { triggerToast('Fehler: ' + error.message); return; }
 		absences = absences.filter(a => a.id !== id);
 		triggerToast('Abwesenheit entfernt');
-	}
-
-	function fmtDate(d) {
-		const dt = new Date(d + 'T12:00');
-		return DAY_SHORT[dt.getDay()] + ', ' + dt.getDate() + '. ' + MONTHS[dt.getMonth()];
 	}
 
 	function fmtRange(a) {

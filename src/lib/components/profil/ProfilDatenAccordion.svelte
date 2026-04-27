@@ -294,7 +294,7 @@
 		font-weight: 800;
 	}
 	.acc-row-value:global(.val-soon) {
-		color: #b45309;
+		color: var(--color-warning);
 		font-weight: 700;
 	}
 	.acc-row-arrow {
