@@ -159,11 +159,6 @@
 				fn:    () => setRsvp(ev.id, 'yes'),
 			},
 			{
-				label: r === 'no' ? 'Absage zurücknehmen' : 'Absagen',
-				icon:  'cancel',
-				fn:    () => setRsvp(ev.id, 'no'),
-			},
-			{
 				label: 'Details öffnen',
 				icon:  'info',
 				fn:    () => openSheet(ev),
@@ -282,17 +277,57 @@
 		}
 	}
 
-	// ── RSVP-Pill Click (mit stopPropagation) ───────────────────────────────────
-	function onPillClick(eventId, response, e) {
-		e.stopPropagation();
-		setRsvp(eventId, response);
+	// ── Coin-Toggle: setRsvp('yes') wrappen + Konfetti bei neuem 'yes' ─────────
+	async function toggleRsvp(eventId, btnEl) {
+		const wasActive = rsvpFor(eventId) === 'yes';
+		await setRsvp(eventId, 'yes'); // bestehender Toggle: 2. Tap = Abmelden via DELETE
+		const isNowActive = rsvpFor(eventId) === 'yes';
+		if (!wasActive && isNowActive) {
+			spawnConfetti(btnEl);
+		}
 	}
 
-	function onPillKeydown(eventId, response, e) {
+	function onCoinClick(eventId, e) {
+		e.stopPropagation();
+		toggleRsvp(eventId, e.currentTarget);
+	}
+
+	function onCoinKeydown(eventId, e) {
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			e.stopPropagation();
-			setRsvp(eventId, response);
+			toggleRsvp(eventId, e.currentTarget);
+		}
+	}
+
+	// ── Konfetti (vanilla, body-portaled, respect prefers-reduced-motion) ──────
+	function spawnConfetti(originEl) {
+		if (!originEl) return;
+		if (typeof window === 'undefined') return;
+		// reduced-motion → kein Konfetti
+		if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+		const rect = originEl.getBoundingClientRect();
+		const cx = rect.left + rect.width / 2;
+		const cy = rect.top  + rect.height / 2;
+		const colors = ['#D4AF37', '#CC0000', '#fff', '#f7d96a', '#a8001e'];
+		const N = 18;
+		for (let i = 0; i < N; i++) {
+			const piece = document.createElement('span');
+			piece.className = 'ue-confetti-piece';
+			const angle = (Math.PI * 2 * i) / N + (Math.random() - 0.5) * 0.4;
+			const distance = 60 + Math.random() * 40;
+			const dx = Math.cos(angle) * distance;
+			const dy = Math.sin(angle) * distance + Math.random() * 30; // leicht nach unten
+			piece.style.setProperty('--cx', cx + 'px');
+			piece.style.setProperty('--cy', cy + 'px');
+			piece.style.setProperty('--dx', dx + 'px');
+			piece.style.setProperty('--dy', dy + 'px');
+			piece.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
+			piece.style.setProperty('--bg', colors[i % colors.length]);
+			piece.style.setProperty('--delay', (Math.random() * 60) + 'ms');
+			document.body.appendChild(piece);
+			setTimeout(() => piece.remove(), 900);
 		}
 	}
 </script>
@@ -373,36 +408,27 @@
 									{#if ev.location} · {ev.location}{/if}
 								</span>
 							</div>
-							<div class="ue-rsvp">
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<span
-									class="ue-pill ue-pill--yes"
-									class:ue-pill--active={r === 'yes'}
-									role="button"
-									tabindex="0"
-									aria-label={r === 'yes' ? 'Zusage zurücknehmen' : 'Zusagen'}
-									aria-pressed={r === 'yes'}
-									onclick={(e) => onPillClick(ev.id, 'yes', e)}
-									onkeydown={(e) => onPillKeydown(ev.id, 'yes', e)}
-									onpointerdown={(e) => e.stopPropagation()}
-								>
-									<span class="material-symbols-outlined">check</span>
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<span
+								class="ue-coin"
+								class:ue-coin--active={r === 'yes'}
+								role="button"
+								tabindex="0"
+								aria-label={r === 'yes' ? 'Zusage zurücknehmen' : 'Zusagen'}
+								aria-pressed={r === 'yes'}
+								onclick={(e) => onCoinClick(ev.id, e)}
+								onkeydown={(e) => onCoinKeydown(ev.id, e)}
+								onpointerdown={(e) => e.stopPropagation()}
+							>
+								<span class="ue-coin-inner">
+									<span class="ue-coin-face ue-coin-face--front" aria-hidden="true">
+										<span class="material-symbols-outlined">check</span>
+									</span>
+									<span class="ue-coin-face ue-coin-face--back" aria-hidden="true">
+										<span class="material-symbols-outlined">add</span>
+									</span>
 								</span>
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<span
-									class="ue-pill ue-pill--no"
-									class:ue-pill--active={r === 'no'}
-									role="button"
-									tabindex="0"
-									aria-label={r === 'no' ? 'Absage zurücknehmen' : 'Absagen'}
-									aria-pressed={r === 'no'}
-									onclick={(e) => onPillClick(ev.id, 'no', e)}
-									onkeydown={(e) => onPillKeydown(ev.id, 'no', e)}
-									onpointerdown={(e) => e.stopPropagation()}
-								>
-									<span class="material-symbols-outlined">close</span>
-								</span>
-							</div>
+							</span>
 						</div>
 					</ContextMenu>
 				</div>
@@ -575,40 +601,102 @@
 		color: var(--color-on-surface-variant);
 	}
 
-	/* Inline-RSVP-Pills */
-	.ue-rsvp {
-		display: flex;
-		gap: 6px;
+	/* ── Inline-RSVP Coin (3D-Münzen-Flip) ─────────────────────────────────── */
+	.ue-coin {
+		display: inline-block;
+		position: relative;
+		width: 40px;
+		height: 40px;
 		flex-shrink: 0;
-	}
-	.ue-pill {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		border-radius: var(--radius-full);
-		border: 1.5px solid var(--color-outline-variant);
-		background: var(--color-surface-container-lowest);
-		color: var(--color-on-surface-variant);
+		border: none;
+		background: transparent;
+		padding: 0;
 		cursor: pointer;
-		transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 80ms ease;
+		perspective: 600px;
 		-webkit-tap-highlight-color: transparent;
+		border-radius: var(--radius-full);
 	}
-	.ue-pill:active { transform: scale(0.92); }
-	.ue-pill .material-symbols-outlined {
-		font-size: 1rem;
-		font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+	.ue-coin:active { transform: scale(0.94); }
+	.ue-coin-inner {
+		position: absolute;
+		inset: 0;
+		transform-style: preserve-3d;
+		transform: rotateY(0deg);
+		transition: transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
 	}
-	.ue-pill--yes.ue-pill--active {
-		background: var(--color-secondary);
-		border-color: var(--color-secondary);
+	.ue-coin--active .ue-coin-inner {
+		transform: rotateY(180deg);
+	}
+	.ue-coin-face {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		border-radius: var(--radius-full);
+		backface-visibility: hidden;
+		-webkit-backface-visibility: hidden;
+	}
+	.ue-coin-face .material-symbols-outlined {
+		font-size: 1.05rem;
+		font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 20;
+	}
+	/* Rückseite (= sichtbar im Default = INAKTIV) */
+	.ue-coin-face--back {
+		background: var(--color-surface-container-lowest);
+		border: 1.5px solid var(--color-outline-variant);
+		color: var(--color-on-surface-variant);
+		transform: rotateY(0deg);
+	}
+	/* Vorderseite (= sichtbar wenn AKTIV — startet 180° vorgedreht) */
+	.ue-coin-face--front {
+		background: linear-gradient(135deg,
+			var(--color-secondary),
+			color-mix(in srgb, var(--color-secondary) 60%, black));
 		color: #fff;
+		box-shadow:
+			0 0 0 2px color-mix(in srgb, var(--color-secondary) 30%, transparent),
+			0 4px 12px color-mix(in srgb, var(--color-secondary) 40%, transparent);
+		transform: rotateY(180deg);
 	}
-	.ue-pill--no.ue-pill--active {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: #fff;
+
+	/* Reduced-Motion: kein Flip, harter Wechsel */
+	@media (prefers-reduced-motion: reduce) {
+		.ue-coin-inner { transition: transform 1ms linear; }
+	}
+
+	/* ── Konfetti-Partikel (body-portaled, daher :global) ──────────────────── */
+	:global(.ue-confetti-piece) {
+		position: fixed;
+		left: var(--cx);
+		top: var(--cy);
+		width: 8px;
+		height: 12px;
+		background: var(--bg);
+		border-radius: 2px;
+		pointer-events: none;
+		z-index: 9999;
+		animation: ue-confetti-fly 800ms cubic-bezier(0.32, 0.72, 0, 1) var(--delay) forwards;
+		transform-origin: center;
+		opacity: 0;
+	}
+	@keyframes ue-confetti-fly {
+		0% {
+			transform: translate(-50%, -50%) rotate(0deg) scale(0.6);
+			opacity: 1;
+		}
+		70% {
+			opacity: 1;
+		}
+		100% {
+			transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(1);
+			opacity: 0;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global(.ue-confetti-piece) {
+			animation: none;
+			display: none;
+		}
 	}
 
 	/* Empty-State (alle ausgeblendet) */

@@ -26,24 +26,24 @@
 		<MatchCarousel />
 	</div>
 
-	<!-- 2: Kapitän-Aufgaben (nur wenn kapitaen UND ≥1 Signal) -->
+	<!-- 2: Nächstes Training -->
 	<div class="dash-section" style="--i:2">
+		<NextTrainingCard />
+	</div>
+
+	<!-- 3: Kapitän-Aufgaben (nur wenn kapitaen UND ≥1 Signal) -->
+	<div class="dash-section" style="--i:3">
 		<CaptainTaskBlock />
 	</div>
 
-	<!-- 3: Offene Aufgaben (Lineup-Bestätigung, Landesbewerb-Anmeldung) -->
-	<div class="dash-section" style="--i:3">
+	<!-- 4: Offene Aufgaben (Lineup-Bestätigung, Landesbewerb-Anmeldung) -->
+	<div class="dash-section" style="--i:4">
 		<TaskBlock />
 	</div>
 
-	<!-- 4: Mein nächstes Spiel (rendert nur wenn ich auf einer Aufstellung stehe) -->
-	<div class="dash-section" style="--i:4">
-		<MyNextMatchCard />
-	</div>
-
-	<!-- 5: Nächstes Training -->
+	<!-- 5: Mein nächstes Spiel (rendert nur wenn ich auf einer Aufstellung stehe) -->
 	<div class="dash-section" style="--i:5">
-		<NextTrainingCard />
+		<MyNextMatchCard />
 	</div>
 
 	<!-- 6: Upcoming events -->
