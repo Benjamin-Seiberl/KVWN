@@ -24,13 +24,13 @@
 	let lineup         = $state([]);     // [{id, position, player_id, player_name, players}]
 	let allPlayers     = $state([]);
 	let rosters        = $state([]);     // [{player_id, position, team_id, league_tier, league_name}]
-	let lineupsByRound = $state({});     // { [round_code]: [{team_id, league_tier, league_name, player_ids}] }
+	let lineupsByRound = $state({});     // { [round]: [{team_id, league_tier, league_name, player_ids}] }
 	let saving         = $state(false);
 	let publishing     = $state(false);
 	let starterCount   = $state(4);
 	let absences       = $state([]);         // for current match date
 	let playerStats    = $state({});         // player_id → { seasonAvg, form5 }
-	let playedInRoundIds = $state(new Set()); // player_ids die in selectedMatch.round_code schon gespielt haben
+	let playedInRoundIds = $state(new Set()); // player_ids die in selectedMatch.round schon gespielt haben
 
 	// Pool sort + highlight (Phase 2 Redesign)
 	let sortMode       = $state('form5');    // 'form5' | 'season'
@@ -54,7 +54,7 @@
 
 		const { data, error } = await sb
 			.from('matches')
-			.select('id, date, time, opponent, home_away, cal_week, round_code, league_id, leagues(name, tier)')
+			.select('id, date, time, opponent, home_away, cal_week, round, league_id, leagues(name, tier)')
 			.gte('date', toDateStr(now))
 			.lte('date', toDateStr(until))
 			.order('date')
@@ -96,19 +96,38 @@
 		absences = absenceRows ?? [];
 
 		// Scores laden (Form-Trend + Saison-Schnitt + Schon-gespielt-Sektion)
-		const { data: scoreRows } = await sb
-			.from('game_plan_players')
-			.select('player_id, score, game_plans!inner(round_code, matches!inner(date))')
-			.eq('played', true)
-			.not('score', 'is', null);
+		// PostgREST kann hier kein matches!inner nutzen, weil game_plans.match_id meist NULL ist
+		// (game_plans ↔ matches join geht via cal_week + league_id, siehe CLAUDE.md).
+		// Daher 2-Query-Approach + clientseitiger Map-Join.
+		const [scoreRowsRes, allMatchesRes] = await Promise.all([
+			sb.from('game_plan_players')
+				.select('player_id, score, game_plans!inner(cal_week, league_id)')
+				.eq('played', true)
+				.not('score', 'is', null),
+			sb.from('matches')
+				.select('cal_week, league_id, date, round'),
+		]);
+		const scoreRows  = scoreRowsRes.data ?? [];
+		const allMatches = allMatchesRes.data ?? [];
+		if (scoreRowsRes.error)  triggerToast('Fehler: ' + scoreRowsRes.error.message);
+		if (allMatchesRes.error) triggerToast('Fehler: ' + allMatchesRes.error.message);
+
+		// Map (cal_week|league_id) → match (für date + round Lookup)
+		const matchByCalLeague = new Map();
+		for (const am of allMatches) {
+			matchByCalLeague.set(`${am.cal_week}|${am.league_id}`, am);
+		}
+
 		const byPlayer = {};
 		const playedInRound = new Set();
-		for (const row of scoreRows ?? []) {
+		for (const row of scoreRows) {
 			if (!row.player_id || row.score == null) continue;
-			const date = row.game_plans?.matches?.date;
-			if (!date) continue;
-			(byPlayer[row.player_id] ??= []).push({ score: Number(row.score), date });
-			if (m.round_code && row.game_plans?.round_code === m.round_code) {
+			const gp = row.game_plans;
+			if (!gp) continue;
+			const am = matchByCalLeague.get(`${gp.cal_week}|${gp.league_id}`);
+			if (!am) continue;
+			(byPlayer[row.player_id] ??= []).push({ score: Number(row.score), date: am.date });
+			if (m.round && am.round === m.round) {
 				playedInRound.add(row.player_id);
 			}
 		}
@@ -138,29 +157,44 @@
 		}));
 
 		// Rundencode-Konflikte laden (alle Aufstellungen derselben Runde, rundenbasiert!)
+		// matches.round_code ist überall NULL — nutze matches.round (z. B. 'F9').
+		// game_plans hat kein round-Feld; ableiten via cal_week+league_id-Map zu matches.
 		lineupsByRound = {};
-		if (m.round_code) {
-			const { data: rdData } = await sb
-				.from('game_plans')
-				.select('league_id, round_code, leagues(name, tier), game_plan_players(player_id)')
-				.eq('round_code', m.round_code);
+		if (m.round) {
+			// Alle matches in derselben Runde (kann mehrere Ligen umfassen)
+			const matchesInRound = allMatches.filter(am => am.round === m.round);
+			if (matchesInRound.length > 0) {
+				// Lade game_plans für diese (cal_week, league_id) Paare
+				const calWeeks  = [...new Set(matchesInRound.map(am => am.cal_week))];
+				const leagueIds = [...new Set(matchesInRound.map(am => am.league_id))];
+				const { data: rdData, error: rdErr } = await sb
+					.from('game_plans')
+					.select('league_id, cal_week, leagues(name, tier), game_plan_players(player_id)')
+					.in('cal_week',  calWeeks)
+					.in('league_id', leagueIds);
+				if (rdErr) triggerToast('Fehler: ' + rdErr.message);
 
-			const byTeam = {};
-			for (const gp of rdData ?? []) {
-				const tid = gp.league_id;
-				if (!byTeam[tid]) {
-					byTeam[tid] = {
-						team_id:     tid,
-						league_tier: gp.leagues?.tier ?? 99,
-						league_name: gp.leagues?.name ?? '',
-						player_ids:  [],
-					};
+				// Filtere nur game_plans, deren (cal_week, league_id) wirklich in matchesInRound vorkommt
+				const validPairs = new Set(matchesInRound.map(am => `${am.cal_week}|${am.league_id}`));
+				const byTeam = {};
+				for (const gp of rdData ?? []) {
+					const key = `${gp.cal_week}|${gp.league_id}`;
+					if (!validPairs.has(key)) continue;
+					const tid = gp.league_id;
+					if (!byTeam[tid]) {
+						byTeam[tid] = {
+							team_id:     tid,
+							league_tier: gp.leagues?.tier ?? 99,
+							league_name: gp.leagues?.name ?? '',
+							player_ids:  [],
+						};
+					}
+					for (const gpp of gp.game_plan_players ?? []) {
+						byTeam[tid].player_ids.push(gpp.player_id);
+					}
 				}
-				for (const gpp of gp.game_plan_players ?? []) {
-					byTeam[tid].player_ids.push(gpp.player_id);
-				}
+				lineupsByRound[m.round] = Object.values(byTeam);
 			}
-			lineupsByRound[m.round_code] = Object.values(byTeam);
 		}
 
 		// Bestehende Aufstellung laden
@@ -183,7 +217,7 @@
 		const matchCtx = {
 			team_id:     selectedMatch.league_id,
 			league_tier: selectedMatch.leagues?.tier ?? 99,
-			round_code:  selectedMatch.round_code ?? null,
+			round_code:  selectedMatch.round ?? null,
 			date:        selectedMatch.date,
 		};
 		return allPlayers
@@ -215,7 +249,7 @@
 
 	// Spieler die in dieser Runde schon eingesetzt wurden — für Schon-gespielt-Sektion
 	let playedInRoundList = $derived.by(() => {
-		if (!selectedMatch?.round_code || playedInRoundIds.size === 0) return [];
+		if (!selectedMatch?.round || playedInRoundIds.size === 0) return [];
 		return allPlayers
 			.filter(p => playedInRoundIds.has(p.id))
 			.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de'));
@@ -241,7 +275,7 @@
 	function scrollToPlayer(playerId) {
 		const el = document.getElementById(`ap-card-${playerId}`);
 		if (!el) {
-			const round = selectedMatch?.round_code ?? '';
+			const round = selectedMatch?.round ?? '';
 			triggerToast(`Hat in Runde ${round} gespielt`);
 			return;
 		}
@@ -490,7 +524,7 @@
 							<span class="aa-match-label">{matchLabel(m)}</span>
 							<span class="aa-match-sub">{matchSub(m)}</span>
 						</div>
-						{#if !m.round_code}
+						{#if !m.round}
 							<span class="aa-no-round" title="Rundencode fehlt">!</span>
 						{/if}
 						<span class="material-symbols-outlined aa-chevron">chevron_right</span>
@@ -511,8 +545,8 @@
 			<span class="aa-match-hero-label">{matchLabel(selectedMatch)}</span>
 			<span class="aa-match-hero-sub">
 				{matchSub(selectedMatch)} · {starterCount} Starter
-				{#if selectedMatch.round_code}
-					· <span class="aa-round-pill">{selectedMatch.round_code}</span>
+				{#if selectedMatch.round}
+					· <span class="aa-round-pill">{selectedMatch.round}</span>
 				{/if}
 			</span>
 		</div>
@@ -543,7 +577,7 @@
 							type="button"
 							class="ap-played-avatar"
 							onclick={() => scrollToPlayer(p.id)}
-							aria-label={`${p.name} hat in Runde ${selectedMatch.round_code} schon gespielt, zum Pool scrollen`}
+							aria-label={`${p.name} hat in Runde ${selectedMatch.round} schon gespielt, zum Pool scrollen`}
 						>
 							<div class="ap-played-photo">
 								<img
@@ -551,7 +585,7 @@
 									alt=""
 									onerror={(e) => { e.currentTarget.style.display = 'none'; }}
 								/>
-								<span class="ap-played-badge">{selectedMatch.round_code}</span>
+								<span class="ap-played-badge">{selectedMatch.round}</span>
 							</div>
 							<span class="ap-played-name">{shortName(p.name)}</span>
 						</button>
