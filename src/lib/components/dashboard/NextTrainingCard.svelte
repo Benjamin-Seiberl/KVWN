@@ -3,13 +3,12 @@
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { DAY_SHORT, MONTH_SHORT, toDateStr, daysUntil } from '$lib/utils/dates.js';
-	import TrainingBookingSheet from '$lib/components/dashboard/TrainingBookingSheet.svelte';
+	import TrainingDetailSheet from '$lib/components/kalender/TrainingDetailSheet.svelte';
 
 	// Nächster Trainings-Slot (chronologisch). Enthält Datum + Zeitfenster.
 	let slot     = $state(null);    // { date, start_time, end_time, capacity, isSpecial, note }
 	let bookings = $state([]);      // bookings des gefundenen Slots (inkl. lane_number)
 	let waitlist = $state([]);      // waitlist-Einträge des gefundenen Slots
-	let upcomingSlots = $state([]); // weitere kommende Slots (für "Andere Termine" im Sheet)
 	let loading  = $state(true);
 	let bookingOpen = $state(false);
 
@@ -98,7 +97,6 @@
 				slot = null;
 				bookings = [];
 				waitlist = [];
-				upcomingSlots = [];
 				return;
 			}
 
@@ -123,47 +121,6 @@
 			}
 			bookings = bkRes.data ?? [];
 			waitlist = wlRes.data ?? [];
-
-			// "Andere Termine" — die nächsten 5 Slots nach `next` (für Sheet-Auswahl).
-			const others = futureCandidates.slice(1, 6);
-			if (others.length === 0) {
-				upcomingSlots = [];
-			} else {
-				const dates = [...new Set(others.map(o => o.date))];
-				const [otherBkRes, otherWlRes] = await Promise.all([
-					sb.from('training_bookings')
-						.select('date, start_time, lane_number')
-						.in('date', dates),
-					sb.from('training_waitlist')
-						.select('date, start_time')
-						.in('date', dates),
-				]);
-				if (otherBkRes.error || otherWlRes.error) {
-					const err = otherBkRes.error ?? otherWlRes.error;
-					triggerToast('Fehler: ' + err.message);
-					return;
-				}
-				const bookedKey = (b) => `${b.date}|${String(b.start_time).slice(0,5)}`;
-				const bookCounts = new Map();
-				for (const b of otherBkRes.data ?? []) {
-					const k = bookedKey(b);
-					bookCounts.set(k, (bookCounts.get(k) ?? 0) + 1);
-				}
-				const waitCounts = new Map();
-				for (const w of otherWlRes.data ?? []) {
-					const k = bookedKey(w);
-					waitCounts.set(k, (waitCounts.get(k) ?? 0) + 1);
-				}
-				upcomingSlots = others.map(o => {
-					const k = `${o.date}|${o.start_time.slice(0,5)}`;
-					const taken = bookCounts.get(k) ?? 0;
-					return {
-						...o,
-						freeSpots: Math.max(0, o.capacity - taken),
-						waitCount: waitCounts.get(k) ?? 0,
-					};
-				});
-			}
 		} finally {
 			loading = false;
 		}
@@ -271,14 +228,7 @@
 	{/if}
 </div>
 
-<TrainingBookingSheet
-	bind:open={bookingOpen}
-	{slot}
-	{bookings}
-	{waitlist}
-	{upcomingSlots}
-	onReload={load}
-/>
+<TrainingDetailSheet bind:open={bookingOpen} date={slot?.date ?? null} onReload={load} />
 
 <style>
 	.ntc-wrap {
