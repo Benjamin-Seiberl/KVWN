@@ -189,7 +189,7 @@
 
 <div class="ntc-wrap">
 	<div class="sec-head">
-		<span class="material-symbols-outlined sec-icon">sports_tennis</span>
+		<span class="sec-emoji" aria-hidden="true">🎳</span>
 		<h3 class="sec-title">Nächstes Training</h3>
 	</div>
 
@@ -262,10 +262,11 @@
 		gap: 7px;
 		margin-bottom: var(--space-3);
 	}
-	.sec-icon {
-		font-size: 1.1rem;
-		color: var(--color-secondary);
-		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	.sec-emoji {
+		font-size: 1.15rem;
+		line-height: 1;
+		display: inline-flex;
+		align-items: center;
 	}
 	.sec-title {
 		margin: 0;
