@@ -1,9 +1,10 @@
 <script>
 	import { sb } from '$lib/supabase';
 	import BottomSheet from '../BottomSheet.svelte';
+	import PillSwitcher from '../ui/PillSwitcher.svelte';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { toDateStr, fmtDate, daysUntil } from '$lib/utils/dates.js';
-	import { imgPath } from '$lib/utils/players.js';
+	import { imgPath, shortName } from '$lib/utils/players.js';
 	import { classifyPlayer } from '$lib/utils/eligibility.js';
 
 	const REASON_LABELS = {
@@ -29,6 +30,11 @@
 	let starterCount   = $state(4);
 	let absences       = $state([]);         // for current match date
 	let playerStats    = $state({});         // player_id → { seasonAvg, form5 }
+	let playedInRoundIds = $state(new Set()); // player_ids die in selectedMatch.round_code schon gespielt haben
+
+	// Pool sort + highlight (Phase 2 Redesign)
+	let sortMode       = $state('form5');    // 'form5' | 'season'
+	let pulsePlayerId  = $state(null);       // id getriggert durch Schon-gespielt-Tap
 
 	// Swap sheet
 	let swapOpen       = $state(false);
@@ -89,18 +95,22 @@
 			.gte('to_date',   m.date);
 		absences = absenceRows ?? [];
 
-		// Scores laden (Form-Trend + Saison-Schnitt für Swap-Pool)
+		// Scores laden (Form-Trend + Saison-Schnitt + Schon-gespielt-Sektion)
 		const { data: scoreRows } = await sb
 			.from('game_plan_players')
-			.select('player_id, score, game_plans!inner(matches!inner(date))')
+			.select('player_id, score, game_plans!inner(round_code, matches!inner(date))')
 			.eq('played', true)
 			.not('score', 'is', null);
 		const byPlayer = {};
+		const playedInRound = new Set();
 		for (const row of scoreRows ?? []) {
 			if (!row.player_id || row.score == null) continue;
 			const date = row.game_plans?.matches?.date;
 			if (!date) continue;
 			(byPlayer[row.player_id] ??= []).push({ score: Number(row.score), date });
+			if (m.round_code && row.game_plans?.round_code === m.round_code) {
+				playedInRound.add(row.player_id);
+			}
 		}
 		const stats = {};
 		for (const [pid, arr] of Object.entries(byPlayer)) {
@@ -112,7 +122,8 @@
 				form5:     last5.length ? Math.round(last5.reduce((a,b)=>a+b,0) / last5.length) : null,
 			};
 		}
-		playerStats = stats;
+		playerStats        = stats;
+		playedInRoundIds   = playedInRound;
 
 		// Nennlisten laden (für Positions-Sperrung)
 		const { data: rData } = await sb
@@ -182,6 +193,82 @@
 
 	let eligiblePool   = $derived(classifiedPool.filter(c => c.eligible));
 	let ineligiblePool = $derived(classifiedPool.filter(c => !c.eligible));
+
+	// Phase-2-Redesign: Pool ohne "Schon gespielt"-Spieler, sortiert nach sortMode (DESC)
+	let poolPlayers = $derived.by(() => {
+		const usedIds = new Set(lineup.map(l => l.player_id));
+		const filtered = classifiedPool
+			.filter(c => !usedIds.has(c.player.id))
+			.filter(c => !playedInRoundIds.has(c.player.id));
+		const key = sortMode === 'season' ? 'seasonAvg' : 'form5';
+		return filtered.sort((a, b) => {
+			const va = playerStats[a.player.id]?.[key];
+			const vb = playerStats[b.player.id]?.[key];
+			if (va == null && vb == null) {
+				return (a.player.name ?? '').localeCompare(b.player.name ?? '', 'de');
+			}
+			if (va == null) return 1;
+			if (vb == null) return -1;
+			return vb - va;
+		});
+	});
+
+	// Spieler die in dieser Runde schon eingesetzt wurden — für Schon-gespielt-Sektion
+	let playedInRoundList = $derived.by(() => {
+		if (!selectedMatch?.round_code || playedInRoundIds.size === 0) return [];
+		return allPlayers
+			.filter(p => playedInRoundIds.has(p.id))
+			.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de'));
+	});
+
+	const SORT_ITEMS = [
+		{ key: 'form5',  label: 'Letzte 5' },
+		{ key: 'season', label: 'Saison-∅' },
+	];
+
+	function subInfo(player, classification) {
+		if (absences.some(a => a.player_id === player.id)) {
+			return { text: 'Abwesend', tone: 'absent' };
+		}
+		if (classification && !classification.eligible) {
+			return { text: classification.reason || 'Nicht spielberechtigt', tone: 'blocked' };
+		}
+		const roster = rosters.find(r => r.player_id === player.id);
+		if (roster?.league_name) return { text: roster.league_name, tone: 'muted' };
+		return null;
+	}
+
+	function scrollToPlayer(playerId) {
+		const el = document.getElementById(`ap-card-${playerId}`);
+		if (!el) {
+			const round = selectedMatch?.round_code ?? '';
+			triggerToast(`Hat in Runde ${round} gespielt`);
+			return;
+		}
+		el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		pulsePlayerId = playerId;
+		setTimeout(() => {
+			if (pulsePlayerId === playerId) pulsePlayerId = null;
+		}, 700);
+	}
+
+	async function togglePlayer(player, classification) {
+		if (saving) return;
+		const inLineup = lineup.find(l => l.player_id === player.id);
+		if (inLineup) {
+			await removePlayer(inLineup);
+			return;
+		}
+		if (classification && !classification.eligible) {
+			triggerToast(classification.reason || 'Nicht spielberechtigt');
+			return;
+		}
+		if (lineup.length >= starterCount) {
+			triggerToast(`Aufstellung voll (${starterCount}/${starterCount})`);
+			return;
+		}
+		await addPlayer(player);
+	}
 
 	async function addPlayer(player) {
 		if (lineup.length >= starterCount || saving) return;
@@ -357,11 +444,14 @@
 	}
 
 	function back() {
-		selectedMatch  = null;
-		lineup         = [];
-		gamePlan       = null;
-		lineupsByRound = {};
-		rosters        = [];
+		selectedMatch    = null;
+		lineup           = [];
+		gamePlan         = null;
+		lineupsByRound   = {};
+		rosters          = [];
+		playedInRoundIds = new Set();
+		sortMode         = 'form5';
+		pulsePlayerId    = null;
 	}
 
 	$effect(() => {
@@ -428,40 +518,75 @@
 		</div>
 
 		{#if loadingLineup}
-			<div class="aa-loading">
-				<div class="skeleton-card skeleton-card--short animate-pulse-skeleton"></div>
+			<div class="ap-skeleton-list">
+				{#each Array(4) as _, i}
+					<div class="ap-skeleton-card">
+						<div class="ap-skeleton-photo shimmer-box"></div>
+						<div class="ap-skeleton-body">
+							<div class="ap-skeleton-name shimmer-box"></div>
+							<div class="ap-skeleton-sub shimmer-box"></div>
+						</div>
+						<div class="ap-skeleton-stats">
+							<div class="ap-skeleton-stat shimmer-box"></div>
+							<div class="ap-skeleton-stat shimmer-box"></div>
+						</div>
+					</div>
+				{/each}
 			</div>
 		{:else}
-			<!-- Aufstellung -->
-			<p class="aa-section-title">Aufstellung ({lineup.length}/{starterCount})</p>
-			<div class="aa-lineup">
+			<!-- Schon-gespielt-Sektion (nur wenn ≥1 Spieler in dieser Runde schon eingesetzt) -->
+			{#if playedInRoundList.length > 0}
+				<p class="ap-eyebrow">Schon gespielt in dieser Runde</p>
+				<div class="ap-played-grid">
+					{#each playedInRoundList as p (p.id)}
+						<button
+							type="button"
+							class="ap-played-avatar"
+							onclick={() => scrollToPlayer(p.id)}
+							aria-label={`${p.name} hat in Runde ${selectedMatch.round_code} schon gespielt, zum Pool scrollen`}
+						>
+							<div class="ap-played-photo">
+								<img
+									src={imgPath(p.photo, p.name)}
+									alt=""
+									onerror={(e) => { e.currentTarget.style.display = 'none'; }}
+								/>
+								<span class="ap-played-badge">{selectedMatch.round_code}</span>
+							</div>
+							<span class="ap-played-name">{shortName(p.name)}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			<!-- Aufstellung als 2×2 Mini-Card-Grid -->
+			<p class="ap-eyebrow">Aufstellung ({lineup.length}/{starterCount})</p>
+			<div class="ap-slot-grid" style:grid-template-columns={starterCount > 4 ? 'repeat(2, 1fr)' : '1fr 1fr'}>
 				{#each Array(starterCount) as _, i}
 					{@const entry = lineup[i]}
 					{#if entry}
 						{@const name  = entry.players?.name ?? entry.player_name ?? '–'}
 						{@const photo = entry.players?.photo ?? null}
-						<button
-							class="aa-slot aa-slot--filled"
-							onclick={() => isPublished ? openSwapSheet(i) : removePlayer(entry)}
-							disabled={saving}
-						>
-							<span class="aa-slot-pos">{i + 1}</span>
-							<div class="aa-slot-avatar">
-								<img src={imgPath(photo, name)} alt={name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
-								<span class="aa-slot-initial">{name.slice(0, 1)}</span>
+						<div class="ap-slot ap-slot--filled">
+							<div class="ap-slot-avatar">
+								<img src={imgPath(photo, name)} alt="" onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
+								<span class="ap-slot-badge">Pos {i + 1}</span>
 							</div>
-							<span class="aa-slot-name">{name}</span>
-							<span class="material-symbols-outlined aa-slot-remove">
-								{isPublished ? 'swap_horiz' : 'close'}
-							</span>
-						</button>
+							<span class="ap-slot-name">{name}</span>
+							<button
+								type="button"
+								class="ap-slot-remove"
+								onclick={() => isPublished ? openSwapSheet(i) : removePlayer(entry)}
+								disabled={saving}
+								aria-label={isPublished ? `Position ${i + 1} tauschen` : `${name} aus Position ${i + 1} entfernen`}
+							>
+								<span class="material-symbols-outlined">{isPublished ? 'swap_horiz' : 'close'}</span>
+							</button>
+						</div>
 					{:else}
-						<div class="aa-slot aa-slot--empty">
-							<span class="aa-slot-pos">{i + 1}</span>
-							<div class="aa-slot-avatar aa-slot-avatar--empty">
-								<span class="material-symbols-outlined">person_add</span>
-							</div>
-							<span class="aa-slot-name aa-slot-name--empty">Offen</span>
+						<div class="ap-slot ap-slot--empty">
+							<span class="material-symbols-outlined" aria-hidden="true">person_add</span>
+							<span class="ap-slot-empty-label">Pos {i + 1} · leer</span>
 						</div>
 					{/if}
 				{/each}
@@ -500,46 +625,62 @@
 
 			<!-- Verfügbare Spieler -->
 			{#if !isPublished}
-				<p class="aa-section-title" style="margin-top: var(--space-5);">
-					Verfügbare Spieler ({eligiblePool.length})
-				</p>
-				<div class="aa-pool">
-					{#each eligiblePool as { player } (player.id)}
-						<button
-							class="aa-pool-player"
-							onclick={() => addPlayer(player)}
-							disabled={saving || lineup.length >= starterCount}
-						>
-							<div class="aa-pool-avatar">
-								<img src={imgPath(player.photo, player.name)} alt={player.name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
-								<span class="aa-pool-initial">{(player.name || '?').slice(0, 1)}</span>
-							</div>
-							<span class="aa-pool-name">{player.name}</span>
-						</button>
-					{/each}
+				<div class="ap-pool-header">
+					<span class="ap-eyebrow ap-eyebrow--inline">Verfügbare Spieler ({poolPlayers.length})</span>
+					<div class="ap-sort-wrap">
+						<PillSwitcher items={SORT_ITEMS} value={sortMode} onSelect={(k) => sortMode = k} />
+					</div>
 				</div>
 
-				{#if ineligiblePool.length > 0}
-					<details class="aa-ineligible-section">
-						<summary class="aa-section-title aa-section-title--warn">
-							Nicht aufstellbar ({ineligiblePool.length})
-						</summary>
-						<div class="aa-pool aa-pool--ineligible">
-							{#each ineligiblePool as { player, reason } (player.id)}
-								<div class="aa-pool-player aa-pool-player--blocked" title={reason}>
-									<div class="aa-pool-avatar">
-										<img src={imgPath(player.photo, player.name)} alt={player.name} onerror={(e) => { e.currentTarget.style.display = 'none'; }} />
-										<span class="aa-pool-initial">{(player.name || '?').slice(0, 1)}</span>
-									</div>
-									<div class="aa-pool-name-wrap">
-										<span class="aa-pool-name">{player.name}</span>
-										<span class="aa-pool-reason">{reason}</span>
-									</div>
-									<span class="material-symbols-outlined aa-blocked-icon">block</span>
+				{#if poolPlayers.length === 0}
+					<div class="ap-empty">
+						<span class="material-symbols-outlined">groups</span>
+						<span>Keine weiteren Spieler verfügbar</span>
+					</div>
+				{:else}
+					<div class="ap-pool">
+						{#each poolPlayers as { player, eligible, reason } (player.id)}
+							{@const st = playerStats[player.id] ?? {}}
+							{@const sub = subInfo(player, { eligible, reason })}
+							{@const isAbsent = sub?.tone === 'absent'}
+							{@const aria = `${player.name}, Form fünf ${st.form5 ?? 'keine Daten'}, Saison-Schnitt ${st.seasonAvg ?? 'keine Daten'}${!eligible ? ', nicht spielberechtigt' : ''}${isAbsent ? ', abwesend' : ''}`}
+							<button
+								type="button"
+								id={`ap-card-${player.id}`}
+								class="ap-card"
+								class:ap-card--absent={isAbsent}
+								class:ap-card--blocked={!eligible}
+								class:ap-card--pulse={pulsePlayerId === player.id}
+								aria-label={aria}
+								onclick={() => togglePlayer(player, { eligible, reason })}
+								disabled={saving}
+							>
+								<div class="ap-card-photo">
+									<img
+										src={imgPath(player.photo, player.name)}
+										alt=""
+										onerror={(e) => { e.currentTarget.style.display = 'none'; }}
+									/>
 								</div>
-							{/each}
-						</div>
-					</details>
+								<div class="ap-card-body">
+									<span class="ap-card-name">{player.name}</span>
+									{#if sub}
+										<span class="ap-card-sub ap-card-sub--{sub.tone}">{sub.text}</span>
+									{/if}
+								</div>
+								<div class="ap-card-stats">
+									<div class="ap-stat" class:ap-stat--active={sortMode === 'form5'}>
+										<span class="ap-stat-eyebrow">Form 5</span>
+										<span class="ap-stat-value">{st.form5 ?? '–'}</span>
+									</div>
+									<div class="ap-stat" class:ap-stat--active={sortMode === 'season'}>
+										<span class="ap-stat-eyebrow">Saison ∅</span>
+										<span class="ap-stat-value">{st.seasonAvg ?? '–'}</span>
+									</div>
+								</div>
+							</button>
+						{/each}
+					</div>
 				{/if}
 			{/if}
 		{/if}
@@ -918,4 +1059,414 @@
 	.aa-swap-name { font-weight: 600; font-size: var(--text-body-sm); color: var(--color-on-surface); }
 	.aa-swap-stats { font-size: var(--text-label-sm); color: var(--color-on-surface-variant); font-variant-numeric: tabular-nums; }
 	.aa-swap-arrow { color: var(--color-primary); font-size: 1.1rem; }
+
+	/* ─────────────────────────────────────────────────────────────────
+	   Phase-2-Redesign — PlayerCards, Slot-Grid, Schon-gespielt
+	   ───────────────────────────────────────────────────────────────── */
+
+	/* Eyebrow (Sektion-Header) */
+	.ap-eyebrow {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: var(--text-label-md);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--color-on-surface-variant);
+		margin: var(--space-4) 0 var(--space-2);
+	}
+	.ap-eyebrow--inline { margin: 0; }
+
+	/* Schon-gespielt-Sektion */
+	.ap-played-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		padding: 0 var(--space-1) var(--space-2);
+		margin-bottom: var(--space-2);
+	}
+	.ap-played-avatar {
+		position: relative;
+		width: 56px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		background: none;
+		border: none;
+		padding: 2px;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		border-radius: var(--radius-md);
+	}
+	.ap-played-avatar:focus-visible {
+		outline: 2px solid var(--color-secondary);
+		outline-offset: 2px;
+	}
+	.ap-played-avatar:active { transform: scale(0.97); }
+	.ap-played-photo {
+		position: relative;
+		width: 48px;
+		height: 48px;
+	}
+	.ap-played-photo img {
+		width: 100%; height: 100%;
+		object-fit: cover;
+		display: block;
+		border-radius: 50%;
+		border: 2px solid var(--color-secondary);
+		box-shadow: 0 2px 6px color-mix(in srgb, var(--color-primary) 18%, transparent);
+		background: var(--color-surface-container-highest);
+	}
+	.ap-played-badge {
+		position: absolute;
+		bottom: -2px;
+		right: -4px;
+		background: var(--color-primary);
+		color: #fff;
+		padding: 1px 5px;
+		border-radius: var(--radius-full);
+		font-family: var(--font-display);
+		font-weight: 800;
+		font-size: var(--text-label-sm);
+		line-height: 1;
+		letter-spacing: 0.04em;
+		box-shadow: 0 1px 3px color-mix(in srgb, var(--color-primary) 30%, transparent);
+	}
+	.ap-played-name {
+		font-family: var(--font-body);
+		font-size: var(--text-label-sm);
+		color: var(--color-on-surface-variant);
+		text-align: center;
+		max-width: 56px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* Aufstellungs-Slot-Grid (Mini-Cards) */
+	.ap-slot-grid {
+		display: grid;
+		gap: var(--space-2);
+		margin-bottom: var(--space-3);
+	}
+	.ap-slot {
+		position: relative;
+		display: grid;
+		grid-template-columns: 52px 1fr auto;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+		min-height: 64px;
+		border-radius: var(--radius-lg);
+	}
+	.ap-slot--filled {
+		background: color-mix(in srgb, var(--color-surface-container-lowest) 94%, var(--color-secondary));
+		border: 1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent);
+		border-left: 4px solid var(--color-primary);
+		box-shadow: var(--shadow-card);
+	}
+	.ap-slot--empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2px;
+		border: 1.5px dashed var(--color-outline-variant);
+		color: var(--color-on-surface-variant);
+		background: transparent;
+	}
+	.ap-slot--empty .material-symbols-outlined {
+		font-size: 1.2rem;
+		color: var(--color-outline);
+	}
+	.ap-slot-empty-label {
+		font-family: var(--font-body);
+		font-size: var(--text-label-sm);
+		color: var(--color-on-surface-variant);
+	}
+	.ap-slot-avatar {
+		position: relative;
+		width: 48px;
+		height: 48px;
+		flex-shrink: 0;
+	}
+	.ap-slot-avatar img {
+		width: 100%; height: 100%;
+		object-fit: cover;
+		display: block;
+		border-radius: 50%;
+		background: var(--color-surface-container-highest);
+	}
+	.ap-slot-badge {
+		position: absolute;
+		bottom: -2px;
+		right: -6px;
+		background: var(--color-secondary);
+		color: #fff;
+		padding: 1px 5px;
+		border-radius: var(--radius-full);
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: var(--text-label-sm);
+		line-height: 1;
+		letter-spacing: 0.03em;
+		box-shadow: 0 1px 3px color-mix(in srgb, var(--color-secondary) 40%, transparent);
+		z-index: 2;
+	}
+	.ap-slot-name {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: var(--text-label-md);
+		color: var(--color-on-surface);
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ap-slot-remove {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border: none;
+		background: transparent;
+		color: var(--color-on-surface-variant);
+		border-radius: var(--radius-full);
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.ap-slot-remove:hover { color: var(--color-primary); }
+	.ap-slot-remove:focus-visible {
+		outline: 2px solid var(--color-secondary);
+		outline-offset: 2px;
+	}
+	.ap-slot-remove:disabled { opacity: 0.5; cursor: default; }
+	.ap-slot-remove .material-symbols-outlined { font-size: 1.1rem; }
+
+	/* Pool-Header mit Sort-Toggle */
+	.ap-pool-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		margin: var(--space-4) 0 var(--space-2);
+	}
+	.ap-sort-wrap {
+		flex-shrink: 0;
+		max-width: 180px;
+		width: 180px;
+	}
+
+	/* Empty Pool */
+	.ap-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-2);
+		padding: var(--space-6) var(--space-4);
+		background: color-mix(in srgb, var(--color-surface-container-lowest) 94%, var(--color-secondary));
+		border: 1px dashed var(--color-outline-variant);
+		border-radius: var(--radius-lg);
+		color: var(--color-on-surface-variant);
+		font-size: var(--text-body-md);
+		text-align: center;
+		margin-bottom: var(--space-4);
+	}
+	.ap-empty .material-symbols-outlined {
+		font-size: 2rem;
+		color: var(--color-outline);
+	}
+
+	/* Pool */
+	.ap-pool {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin-bottom: var(--space-4);
+	}
+
+	/* PlayerCard */
+	.ap-card {
+		position: relative;
+		display: grid;
+		grid-template-columns: 72px 1fr 96px;
+		min-height: 96px;
+		padding: 0;
+		text-align: left;
+		background: color-mix(in srgb, var(--color-surface-container-lowest) 94%, var(--color-secondary));
+		border: 1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent);
+		border-left: 4px solid var(--color-primary);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-card);
+		overflow: hidden;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition: transform 120ms ease, box-shadow 200ms ease, border-left-width 150ms ease;
+	}
+	.ap-card:hover {
+		box-shadow: var(--shadow-float);
+		border-left-width: 5px;
+	}
+	.ap-card:active { transform: scale(0.99); }
+	.ap-card:focus-visible {
+		outline: 2px solid var(--color-secondary);
+		outline-offset: 2px;
+	}
+	.ap-card:disabled { cursor: default; opacity: 0.6; }
+
+	.ap-card--absent { opacity: 0.55; }
+	.ap-card--absent .ap-card-name {
+		text-decoration: line-through;
+		text-decoration-color: var(--color-primary);
+	}
+	.ap-card--blocked { opacity: 0.7; }
+	.ap-card--pulse {
+		animation: ap-pulse 700ms ease;
+	}
+	@keyframes ap-pulse {
+		0%   { box-shadow: var(--shadow-card); }
+		35%  { box-shadow: var(--shadow-float),
+				0 0 0 3px color-mix(in srgb, var(--color-secondary) 55%, transparent); }
+		100% { box-shadow: var(--shadow-card); }
+	}
+
+	.ap-card-photo {
+		position: relative;
+		width: 72px;
+		height: 96px;
+		background: var(--color-surface-container-highest);
+	}
+	.ap-card-photo img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: top center;
+		display: block;
+	}
+
+	.ap-card-body {
+		padding: var(--space-3) var(--space-4);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 4px;
+		min-width: 0;
+	}
+	.ap-card-name {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: var(--text-title-md);
+		color: var(--color-on-surface);
+		line-height: 1.2;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ap-card-sub {
+		font-family: var(--font-body);
+		font-size: var(--text-label-md);
+		color: var(--color-on-surface-variant);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ap-card-sub--absent { color: var(--color-primary); font-weight: 700; }
+	.ap-card-sub--blocked { color: var(--color-on-surface-variant); }
+
+	.ap-card-stats {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-4);
+	}
+	.ap-stat {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		min-width: 40px;
+		opacity: 0.7;
+		transition: opacity 150ms ease;
+	}
+	.ap-stat--active { opacity: 1; }
+	.ap-stat-eyebrow {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: var(--text-label-sm);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: color-mix(in srgb, var(--color-secondary) 80%, var(--color-on-surface));
+	}
+	.ap-stat--active .ap-stat-eyebrow {
+		font-weight: 800;
+		color: var(--color-secondary);
+	}
+	.ap-stat-value {
+		font-family: var(--font-display);
+		font-weight: 700;
+		font-size: var(--text-title-md);
+		color: var(--color-on-surface);
+		font-variant-numeric: tabular-nums;
+		padding: 2px 6px;
+		border-radius: var(--radius-md);
+	}
+	.ap-stat--active .ap-stat-value {
+		padding: 2px 8px;
+		background: color-mix(in srgb, var(--color-secondary) 14%, transparent);
+	}
+
+	/* Skeleton-Loading PlayerCards */
+	.ap-skeleton-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin-top: var(--space-2);
+	}
+	.ap-skeleton-card {
+		display: grid;
+		grid-template-columns: 72px 1fr 96px;
+		min-height: 96px;
+		border-radius: var(--radius-lg);
+		border: 1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent);
+		border-left: 4px solid var(--color-primary);
+		background: color-mix(in srgb, var(--color-surface-container-lowest) 94%, var(--color-secondary));
+		overflow: hidden;
+	}
+	.ap-skeleton-photo {
+		width: 72px;
+		height: 96px;
+		border-radius: 0;
+	}
+	.ap-skeleton-body {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 8px;
+		padding: var(--space-3) var(--space-4);
+	}
+	.ap-skeleton-name {
+		height: 16px;
+		width: 70%;
+		border-radius: var(--radius-sm);
+	}
+	.ap-skeleton-sub {
+		height: 12px;
+		width: 45%;
+		border-radius: var(--radius-sm);
+	}
+	.ap-skeleton-stats {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-4);
+	}
+	.ap-skeleton-stat {
+		width: 36px;
+		height: 32px;
+		border-radius: var(--radius-md);
+	}
 </style>
