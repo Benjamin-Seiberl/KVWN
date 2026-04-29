@@ -31,7 +31,7 @@
 
 | Phase | Plans Complete | Status |
 |-------|----------------|--------|
-| 0. Cross-Cutting Foundations | 0/0 | Planned (next) |
+| 0. Cross-Cutting Foundations | 0/0 | Context gathered, Plan-Phase next |
 | 1. Selfservice + Foto + Consent | 0/0 | Planned |
 | 2. Trainingsbuchung-Vollausbau | 0/0 | Planned |
 | 3. Events + Polls + Push systematisch | 0/0 | Planned |
@@ -64,6 +64,7 @@ Aus `.planning/PROJECT.md` § "Key Decisions" + Step-7-Differentiator-Picks (`.p
 6. **2026-04-29 (Step 7) — `league_standings` als Captain-manuelle Tabelle + Mock-Seed mit `is_demo=true`.** ÖSKB-Feed-Import ist v1.1; Captain-Tool reicht für JHV.
 7. **2026-04-29 (Step 7) — Differentiator-Picks final:** SELF-11/12 (Geburtstags-Banner, Konfetti), TRAIN-09/10 (Slot-Templates, Streak-Badge), EVT-16/17/18/19 (Time-Poll→Event, Cover-Foto, Recurring, Carpool generalisiert), STAT-14/15/16/17 (Form-Trend, Highlights, Animation, Bahn-Stats falls Schema).
 8. **2026-04-29 (Step 8) — Phase 0 NON-NEGOTIABLE; Phase 2/3 Default seriell, Parallel optional.** 24-Tage-Budget zu knapp für Speculative Parallel; Phase 0 BLOCKER-Pitfalls C1+C3 müssen vor jeder Feature-Phase fixed sein.
+9. **2026-04-29 (Phase 0 Discuss) — Phase 0 Implementation-Decisions locked.** Captain-Cleanup vor Email-Migration; RLS Policy-Branch `self OR captain`; PUSH_PREFS lineup_confirm always-on + 5 opt-in Keys + jsonb_object_keys()-CHECK; imageResize Square 512×512 cover-crop WebP via Canvas-Re-encode. Detail in `.planning/phases/00-cross-cutting-foundations/0-CONTEXT.md`. FOUND-03/04/06 sind Planner-Discretion.
 
 ---
 
@@ -71,7 +72,8 @@ Aus `.planning/PROJECT.md` § "Key Decisions" + Step-7-Differentiator-Picks (`.p
 
 Backlog-Items leben als REQ-IDs in `.planning/REQUIREMENTS.md`. Diese Liste sammelt nur **akute Tätigkeits-Todos**, die nicht bereits durch eine REQ-ID abgedeckt sind:
 
-- Step-9 (`/gsd-plan-phase 0`) starten, sobald User die Roadmap approved.
+- `/gsd-plan-phase 0` starten — Phase 0 CONTEXT.md ist locked, Researcher + Planner können ran.
+- Captain-Touchpoint planen: Email-Cleanup-Runbook (`docs/runbooks/email-cleanup.md`) muss vor FOUND-01-Migration-Deploy von Captain manuell durchgegangen werden (~30 min).
 
 ---
 
@@ -110,20 +112,21 @@ Backlog-Items leben als REQ-IDs in `.planning/REQUIREMENTS.md`. Diese Liste samm
 
 - ✓ Step 1-6 (`/gsd-new-project`): Vision + Research complete (Commits 5620fcd → 662851c → b02ca59 → b1933d5)
 - ✓ Step 7 (Requirements-Definition): 75 v1-Reqs in 6 Kategorien (Commit `6ab4ca1`)
-- ✓ Step 8 (Roadmapper): ROADMAP.md + STATE.md + REQUIREMENTS.md-Traceability (heute, 2026-04-29 — Commit pending Orchestrator)
-- ⧗ Step 9 (`/gsd-plan-phase 0`): pending User-Approval auf Roadmap
+- ✓ Step 8 (Roadmapper): ROADMAP.md + STATE.md + REQUIREMENTS.md-Traceability (Commit `e95028a`)
+- ✓ Phase 0 Discuss (`/gsd-discuss-phase 0`): 0-CONTEXT.md + 0-DISCUSSION-LOG.md committed (`f27f94c`)
+- ⧗ Phase 0 Plan (`/gsd-plan-phase 0`): next
 
 ---
 
 ## Session Continuity
 
-**Last session:** 2026-04-29 — Step 8 (Roadmap) erstellt durch `gsd-roadmapper` (Opus).
+**Last session:** 2026-04-29 — Phase 0 Discuss-Phase abgeschlossen.
 
-**Stopped at:** Step 8 roadmap committed. Files on disk: `.planning/ROADMAP.md`, `.planning/STATE.md`, `.planning/REQUIREMENTS.md` (Traceability-Sektion gefüllt). Approval pending.
+**Stopped at:** Phase 0 CONTEXT committed (`f27f94c`). Files on disk: `.planning/phases/00-cross-cutting-foundations/0-CONTEXT.md` (8 Decisions locked), `.planning/phases/00-cross-cutting-foundations/0-DISCUSSION-LOG.md` (Audit-Trail). STATE.md aktualisiert.
 
-**Next action:** Discuss Phase 0 — Orchestrator präsentiert Roadmap-Tabelle dem User → User approved → Commit Step 8 → `/gsd-plan-phase 0` startet (Phase 0 Cross-Cutting Foundations).
+**Next action:** `/clear` dann `/gsd-plan-phase 0` — Researcher + Planner spawnen, PLAN.md erzeugen mit Task-Breakdown FOUND-01..07.
 
-**Resume hint:** Bei Session-Wiederaufnahme zuerst `.planning/HANDOFF.md` (falls vorhanden) und diese STATE.md lesen, dann `/gsd-resume-work` starten.
+**Resume hint:** Bei Session-Wiederaufnahme zuerst `.planning/phases/00-cross-cutting-foundations/0-CONTEXT.md` lesen für locked-Decisions, dann `.planning/STATE.md` für aktuellen Stand.
 
 ---
 
