@@ -295,12 +295,132 @@ Aus HANDOFF.md übernommen — nicht alle in Step 7 auflösbar, brauchen Phase-P
 
 ## Traceability
 
-<!-- Filled by gsd-roadmapper agent (Step 8). Each REQ-ID gets phase + plan assignment. -->
+Filled by `gsd-roadmapper` (Step 8, 2026-04-29). Each REQ-ID is mapped to exactly one phase. Plan-Slot column will be populated by `/gsd-plan-phase <N>` as plans are created.
 
-*To be populated.*
+**Coverage check:** 75 / 75 REQs mapped · 0 orphaned · 0 duplicated.
+
+### Phase 0 — Cross-Cutting Foundations (FOUND, 7 REQs)
+
+| REQ-ID | Phase | Plan-Slot |
+|--------|-------|-----------|
+| FOUND-01 | Phase 0 | — |
+| FOUND-02 | Phase 0 | — |
+| FOUND-03 | Phase 0 | — |
+| FOUND-04 | Phase 0 | — |
+| FOUND-05 | Phase 0 | — |
+| FOUND-06 | Phase 0 | — |
+| FOUND-07 | Phase 0 | — |
+
+### Phase 1 — Spieler-Selfservice + Foto + Consent (SELF, 12 REQs)
+
+| REQ-ID | Phase | Plan-Slot |
+|--------|-------|-----------|
+| SELF-01 | Phase 1 | — |
+| SELF-02 | Phase 1 | — |
+| SELF-03 | Phase 1 | — |
+| SELF-04 | Phase 1 | — |
+| SELF-05 | Phase 1 | — |
+| SELF-06 | Phase 1 | — |
+| SELF-07 | Phase 1 | — |
+| SELF-08 | Phase 1 | — |
+| SELF-09 | Phase 1 | — |
+| SELF-10 | Phase 1 | — |
+| SELF-11 | Phase 1 | — |
+| SELF-12 | Phase 1 | — |
+
+### Phase 2 — Trainingsbuchung-Vollausbau (TRAIN, 10 REQs)
+
+| REQ-ID | Phase | Plan-Slot |
+|--------|-------|-----------|
+| TRAIN-01 | Phase 2 | — |
+| TRAIN-02 | Phase 2 | — |
+| TRAIN-03 | Phase 2 | — |
+| TRAIN-04 | Phase 2 | — |
+| TRAIN-05 | Phase 2 | — |
+| TRAIN-06 | Phase 2 | — |
+| TRAIN-07 | Phase 2 | — |
+| TRAIN-08 | Phase 2 | — |
+| TRAIN-09 | Phase 2 | — |
+| TRAIN-10 | Phase 2 | — |
+
+### Phase 3 — Events + Polls + Push systematisch (EVT, 19 REQs)
+
+| REQ-ID | Phase | Plan-Slot |
+|--------|-------|-----------|
+| EVT-01 | Phase 3 | — |
+| EVT-02 | Phase 3 | — |
+| EVT-03 | Phase 3 | — |
+| EVT-04 | Phase 3 | — |
+| EVT-05 | Phase 3 | — |
+| EVT-06 | Phase 3 | — |
+| EVT-07 | Phase 3 | — |
+| EVT-08 | Phase 3 | — |
+| EVT-09 | Phase 3 | — |
+| EVT-10 | Phase 3 | — |
+| EVT-11 | Phase 3 | — |
+| EVT-12 | Phase 3 | — |
+| EVT-13 | Phase 3 | — |
+| EVT-14 | Phase 3 | — |
+| EVT-15 | Phase 3 | — |
+| EVT-16 | Phase 3 | — |
+| EVT-17 | Phase 3 | — |
+| EVT-18 | Phase 3 | — |
+| EVT-19 | Phase 3 | — |
+
+### Phase 4 — Statistik-Dashboards (STAT, 17 REQs)
+
+| REQ-ID | Phase | Plan-Slot |
+|--------|-------|-----------|
+| STAT-01 | Phase 4 | — |
+| STAT-02 | Phase 4 | — |
+| STAT-03 | Phase 4 | — |
+| STAT-04 | Phase 4 | — |
+| STAT-05 | Phase 4 | — |
+| STAT-06 | Phase 4 | — |
+| STAT-07 | Phase 4 | — |
+| STAT-08 | Phase 4 | — |
+| STAT-09 | Phase 4 | — |
+| STAT-10 | Phase 4 | — |
+| STAT-11 | Phase 4 | — |
+| STAT-12 | Phase 4 | — |
+| STAT-13 | Phase 4 | — |
+| STAT-14 | Phase 4 | — |
+| STAT-15 | Phase 4 | — |
+| STAT-16 | Phase 4 | — |
+| STAT-17 | Phase 4 | — |
+
+### Phase 5 — Demo-Härtung + Reviewer-Pass (DEMO, 10 REQs)
+
+| REQ-ID | Phase | Plan-Slot |
+|--------|-------|-----------|
+| DEMO-01 | Phase 5 | — |
+| DEMO-02 | Phase 5 | — |
+| DEMO-03 | Phase 5 | — |
+| DEMO-04 | Phase 5 | — |
+| DEMO-05 | Phase 5 | — |
+| DEMO-06 | Phase 5 | — |
+| DEMO-07 | Phase 5 | — |
+| DEMO-08 | Phase 5 | — |
+| DEMO-09 | Phase 5 | — |
+| DEMO-10 | Phase 5 | — |
+
+### Coverage Validation
+
+| Category | Mapped | Expected | Match |
+|----------|--------|----------|-------|
+| FOUND | 7 | 7 | yes |
+| SELF | 12 | 12 | yes |
+| TRAIN | 10 | 10 | yes |
+| EVT | 19 | 19 | yes |
+| STAT | 17 | 17 | yes |
+| DEMO | 10 | 10 | yes |
+| **Total** | **75** | **75** | **yes** |
+
+No orphans. No duplicates. Each REQ-ID appears in exactly one phase table above.
 
 ---
 
 *Requirements defined: 2026-04-29*
 *Step 7 of `/gsd-new-project` complete*
-*Next: Step 8 (gsd-roadmapper) → ROADMAP.md + STATE.md*
+*Step 8 (gsd-roadmapper) complete: 2026-04-29 — ROADMAP.md + STATE.md + Traceability above*
+*Next: `/gsd-plan-phase 0` (after user approval of roadmap)*
