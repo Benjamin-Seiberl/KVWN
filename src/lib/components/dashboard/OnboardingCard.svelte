@@ -16,7 +16,7 @@
 		try {
 			const [meRes, scRes, dmRes] = await Promise.all([
 				sb.from('players')
-					.select('id, phone, address, emergency_contact_phone, shirt_size, spielerpass_nr')
+					.select('id, phone, address, shirt_size, spielerpass_nr')
 					.eq('id', pid)
 					.maybeSingle(),
 				sb.from('game_plan_players')
@@ -53,11 +53,10 @@
 	const missingFields = $derived.by(() => {
 		if (!me) return [];
 		const m = [];
-		if (!me.phone)                   m.push('Telefon');
-		if (!me.address)                 m.push('Adresse');
-		if (!me.emergency_contact_phone) m.push('Notfallkontakt');
-		if (!me.shirt_size)              m.push('Trikotgröße');
-		if (!me.spielerpass_nr)          m.push('Spielerpass-Nr.');
+		if (!me.phone)          m.push('Telefon');
+		if (!me.address)        m.push('Adresse');
+		if (!me.shirt_size)     m.push('Trikotgröße');
+		if (!me.spielerpass_nr) m.push('Spielerpass-Nr.');
 		return m;
 	});
 

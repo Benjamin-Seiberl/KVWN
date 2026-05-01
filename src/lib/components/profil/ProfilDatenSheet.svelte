@@ -1,13 +1,12 @@
 <script>
 	import BottomSheet      from '$lib/components/BottomSheet.svelte';
-	import ToggleSwitch     from '$lib/components/ui/ToggleSwitch.svelte';
 	import { sb }           from '$lib/supabase';
 	import { triggerToast } from '$lib/stores/toast.js';
 
 	/**
 	 * Props:
 	 *   open:      $bindable(boolean)
-	 *   section:   'kontakt' | 'sport' | 'notfall' | 'mobilitaet' | 'zahlung'
+	 *   section:   'kontakt' | 'sport' | 'zahlung'
 	 *   focus:     string — field key to highlight
 	 *   form:      $bindable(object) — two-way bound form state owned by orchestrator
 	 *   playerId:  string — required for attest storage path
@@ -27,11 +26,9 @@
 	const SHIRT_SIZES = ['XS','S','M','L','XL','XXL','XXXL'];
 
 	const TITLE = {
-		kontakt:    'Kontakt bearbeiten',
-		sport:      'Sport-Ausrüstung bearbeiten',
-		notfall:    'Notfallkontakt bearbeiten',
-		mobilitaet: 'Mobilität & Verpflegung',
-		zahlung:    'Zahlung bearbeiten',
+		kontakt: 'Kontakt bearbeiten',
+		sport:   'Sport-Ausrüstung bearbeiten',
+		zahlung: 'Zahlung bearbeiten',
 	};
 	const sheetTitle = $derived(TITLE[section] ?? 'Bearbeiten');
 
@@ -123,16 +120,6 @@
 					<input type="text" bind:value={form.pants_size} placeholder="z.B. 32/32" />
 				</label>
 			</div>
-			<div class="edit-row">
-				<label class="mw-field" class:mw-field--focus={focus === 'shoe_size'}>
-					<span>Schuhgröße</span>
-					<input type="text" bind:value={form.shoe_size} placeholder="z.B. 43" />
-				</label>
-				<label class="mw-field" class:mw-field--focus={focus === 'jersey_number'}>
-					<span>Trikotnummer</span>
-					<input type="number" min="1" max="99" bind:value={form.jersey_number} placeholder="1–99" />
-				</label>
-			</div>
 			<label class="mw-field" class:mw-field--focus={focus === 'spielerpass_nr'}>
 				<span>Spielerpass-Nr.</span>
 				<input type="text" bind:value={form.spielerpass_nr} />
@@ -177,45 +164,6 @@
 				<p class="attest-hint">PDF, JPG oder PNG. Nur du und der Kapitän können es sehen.</p>
 			</div>
 
-			<div class="edit-actions">
-				<button class="mw-btn mw-btn--ghost mw-btn--wide" onclick={close}>Abbrechen</button>
-				<button class="mw-btn mw-btn--primary mw-btn--wide" onclick={save}>
-					<span class="material-symbols-outlined">check</span> Speichern
-				</button>
-			</div>
-		</div>
-	{:else if section === 'notfall'}
-		<div class="edit-form">
-			<label class="mw-field" class:mw-field--focus={focus === 'emergency_contact_name'}>
-				<span>Name der Kontaktperson</span>
-				<input type="text" bind:value={form.emergency_contact_name} placeholder="z.B. Maria Müller" />
-			</label>
-			<label class="mw-field" class:mw-field--focus={focus === 'emergency_contact_phone'}>
-				<span>Telefon</span>
-				<input type="tel" bind:value={form.emergency_contact_phone} placeholder="+43 …" />
-			</label>
-			<p class="edit-hint">Wird nur im Notfall bei Turnieren/Spielen verwendet.</p>
-			<div class="edit-actions">
-				<button class="mw-btn mw-btn--ghost mw-btn--wide" onclick={close}>Abbrechen</button>
-				<button class="mw-btn mw-btn--primary mw-btn--wide" onclick={save}>
-					<span class="material-symbols-outlined">check</span> Speichern
-				</button>
-			</div>
-		</div>
-	{:else if section === 'mobilitaet'}
-		<div class="edit-form">
-			<label class="mw-field mw-field--inline" class:mw-field--focus={focus === 'drivers_license'}>
-				<span>Führerschein</span>
-				<ToggleSwitch bind:checked={form.drivers_license} ariaLabel="Führerschein" />
-			</label>
-			<label class="mw-field" class:mw-field--focus={focus === 'default_car_seats'}>
-				<span>Plätze im eigenen Auto (inkl. Fahrer)</span>
-				<input type="number" min="1" max="9" bind:value={form.default_car_seats} placeholder="z.B. 5" />
-			</label>
-			<label class="mw-field" class:mw-field--focus={focus === 'dietary_notes'}>
-				<span>Ernährungshinweise / Allergien</span>
-				<textarea rows="3" bind:value={form.dietary_notes} placeholder="z.B. vegetarisch, Nussallergie, …"></textarea>
-			</label>
 			<div class="edit-actions">
 				<button class="mw-btn mw-btn--ghost mw-btn--wide" onclick={close}>Abbrechen</button>
 				<button class="mw-btn mw-btn--primary mw-btn--wide" onclick={save}>

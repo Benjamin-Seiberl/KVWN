@@ -3,17 +3,15 @@
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { DAY_SHORT, MONTH_SHORT, toDateStr, daysUntil } from '$lib/utils/dates.js';
-	import TrainingBookingSheet from '$lib/components/dashboard/TrainingBookingSheet.svelte';
+	import TrainingDetailSheet from '$lib/components/kalender/TrainingDetailSheet.svelte';
 
-	// Nächster Trainings-Slot (chronologisch). Enthält Datum + Zeitfenster.
-	let slot     = $state(null);    // { date, start_time, end_time, capacity, isSpecial, note }
-	let bookings = $state([]);      // bookings des gefundenen Slots (inkl. lane_number)
-	let waitlist = $state([]);      // waitlist-Einträge des gefundenen Slots
-	let upcomingSlots = $state([]); // weitere kommende Slots (für "Andere Termine" im Sheet)
+	// Nächster Trainings-TAG (alle Slots dieses Tages, Tagessumme im Display).
+	let dayDate  = $state(null);    // 'YYYY-MM-DD' — Datum-Badge + Sheet
+	let daySlots = $state([]);      // alle Slots des Tages: { date, start_time, end_time, capacity, isSpecial, note }
+	let bookings = $state([]);      // alle Bookings des Tages (inkl. lane_number, start_time)
+	let waitlist = $state([]);      // alle Waitlist-Einträge des Tages
 	let loading  = $state(true);
 	let bookingOpen = $state(false);
-
-	function timeLabel(t) { return t ? t.slice(0, 5) : ''; }
 
 	async function load() {
 		loading = true;
@@ -92,28 +90,27 @@
 			const futureCandidates = candidates.filter(c =>
 				c.date > nowStr || (c.date === nowStr && c.end_time > nowTimeStr)
 			);
-			const next = futureCandidates[0] ?? null;
+			const nextDate = futureCandidates[0]?.date ?? null;
 
-			if (!next) {
-				slot = null;
+			if (!nextDate) {
+				dayDate = null;
+				daySlots = [];
 				bookings = [];
 				waitlist = [];
-				upcomingSlots = [];
 				return;
 			}
 
-			slot = next;
+			dayDate  = nextDate;
+			daySlots = futureCandidates.filter(c => c.date === nextDate);
 
-			// Bookings + Waitlist für den konkreten Slot laden.
+			// Bookings + Waitlist für den ganzen Tag laden.
 			const [bkRes, wlRes] = await Promise.all([
 				sb.from('training_bookings')
-					.select('id, player_id, lane_number')
-					.eq('date', next.date)
-					.eq('start_time', next.start_time),
+					.select('id, player_id, lane_number, start_time')
+					.eq('date', nextDate),
 				sb.from('training_waitlist')
-					.select('id, player_id, position')
-					.eq('date', next.date)
-					.eq('start_time', next.start_time)
+					.select('id, player_id, position, start_time')
+					.eq('date', nextDate)
 					.order('position'),
 			]);
 			if (bkRes.error || wlRes.error) {
@@ -123,47 +120,6 @@
 			}
 			bookings = bkRes.data ?? [];
 			waitlist = wlRes.data ?? [];
-
-			// "Andere Termine" — die nächsten 5 Slots nach `next` (für Sheet-Auswahl).
-			const others = futureCandidates.slice(1, 6);
-			if (others.length === 0) {
-				upcomingSlots = [];
-			} else {
-				const dates = [...new Set(others.map(o => o.date))];
-				const [otherBkRes, otherWlRes] = await Promise.all([
-					sb.from('training_bookings')
-						.select('date, start_time, lane_number')
-						.in('date', dates),
-					sb.from('training_waitlist')
-						.select('date, start_time')
-						.in('date', dates),
-				]);
-				if (otherBkRes.error || otherWlRes.error) {
-					const err = otherBkRes.error ?? otherWlRes.error;
-					triggerToast('Fehler: ' + err.message);
-					return;
-				}
-				const bookedKey = (b) => `${b.date}|${String(b.start_time).slice(0,5)}`;
-				const bookCounts = new Map();
-				for (const b of otherBkRes.data ?? []) {
-					const k = bookedKey(b);
-					bookCounts.set(k, (bookCounts.get(k) ?? 0) + 1);
-				}
-				const waitCounts = new Map();
-				for (const w of otherWlRes.data ?? []) {
-					const k = bookedKey(w);
-					waitCounts.set(k, (waitCounts.get(k) ?? 0) + 1);
-				}
-				upcomingSlots = others.map(o => {
-					const k = `${o.date}|${o.start_time.slice(0,5)}`;
-					const taken = bookCounts.get(k) ?? 0;
-					return {
-						...o,
-						freeSpots: Math.max(0, o.capacity - taken),
-						waitCount: waitCounts.get(k) ?? 0,
-					};
-				});
-			}
 		} finally {
 			loading = false;
 		}
@@ -178,24 +134,48 @@
 	});
 
 	// ── Derived (nur für Display) ──
-	const myBooking  = $derived(bookings.find(b => b.player_id === $playerId) ?? null);
-	const myWait     = $derived(waitlist.find(w => w.player_id === $playerId) ?? null);
-	const freeSpots  = $derived(slot ? Math.max(0, slot.capacity - bookings.length) : 0);
-	const isFull     = $derived(!!slot && freeSpots <= 0);
+	const myBooking      = $derived(bookings.find(b => b.player_id === $playerId) ?? null);
+	const myWait         = $derived(waitlist.find(w => w.player_id === $playerId) ?? null);
+	const totalCapacity  = $derived(daySlots.reduce((a, s) => a + (s.capacity ?? 0), 0));
+	const freeSpotsTotal = $derived(Math.max(0, totalCapacity - bookings.length));
+	const isFullDay      = $derived(totalCapacity > 0 && freeSpotsTotal === 0);
+	const isSpecial      = $derived(daySlots.some(s => s.isSpecial));
+	const dayNote        = $derived(daySlots.find(s => s.note)?.note ?? null);
 
 	const dateBadge = $derived.by(() => {
-		if (!slot) return null;
-		const d = new Date(slot.date + 'T12:00:00');
+		if (!dayDate) return null;
+		const d = new Date(dayDate + 'T12:00:00');
 		return {
 			dow:   DAY_SHORT[d.getDay()],
 			day:   d.getDate(),
 			month: MONTH_SHORT[d.getMonth()],
-			days:  daysUntil(slot.date),
+			days:  daysUntil(dayDate),
 		};
 	});
 
+	const dayLabel = $derived.by(() => {
+		if (!dateBadge) return '';
+		if (dateBadge.days === 0) return 'Heute';
+		if (dateBadge.days === 1) return 'Morgen';
+		return `In ${dateBadge.days} Tagen`;
+	});
+
+	const ariaLabel = $derived.by(() => {
+		if (!dateBadge) return 'Training Details öffnen';
+		if (myBooking) {
+			return `Training ${dayLabel}, du bist gebucht auf Bahn ${myBooking.lane_number}. Details öffnen`;
+		}
+		if (myWait) {
+			return `Training ${dayLabel}, du stehst auf der Warteliste auf Position ${myWait.position}. Details öffnen`;
+		}
+		if (isFullDay) {
+			return `Training ${dayLabel}, voll belegt, ${waitlist.length} auf Warteliste. Details öffnen`;
+		}
+		return `Training ${dayLabel}, ${freeSpotsTotal} von ${totalCapacity} Plätzen frei. Details öffnen`;
+	});
+
 	function openSheet() {
-		if (!slot) return;
+		if (!dayDate) return;
 		bookingOpen = true;
 	}
 
@@ -209,7 +189,7 @@
 
 <div class="ntc-wrap">
 	<div class="sec-head">
-		<span class="material-symbols-outlined sec-icon">sports_tennis</span>
+		<span class="sec-emoji" aria-hidden="true">🎳</span>
 		<h3 class="sec-title">Nächstes Training</h3>
 	</div>
 
@@ -222,7 +202,7 @@
 				<div class="shimmer-box" style="width:50%;height:11px;border-radius:4px;margin-top:6px"></div>
 			</div>
 		</div>
-	{:else if !slot}
+	{:else if !dayDate}
 		<div class="ntc ntc--empty">
 			<span class="material-symbols-outlined ntc-empty-icon">event_busy</span>
 			<span class="ntc-empty-text">Kein Training geplant</span>
@@ -232,7 +212,7 @@
 			class="ntc"
 			onclick={openSheet}
 			onkeydown={onKeydownCard}
-			aria-label="Training buchen"
+			aria-label={ariaLabel}
 		>
 			<div class="ntc-date">
 				<span class="ntc-date-dow">{dateBadge.dow}</span>
@@ -241,29 +221,26 @@
 			</div>
 			<div class="ntc-body">
 				<span class="ntc-label">
-					{#if dateBadge.days === 0}
-						Heute
-					{:else if dateBadge.days === 1}
-						Morgen
-					{:else}
-						In {dateBadge.days} Tagen
-					{/if}
-					{#if slot.isSpecial} · Sondertraining{/if}
+					{dayLabel}{#if isSpecial} · Sondertraining{/if}
 				</span>
-				<span class="ntc-time">{timeLabel(slot.start_time)} – {timeLabel(slot.end_time)} Uhr</span>
-				<span class="ntc-meta">
-					{#if myBooking}
-						Gebucht · Bahn {myBooking.lane_number}
-					{:else if myWait}
-						Warteliste · Position {myWait.position}
-					{:else if isFull}
-						Voll belegt · {waitlist.length} auf Warteliste
-					{:else}
-						{freeSpots} von {slot.capacity} {freeSpots === 1 ? 'Platz' : 'Plätzen'} frei
+
+				{#if myBooking}
+					<span class="ntc-status">Du bist drin · Bahn {myBooking.lane_number} · {String(myBooking.start_time).slice(0,5)}</span>
+					{#if totalCapacity > 0}
+						<span class="ntc-meta">{freeSpotsTotal} / {totalCapacity} Plätze frei</span>
 					{/if}
-				</span>
-				{#if slot.note}
-					<span class="ntc-note">{slot.note}</span>
+				{:else if myWait}
+					<span class="ntc-status">Warteliste · Position {myWait.position} · {String(myWait.start_time).slice(0,5)}</span>
+					<span class="ntc-meta">Voll · {waitlist.length} wartend</span>
+				{:else if isFullDay}
+					<span class="ntc-status ntc-status--full">Voll belegt</span>
+					<span class="ntc-meta">{waitlist.length} auf Warteliste</span>
+				{:else}
+					<span class="ntc-status">{freeSpotsTotal} / {totalCapacity} Plätze frei</span>
+				{/if}
+
+				{#if dayNote}
+					<span class="ntc-note">{dayNote}</span>
 				{/if}
 			</div>
 			<span class="material-symbols-outlined ntc-chevron" aria-hidden="true">chevron_right</span>
@@ -271,14 +248,7 @@
 	{/if}
 </div>
 
-<TrainingBookingSheet
-	bind:open={bookingOpen}
-	{slot}
-	{bookings}
-	{waitlist}
-	{upcomingSlots}
-	onReload={load}
-/>
+<TrainingDetailSheet bind:open={bookingOpen} date={dayDate} onReload={load} />
 
 <style>
 	.ntc-wrap {
@@ -292,10 +262,11 @@
 		gap: 7px;
 		margin-bottom: var(--space-3);
 	}
-	.sec-icon {
-		font-size: 1.1rem;
-		color: var(--color-primary);
-		font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+	.sec-emoji {
+		font-size: 1.15rem;
+		line-height: 1;
+		display: inline-flex;
+		align-items: center;
 	}
 	.sec-title {
 		margin: 0;
@@ -309,11 +280,11 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-3);
-		background: var(--color-surface-container-lowest);
+		background: linear-gradient(135deg, var(--color-surface-container-lowest) 0%, color-mix(in srgb, var(--color-secondary) 4%, var(--color-surface-container-lowest)) 100%);
 		border-radius: var(--radius-xl);
 		box-shadow: var(--shadow-card);
-		padding: var(--space-4);
-		border-left: 4px solid var(--color-primary);
+		padding: var(--space-3);
+		border-left: 4px solid var(--color-secondary);
 		text-align: left;
 		font: inherit;
 		color: inherit;
@@ -322,10 +293,15 @@
 		border-bottom: none;
 		width: 100%;
 		cursor: pointer;
-		transition: transform 120ms ease;
+		transition: transform 120ms ease, box-shadow 120ms ease;
 		-webkit-tap-highlight-color: transparent;
 	}
+	.ntc:hover { box-shadow: var(--shadow-float); }
 	.ntc:active { transform: scale(0.99); }
+	.ntc:focus-visible {
+		outline: 2px solid var(--color-secondary);
+		outline-offset: 2px;
+	}
 
 	.ntc--skeleton,
 	.ntc--empty {
@@ -337,8 +313,8 @@
 		cursor: default;
 	}
 	.ntc--skeleton .ntc-date {
-		width: 62px;
-		height: 62px;
+		width: 54px;
+		height: 54px;
 		border-radius: var(--radius-lg);
 		background: var(--color-surface-container);
 		flex-shrink: 0;
@@ -359,10 +335,11 @@
 
 	.ntc-date {
 		flex-shrink: 0;
-		width: 62px;
-		height: 62px;
+		width: 54px;
+		height: 54px;
 		border-radius: var(--radius-lg);
-		background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, black));
+		background: linear-gradient(135deg, var(--color-secondary), color-mix(in srgb, var(--color-secondary) 60%, black));
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
 		color: #fff;
 		display: flex;
 		flex-direction: column;
@@ -372,7 +349,7 @@
 		padding: 4px;
 	}
 	.ntc-date-dow {
-		font-size: 0.6rem;
+		font-size: 0.55rem;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
@@ -381,12 +358,12 @@
 	}
 	.ntc-date-day {
 		font-family: var(--font-display);
-		font-size: 1.4rem;
+		font-size: 1.25rem;
 		font-weight: 800;
 		line-height: 1;
 	}
 	.ntc-date-month {
-		font-size: 0.6rem;
+		font-size: 0.55rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
@@ -399,23 +376,26 @@
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 3px;
 	}
 	.ntc-label {
 		font-size: 0.65rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
-		color: var(--color-primary);
+		color: color-mix(in srgb, var(--color-secondary) 80%, black);
 	}
-	.ntc-time {
+	.ntc-status {
 		font-family: var(--font-display);
-		font-size: 1.05rem;
+		font-size: 1rem;
 		font-weight: 700;
 		color: var(--color-on-surface);
 	}
+	.ntc-status--full {
+		color: color-mix(in srgb, var(--color-primary) 75%, var(--color-on-surface));
+	}
 	.ntc-meta {
-		font-size: var(--text-body-sm);
+		font-size: var(--text-label-sm);
 		color: var(--color-on-surface-variant);
 	}
 	.ntc-note {
@@ -429,8 +409,8 @@
 		margin-top: 2px;
 	}
 	.ntc-chevron {
-		font-size: 1.2rem;
-		color: var(--color-outline);
+		font-size: 1.1rem;
+		color: color-mix(in srgb, var(--color-secondary) 50%, var(--color-outline));
 		flex-shrink: 0;
 	}
 </style>

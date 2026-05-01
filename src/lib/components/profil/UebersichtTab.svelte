@@ -2,7 +2,7 @@
 	import { sb }                   from '$lib/supabase';
 	import { playerId }             from '$lib/stores/auth.js';
 	import { triggerToast }         from '$lib/stores/toast.js';
-	import { fmtDate, toDateStr, daysUntil } from '$lib/utils/dates.js';
+	import { fmtDate, daysUntil } from '$lib/utils/dates.js';
 	import { formatIbanMasked }     from '$lib/utils/players.js';
 
 	import ProfilHeroCard           from './ProfilHeroCard.svelte';
@@ -11,9 +11,7 @@
 	import ProfilDatenAccordion     from './ProfilDatenAccordion.svelte';
 	import ProfilDatenSheet         from './ProfilDatenSheet.svelte';
 	import ProfilEinwilligungenCard from './ProfilEinwilligungenCard.svelte';
-	import ProfilTermineCard        from './ProfilTermineCard.svelte';
 	import ProfilAbwesenheitCard    from './ProfilAbwesenheitCard.svelte';
-	import ProfilMeilensteineCard   from './ProfilMeilensteineCard.svelte';
 
 	// All player columns this tab reads — explicit to tolerate pending migration.
 	// See supabase/migrations/20260422_profil_selfservice.sql
@@ -21,12 +19,8 @@
 		'id','name','email','phone','address','avatar_url','photo','role',
 		'shirt_size','pants_size','spielerpass_nr','medical_exam_expiry',
 		'birth_date','push_prefs',
-		// Phase B columns
-		'jersey_number','shoe_size',
-		'emergency_contact_name','emergency_contact_phone',
 		'iban','account_holder',
 		'member_since','membership_status',
-		'drivers_license','default_car_seats','dietary_notes',
 		'consent_photo','consent_liga_data','consent_whatsapp','consent_accepted_at',
 		'attest_url',
 	].join(', ');
@@ -34,8 +28,6 @@
 	let me        = $state(null);
 	let scores    = $state([]);
 	let allScores = $state([]);
-	let events    = $state([]);
-	let rsvps     = $state([]);
 	let loading   = $state(true);
 
 	let editSheetOpen = $state(false);
@@ -48,13 +40,10 @@
 	async function loadData(pid) {
 		loading = true;
 		try {
-			const today = toDateStr(new Date());
 			const [
 				{ data: p,  error: e1 },
 				{ data: sc, error: e2 },
 				{ data: all },
-				{ data: ev, error: e4 },
-				{ data: rs },
 			] = await Promise.all([
 				sb.from('players')
 					.select(PLAYER_FIELDS)
@@ -65,20 +54,13 @@
 					.order('cal_week', { referencedTable: 'game_plans', ascending: false }),
 				sb.from('game_plan_players')
 					.select('player_id, score').eq('played', true).not('score', 'is', null),
-				sb.from('events')
-					.select('id, title, date, time, location, external_id')
-					.gte('date', today).order('date').limit(6),
-				sb.from('event_rsvps').select('event_id, response').eq('player_id', pid),
 			]);
 			if (e1) triggerToast('Fehler: ' + e1.message);
 			if (e2) triggerToast('Fehler: ' + e2.message);
-			if (e4) triggerToast('Fehler: ' + e4.message);
 
 			me        = p;
 			scores    = (sc ?? []).map(g => Number(g.score));
 			allScores = all ?? [];
-			events    = ev ?? [];
-			rsvps     = rs ?? [];
 		} finally {
 			loading = false;
 		}
@@ -104,31 +86,11 @@
 
 	const last5 = $derived(scores.slice(0, 5));
 
-	const milestones = $derived.by(() => {
-		if (!scores.length) return [];
-		const ms = [];
-		const n = scores.length;
-		const best = Math.max(...scores);
-		const avg = stats?.avg ?? 0;
-		if (n >= 1)   ms.push({ icon: 'sports_score',     label: 'Erstes Spiel', sub: `${n} Spiele bisher` });
-		if (n >= 10)  ms.push({ icon: 'military_tech',    label: '10 Spiele',    sub: 'Meilenstein' });
-		if (n >= 25)  ms.push({ icon: 'military_tech',    label: '25 Spiele',    sub: 'Meilenstein' });
-		if (n >= 50)  ms.push({ icon: 'emoji_events',     label: '50 Spiele',    sub: 'Halbes Hundert!' });
-		if (n >= 100) ms.push({ icon: 'workspace_premium',label: '100 Spiele',   sub: 'Jahrhundert!' });
-		if (n >= 150) ms.push({ icon: 'grade',            label: '150 Spiele',   sub: 'Legende!' });
-		if (best >= 500) ms.push({ icon: 'star',    label: '500+ Holz', sub: `Rekord: ${best}` });
-		if (best >= 550) ms.push({ icon: 'stars',   label: '550+ Holz', sub: `Rekord: ${best}` });
-		if (best >= 600) ms.push({ icon: 'diamond', label: '600+ Holz', sub: `Rekord: ${best}` });
-		if (avg >= 500) ms.push({ icon: 'trending_up', label: 'Ø 500+', sub: `Schnitt: ${avg}` });
-		return ms.reverse();
-	});
-
 	const missingFields = $derived.by(() => {
 		if (!me) return [];
 		const m = [];
 		if (!me.phone)                   m.push('Telefon');
 		if (!me.address)                 m.push('Adresse');
-		if (!me.emergency_contact_phone) m.push('Notfallkontakt');
 		if (!me.shirt_size)              m.push('Trikotgröße');
 		if (!me.spielerpass_nr)          m.push('Spielerpass-Nr.');
 		return m;
@@ -178,28 +140,9 @@
 		return [
 			{ key: 'shirt_size',          label: 'Trikotgröße',      value: me.shirt_size,    icon: 'apparel' },
 			{ key: 'pants_size',          label: 'Hosengröße',       value: me.pants_size,    icon: 'straighten' },
-			{ key: 'shoe_size',           label: 'Schuhgröße',       value: me.shoe_size,     icon: 'footprint' },
-			{ key: 'jersey_number',       label: 'Trikotnummer',     value: me.jersey_number != null ? String(me.jersey_number) : null, icon: 'tag' },
 			{ key: 'spielerpass_nr',      label: 'Spielerpass-Nr.',  value: me.spielerpass_nr, icon: 'badge' },
 			{ key: 'medical_exam_expiry', label: 'Ärztl. Attest gültig bis', value: attest?.text ?? null, valueClass: attest?.cls ?? '', icon: 'medical_information' },
 			{ key: 'attest_url',          label: 'Attest-Datei',     value: me.attest_url ? 'Hochgeladen' : null, icon: 'description' },
-		];
-	});
-
-	const notfallRows = $derived.by(() => {
-		if (!me) return [];
-		return [
-			{ key: 'emergency_contact_name',  label: 'Kontaktperson', value: me.emergency_contact_name,  icon: 'person' },
-			{ key: 'emergency_contact_phone', label: 'Telefon',       value: me.emergency_contact_phone, icon: 'call' },
-		];
-	});
-
-	const mobilitaetRows = $derived.by(() => {
-		if (!me) return [];
-		return [
-			{ key: 'drivers_license',   label: 'Führerschein', value: me.drivers_license ? 'Ja' : (me.drivers_license === false ? 'Nein' : null), icon: 'directions_car' },
-			{ key: 'default_car_seats', label: 'Plätze im Auto', value: me.default_car_seats != null ? String(me.default_car_seats) : null, icon: 'event_seat' },
-			{ key: 'dietary_notes',     label: 'Ernährungshinweise', value: me.dietary_notes, icon: 'restaurant' },
 		];
 	});
 
@@ -212,11 +155,9 @@
 	});
 
 	const dataSections = $derived([
-		{ key: 'kontakt',    title: 'Kontakt & Adresse',      icon: 'contact_page',         rows: kontaktRows },
-		{ key: 'notfall',    title: 'Notfallkontakt',          icon: 'emergency',            rows: notfallRows },
-		{ key: 'sport',      title: 'Sport-Ausrüstung',        icon: 'sports_and_outdoors',  rows: sportRows },
-		{ key: 'mobilitaet', title: 'Mobilität & Verpflegung', icon: 'directions_car',       rows: mobilitaetRows },
-		{ key: 'zahlung',    title: 'Zahlung',                 icon: 'account_balance',      rows: zahlungRows },
+		{ key: 'kontakt', title: 'Kontakt & Adresse',  icon: 'contact_page',        rows: kontaktRows },
+		{ key: 'sport',   title: 'Sport-Ausrüstung',   icon: 'sports_and_outdoors', rows: sportRows },
+		{ key: 'zahlung', title: 'Zahlung',            icon: 'account_balance',     rows: zahlungRows },
 	]);
 
 	// ── Edit orchestration ──────────────────────────────────────────────────────
@@ -234,22 +175,9 @@
 			editForm = {
 				shirt_size:          me.shirt_size ?? '',
 				pants_size:          me.pants_size ?? '',
-				shoe_size:           me.shoe_size ?? '',
-				jersey_number:       me.jersey_number ?? null,
 				spielerpass_nr:      me.spielerpass_nr ?? '',
 				medical_exam_expiry: me.medical_exam_expiry ?? '',
 				attest_url:          me.attest_url ?? '',
-			};
-		} else if (section === 'notfall') {
-			editForm = {
-				emergency_contact_name:  me.emergency_contact_name  ?? '',
-				emergency_contact_phone: me.emergency_contact_phone ?? '',
-			};
-		} else if (section === 'mobilitaet') {
-			editForm = {
-				drivers_license:    !!me.drivers_license,
-				default_car_seats:  me.default_car_seats ?? null,
-				dietary_notes:      me.dietary_notes ?? '',
 			};
 		} else if (section === 'zahlung') {
 			editForm = {
@@ -274,27 +202,12 @@
 				birth_date: editForm.birth_date || null,
 			};
 		} else if (section === 'sport') {
-			const jn = editForm.jersey_number;
 			payload = {
 				shirt_size:          editForm.shirt_size || null,
 				pants_size:          editForm.pants_size?.trim() || null,
-				shoe_size:           editForm.shoe_size?.trim() || null,
-				jersey_number:       jn === '' || jn == null ? null : Number(jn),
 				spielerpass_nr:      editForm.spielerpass_nr?.trim() || null,
 				medical_exam_expiry: editForm.medical_exam_expiry || null,
 				attest_url:          editForm.attest_url || null,
-			};
-		} else if (section === 'notfall') {
-			payload = {
-				emergency_contact_name:  editForm.emergency_contact_name?.trim()  || null,
-				emergency_contact_phone: editForm.emergency_contact_phone?.trim() || null,
-			};
-		} else if (section === 'mobilitaet') {
-			const cs = editForm.default_car_seats;
-			payload = {
-				drivers_license:   !!editForm.drivers_license,
-				default_car_seats: cs === '' || cs == null ? null : Number(cs),
-				dietary_notes:     editForm.dietary_notes?.trim() || null,
 			};
 		} else if (section === 'zahlung') {
 			payload = {
@@ -344,15 +257,7 @@
 
 		<ProfilEinwilligungenCard {me} onUpdated={onConsentUpdated} />
 
-		<ProfilTermineCard
-			{events}
-			bind:rsvps
-			onReload={() => loadData($playerId)}
-		/>
-
 		<ProfilAbwesenheitCard />
-
-		<ProfilMeilensteineCard {milestones} />
 	</div>
 {/if}
 

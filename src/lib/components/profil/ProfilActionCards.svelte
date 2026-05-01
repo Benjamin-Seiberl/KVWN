@@ -4,7 +4,6 @@
 	const FIELD_MAP = {
 		'Telefon':         ['kontakt', 'phone'],
 		'Adresse':         ['kontakt', 'address'],
-		'Notfallkontakt':  ['notfall', 'emergency_contact_phone'],
 		'Trikotgröße':     ['sport',   'shirt_size'],
 		'Hosengröße':      ['sport',   'pants_size'],
 		'Spielerpass-Nr.': ['sport',   'spielerpass_nr'],

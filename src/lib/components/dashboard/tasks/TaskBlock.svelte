@@ -3,22 +3,25 @@
 	import { playerId } from '$lib/stores/auth';
 	import { triggerToast } from '$lib/stores/toast.js';
 	import { toDateStr } from '$lib/utils/dates.js';
+	import { getMissingProfileFields } from '$lib/utils/profile-completion.js';
 	import LineupConfirmTask from './LineupConfirmTask.svelte';
 	import LandesbewerbTask  from './LandesbewerbTask.svelte';
+	import ProfilTask        from './ProfilTask.svelte';
 
-	let lineupItems  = $state([]);   // [{ gamePlanPlayerId, match, position, teammates, myName }]
-	let landesItems  = $state([]);   // [{ match }]
-	let myName       = $state(null);
-	let loading      = $state(true);
+	let lineupItems          = $state([]);   // [{ gamePlanPlayerId, match, position, teammates, myName }]
+	let landesItems          = $state([]);   // [{ match }]
+	let missingProfileFields = $state([]);   // [{ key, label, section }]
+	let myName               = $state(null);
+	let loading              = $state(true);
 
 	async function loadAll(pid) {
 		loading = true;
 		try {
 			const todayStr = toDateStr(new Date());
 
-			// Meinen Namen laden (für Decline-Push-Notifications)
+			// Profil komplett laden (Name für Decline-Push, Felder für Profil-Task)
 			const [meRes, lineupRes, landesRes, dismissRes] = await Promise.all([
-				sb.from('players').select('name').eq('id', pid).maybeSingle(),
+				sb.from('players').select('*').eq('id', pid).maybeSingle(),
 				loadLineup(pid, todayStr),
 				loadLandesbewerb(pid, todayStr),
 				sb.from('dashboard_task_dismissals')
@@ -37,6 +40,7 @@
 			}
 
 			myName = meRes.data?.name ?? null;
+			missingProfileFields = getMissingProfileFields(meRes.data ?? null);
 			lineupItems = lineupRes;
 
 			const dismissed = new Set((dismissRes.data ?? []).map(d => d.task_ref_id));
@@ -117,7 +121,9 @@
 		}
 	});
 
-	let totalOpen = $derived(lineupItems.length + landesItems.length);
+	let totalOpen = $derived(
+		lineupItems.length + landesItems.length + (missingProfileFields.length > 0 ? 1 : 0)
+	);
 </script>
 
 {#if !loading && totalOpen > 0}
@@ -135,6 +141,9 @@
 			{#each landesItems as lb (lb.id)}
 				<LandesbewerbTask {lb} onReload={reload} />
 			{/each}
+			{#if missingProfileFields.length > 0}
+				<ProfilTask missingFields={missingProfileFields} />
+			{/if}
 		</div>
 	</div>
 {/if}

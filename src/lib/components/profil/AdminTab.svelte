@@ -99,9 +99,9 @@
 				.select('id, match_id, created_at')
 				.gte('created_at', minus14 + 'T00:00:00'),
 			sb.from('players')
-				.select('id, name, phone, emergency_contact_phone, spielerpass_nr')
+				.select('id, name, phone, spielerpass_nr')
 				.eq('active', true)
-				.or('phone.is.null,emergency_contact_phone.is.null,spielerpass_nr.is.null')
+				.or('phone.is.null,spielerpass_nr.is.null')
 				.order('name'),
 		]);
 
@@ -237,7 +237,7 @@
 				id: 'admin-inbox-profile-incomplete',
 				icon: 'badge',
 				title: `${n} ${n === 1 ? 'Spielerprofil unvollständig' : 'Spielerprofile unvollständig'}`,
-				sub: 'Telefon, Notfallkontakt oder Spielerpass-Nr. fehlen',
+				sub: 'Telefon oder Spielerpass-Nr. fehlen',
 				color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',
 				action: () => incompleteExpanded = !incompleteExpanded,
 				expandable: true,
@@ -249,9 +249,8 @@
 
 	function missingFieldsLabel(p) {
 		const labels = [];
-		if (!p.phone)                    labels.push('Telefon');
-		if (!p.emergency_contact_phone)  labels.push('Notfallkontakt');
-		if (!p.spielerpass_nr)           labels.push('Spielerpass-Nr.');
+		if (!p.phone)          labels.push('Telefon');
+		if (!p.spielerpass_nr) labels.push('Spielerpass-Nr.');
 		return labels.join(' · ');
 	}
 
