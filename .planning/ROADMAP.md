@@ -213,9 +213,9 @@
 **Requirements:**
 - STAT-01 — Migration View `view_player_season_stats` (AVG/COUNT/MIN/MAX)
 - STAT-02 — Migration View `view_player_training_count`
-- STAT-03 — Migration `league_standings`-Tabelle + RLS (Captain-write, all-read)
+- STAT-03 — Migration `league_standings`-Tabelle + RLS (Captain-write, all-read) — nutzt `is_demo`-Spalte per `docs/patterns/is-demo.md`
 - STAT-04 — Schema-Härtung: `season`-Spalte gegen Cross-Saison-Mix
-- STAT-05 — Mock-Liga-Tabelle-Seed mit `is_demo=true` für JHV
+- STAT-05 — Mock-Liga-Tabelle-Seed mit `is_demo=true` für JHV (siehe `docs/patterns/is-demo.md`, FOUND-06)
 - STAT-06 — AdminUI in `AdminTab` zum manuellen Befüllen `league_standings`
 - STAT-07 — RPC `compare_seasons(int, int)`
 - STAT-08 — `StatsView` mit 3 Sub-Tabs (mannschaft \| spieler \| liga) via lokalem `$state`-PillSwitcher
@@ -261,7 +261,7 @@
 **Requirements:**
 - DEMO-01 — DB-Snapshot 3 Tage vor JHV (Supabase Pro Backup + lokale Kopie)
 - DEMO-02 — Demo-Login = read-only-Account (keine Captain-Rolle)
-- DEMO-03 — Cleanup-Migration `DELETE … WHERE is_demo` vorbereitet
+- DEMO-03 — Cleanup-Migration `DELETE … WHERE is_demo` vorbereitet — siehe `docs/patterns/is-demo.md`
 - DEMO-04 — Reviewer-Pass über alle Phase-1-4-Diffs
 - DEMO-05 — Smoke-Test `push_outbox` 1-Minuten-Reminder vor JHV (TZ-Verify)
 - DEMO-06 — exiftool-Test auf 5 Sample-Avatars (EXIF-strip-Verify)
