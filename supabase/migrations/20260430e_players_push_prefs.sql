@@ -8,20 +8,25 @@
 --
 -- File-Prefix: 20260430e_ (nach a/b/c/d aus Plans 0-06/0-07; alphabetisch geordnet
 -- damit Supabase Migrations deterministisch runnen).
+--
+-- IMPLEMENTIERUNGS-NOTIZ: Postgres erlaubt KEINE Subqueries in CHECK-Constraints
+-- (ERROR 0A000). jsonb_object_keys() ist eine Set-Returning-Function, daher
+-- wrap-en wir die Validierung in eine IMMUTABLE-Funktion und referenzieren diese
+-- aus dem CHECK. Funktional identisch zur urspruenglichen Whitelist-Logik.
 
 -- 1. Spalte ergaenzen (idempotent).
 ALTER TABLE public.players
   ADD COLUMN IF NOT EXISTS push_prefs JSONB NOT NULL DEFAULT '{}'::jsonb;
 
--- 2. CHECK-Constraint mit Whitelist (idempotent via DROP+ADD).
-ALTER TABLE public.players
-  DROP CONSTRAINT IF EXISTS players_push_prefs_keys;
-
-ALTER TABLE public.players
-  ADD CONSTRAINT players_push_prefs_keys CHECK (
-    jsonb_typeof(push_prefs) = 'object'
+-- 2. Validator-Funktion (IMMUTABLE, damit in CHECK nutzbar).
+CREATE OR REPLACE FUNCTION public.push_prefs_is_valid(p jsonb)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT jsonb_typeof(p) = 'object'
     AND NOT EXISTS (
-      SELECT 1 FROM jsonb_object_keys(push_prefs) k
+      SELECT 1 FROM jsonb_object_keys(p) k
       WHERE k NOT IN (
         'training_24h',
         'event_new',
@@ -29,5 +34,12 @@ ALTER TABLE public.players
         'poll_close',
         'birthday'
       )
-    )
-  );
+    );
+$$;
+
+-- 3. CHECK-Constraint mit Whitelist (idempotent via DROP+ADD).
+ALTER TABLE public.players
+  DROP CONSTRAINT IF EXISTS players_push_prefs_keys;
+
+ALTER TABLE public.players
+  ADD CONSTRAINT players_push_prefs_keys CHECK (public.push_prefs_is_valid(push_prefs));
